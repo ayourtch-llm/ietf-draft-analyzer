@@ -147,10 +147,16 @@ pub async fn run_stage2(
     let (clustering, usage) = match llm.chat_json::<ClusteringResponse>(messages).await {
         Ok(result) => result,
         Err(e) => {
+            // Check if this was a cancellation — mark interrupted, not failed
+            let status = if llm.cancel_token().is_cancelled() {
+                "interrupted"
+            } else {
+                "failed"
+            };
             analysis_store::complete_run(
                 conn,
                 run_id,
-                "failed",
+                status,
                 0,
                 &rfc_numbers,
                 Some(&e.to_string()),
@@ -371,10 +377,16 @@ pub async fn run_stage2(
                 .await?;
             }
             Err(e) => {
+                // Check if this was a cancellation
+                let status = if llm.cancel_token().is_cancelled() {
+                    "interrupted"
+                } else {
+                    "failed"
+                };
                 analysis_store::complete_run(
                     conn,
                     run_id,
-                    "failed",
+                    status,
                     total_tokens,
                     &rfc_numbers,
                     Some(&e.to_string()),
