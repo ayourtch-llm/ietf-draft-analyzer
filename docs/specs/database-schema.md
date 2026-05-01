@@ -8,11 +8,17 @@ results. It should not be treated as a disposable cache.
 
 ## Connection Setup
 
-Every connection must enable foreign keys:
+Every connection must enable the following pragmas:
 
 ```sql
 PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;       -- concurrent readers during writes
+PRAGMA busy_timeout = 5000;      -- 5s retry on lock contention
 ```
+
+Note: application code accesses SQLite through `tokio-rusqlite`, which runs
+a dedicated background thread with a channel-based async API. See
+`architecture.md` for the full database access strategy.
 
 ## Schema Versioning
 

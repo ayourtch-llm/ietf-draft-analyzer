@@ -7,6 +7,13 @@ surface. It builds dependency graphs across RFCs, extracts protocol state
 machines, and runs LLM-powered security analysis to produce ranked vulnerability
 leads.
 
+## v1 Scope
+
+v1 is **RFC-only**. BCP/STD aliases, Internet-Drafts, errata ingestion,
+and non-RFC protocol specifications are explicitly out of scope. The document
+identity model (`RfcNumber(u32)`) reflects this constraint. Expanding to
+other document types is a future version concern.
+
 ## High-Level Pipeline
 
 ```

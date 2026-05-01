@@ -147,6 +147,7 @@ model = "gpt-4o"
 max_tokens_per_request = 4096
 max_concurrent_requests = 3
 temperature = 0.2
+model_context_window = 128000    # model's context window in tokens
 
 [fetcher]
 base_url = "https://www.rfc-editor.org"

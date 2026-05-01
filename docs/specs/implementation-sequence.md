@@ -109,7 +109,8 @@ OpenAI-compatible endpoint.
 - Second half of `src/pipeline/modeling.rs`
 - Extract states and transitions from section clusters
 - Validate structural consistency
-- Handle context window overflow (chunking + merging)
+- Handle context window overflow: summarize less-relevant sections to fit;
+  if still too large, warn and skip the oversized cluster
 
 ### 5.4 State machine persistence
 - Update `src/db/analysis_store.rs` for state machines
