@@ -364,20 +364,53 @@ pub struct ScoredSection {
 /// Summarize sections to fit within a token budget.
 /// Returns the combined text with provenance markers.
 /// If sections had to be dropped, returns their identifiers in the second element.
+///
+/// The candidate set is limited to:
+/// 1. Sections IN the mechanism cluster (always included)
+/// 2. Sections cross-referenced BY cluster sections (contextual support)
+///
+/// Unrelated protocol sections are NOT included, even if they contain
+/// RFC 2119 keywords or "Security" in their title.
 pub fn summarize_to_fit(
-    sections: &[(RfcNumber, &Section)],
+    all_sections: &[(RfcNumber, &Section)],
     cluster_section_ids: &[(u32, String)],  // (rfc_number, section_num) in the cluster
     budget_tokens: u64,
     rfc_numbers_in_scope: &[RfcNumber],
 ) -> (String, Vec<String>) {
     use crate::llm::prompts;
 
-    // Score each section
-    let mut scored: Vec<ScoredSection> = sections
+    // Step 1: Build candidate set (cluster + cross-referenced-by-cluster)
+    let candidates: Vec<(RfcNumber, &Section)> = all_sections
+        .iter()
+        .filter(|(rfc_num, section)| {
+            // Include if IN the cluster
+            let in_cluster = cluster_section_ids.iter()
+                .any(|(rfc, sec)| *rfc == rfc_num.0 && *sec == section.number);
+            if in_cluster {
+                return true;
+            }
+            // Include if cross-referenced BY a cluster section
+            let referenced_by_cluster = all_sections.iter()
+                .filter(|(rfc, sec)| {
+                    cluster_section_ids.iter().any(|(cr, cs)| *cr == rfc.0 && *cs == sec.number)
+                })
+                .any(|(_, cluster_sec)| {
+                    cluster_sec.cross_refs.iter().any(|xref| {
+                        xref.target_rfc.map_or(false, |r| r.0 == rfc_num.0)
+                            && xref.target_section.as_deref() == Some(&section.number)
+                    })
+                });
+            referenced_by_cluster
+        })
+        .copied()
+        .collect();
+
+    // Step 2: Score candidates
+    let mut scored: Vec<ScoredSection> = candidates
         .iter()
         .map(|(rfc_num, section)| {
             let score = compute_relevance_score(
-                *rfc_num, section, cluster_section_ids, rfc_numbers_in_scope, sections
+                *rfc_num, section, cluster_section_ids, rfc_numbers_in_scope, all_sections
             );
             ScoredSection {
                 rfc_number: *rfc_num,
@@ -386,9 +419,6 @@ pub fn summarize_to_fit(
             }
         })
         .collect();
-
-    // Only include sections that have a non-zero score (cluster members or referenced)
-    scored.retain(|s| s.score > 0);
 
     // Sort by score descending, then by RFC number ascending, then section number
     scored.sort_by(|a, b| {
@@ -1247,6 +1277,97 @@ mod tests {
     }
 }
 ```
+
+### src/pipeline/modeling.rs — hash and end-to-end tests
+
+```rust
+    // Add to the tests module in modeling.rs:
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_stage2_hash_changes_with_inputs() {
+        let conn = crate::db::open_memory_database().await.unwrap();
+
+        // Set up minimal RFC data
+        use crate::db::rfc_store;
+        let rfc = crate::rfc::model::Rfc {
+            number: RfcNumber(9293),
+            title: "TCP".to_string(),
+            format: crate::rfc::model::RfcFormat::Xml,
+            status: crate::rfc::model::RfcStatus::Standard,
+            date: chrono::NaiveDate::from_ymd_opt(2022, 1, 1).unwrap(),
+            obsoletes: vec![], updates: vec![],
+            obsoleted_by: vec![], updated_by: vec![],
+            sections: vec![crate::rfc::model::Section {
+                number: "1".to_string(),
+                title: "Intro".to_string(),
+                anchor: None, depth: 1,
+                text: "Hello".to_string(),
+                cross_refs: vec![], pn: None,
+            }],
+            references: vec![],
+            raw_text: "text".to_string(),
+            content_hash: "h".to_string(),
+        };
+        rfc_store::upsert_rfc(&conn, &rfc).await.unwrap();
+
+        use crate::config::LlmConfig;
+        let config1 = LlmConfig {
+            temperature: 0.2,
+            max_tokens_per_request: 4096,
+            model_context_window: 128000,
+            model: "gpt-4o".to_string(),
+            ..LlmConfig::default()
+        };
+        let config2 = LlmConfig {
+            temperature: 0.5,  // different
+            ..config1.clone()
+        };
+
+        let hash1 = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], None, "gpt-4o", &config1
+        ).await.unwrap();
+        let hash2 = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], None, "gpt-4o", &config2
+        ).await.unwrap();
+
+        // Different temperature → different hash
+        assert_ne!(hash1, hash2);
+
+        // Different mechanism filter → different hash
+        let hash3 = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], Some(&["auth".to_string()]), "gpt-4o", &config1
+        ).await.unwrap();
+        assert_ne!(hash1, hash3);
+
+        // Same inputs → same hash (deterministic)
+        let hash4 = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], None, "gpt-4o", &config1
+        ).await.unwrap();
+        assert_eq!(hash1, hash4);
+    }
+```
+
+### Resumability Note
+
+Resumability in v1 has a known limitation: a resumed run re-does the
+clustering LLM call. If the clustering response differs from the original
+interrupted run (due to LLM non-determinism), work item keys may drift.
+This is accepted for v1 — the alternative (persisting the clustering
+response) adds complexity without clear value since the temperature is
+low (0.2) and clustering is typically stable.
+
+### Integration test guidance (not full code)
+
+The implementer should add a `tests/stage2_integration.rs` test that:
+1. Sets up an in-memory DB with mapped RFCs (use `upsert_rfc` with test data)
+2. Mocks the LLM endpoint with `wiremock`:
+   - First call returns a clustering response
+   - Second call returns a state machine response
+3. Runs `run_stage2` and verifies:
+   - State machine persisted to DB
+   - analysis_runs status = 'completed'
+   - run_work_items has the mechanism marked 'completed'
+   - Token usage tracked
 
 ## 8. Verification
 
