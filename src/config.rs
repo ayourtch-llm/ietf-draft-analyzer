@@ -97,6 +97,27 @@ impl Default for LlmConfig {
     }
 }
 
+impl LlmConfig {
+    /// Resolve the API key from the configured environment variable.
+    /// Returns an error if the env var is not set or empty.
+    /// This is called when the LLM client is constructed, not at config load time.
+    pub fn resolve_api_key(&self) -> crate::error::Result<String> {
+        let key = std::env::var(&self.api_key_env).map_err(|_| {
+            crate::error::RfcAnalyzerError::Config(format!(
+                "Environment variable '{}' is not set. Set it to your API key.",
+                self.api_key_env
+            ))
+        })?;
+        if key.is_empty() {
+            return Err(crate::error::RfcAnalyzerError::Config(format!(
+                "Environment variable '{}' is set but empty.",
+                self.api_key_env
+            )));
+        }
+        Ok(key)
+    }
+}
+
 impl Default for FetcherConfig {
     fn default() -> Self {
         Self {

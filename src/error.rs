@@ -33,6 +33,24 @@ pub enum RfcAnalyzerError {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("LLM API error (HTTP {status}): {body}")]
+    LlmApi { status: u16, body: String },
+
+    #[error("LLM response did not contain valid JSON: {detail}")]
+    LlmParse { detail: String },
+
+    #[error("LLM rate limited")]
+    LlmRateLimit {
+        /// Seconds to wait before retrying. None if server didn't specify.
+        retry_after_secs: Option<u64>,
+    },
+
+    #[error("LLM request too large for model context window")]
+    LlmContextOverflow,
+
+    #[error("LLM content policy refusal: {detail}")]
+    LlmContentRefusal { detail: String },
 }
 
 pub type Result<T> = std::result::Result<T, RfcAnalyzerError>;

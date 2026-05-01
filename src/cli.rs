@@ -67,6 +67,14 @@ pub enum Command {
         /// Minimum severity to include
         #[arg(long, default_value = "low")]
         min_severity: String,
+
+        /// Output file (default: stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format (json only for v1)
+        #[arg(long, default_value = "json")]
+        format: String,
     },
 
     /// Run full pipeline: map -> model -> analyze
@@ -85,6 +93,10 @@ pub enum Command {
         /// Output file
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Output format (json only for v1)
+        #[arg(long, default_value = "json")]
+        format: String,
     },
 
     /// Show the dependency graph

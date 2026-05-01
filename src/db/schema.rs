@@ -2,9 +2,10 @@ use rusqlite::Connection;
 
 /// Each migration: (version_number, sql_to_execute)
 /// Migrations are applied in order. Never remove or reorder entries.
-const MIGRATIONS: &[(i64, &str)] = &[(
-    1,
-    r#"
+const MIGRATIONS: &[(i64, &str)] = &[
+    (
+        1,
+        r#"
         CREATE TABLE rfcs (
             number        INTEGER PRIMARY KEY,
             title         TEXT NOT NULL,
@@ -118,7 +119,62 @@ const MIGRATIONS: &[(i64, &str)] = &[(
         );
         CREATE INDEX idx_runs_protocol ON analysis_runs(protocol, stage);
     "#,
-)];
+    ),
+    (
+        2,
+        r#"
+        BEGIN;
+
+        -- Add run_id to security_leads
+        ALTER TABLE security_leads ADD COLUMN run_id INTEGER
+            REFERENCES analysis_runs(id) ON DELETE CASCADE;
+        ALTER TABLE security_leads ADD COLUMN fingerprint TEXT;
+        CREATE INDEX idx_leads_fingerprint ON security_leads(fingerprint);
+        CREATE INDEX idx_leads_run ON security_leads(run_id);
+
+        -- Recreate state_machines with run_id and relaxed uniqueness
+        CREATE TABLE state_machines_new (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            protocol      TEXT NOT NULL,
+            name          TEXT NOT NULL,
+            mechanism     TEXT NOT NULL,
+            data          TEXT NOT NULL,
+            content_hash  TEXT NOT NULL,
+            created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+            run_id        INTEGER REFERENCES analysis_runs(id) ON DELETE CASCADE,
+            UNIQUE(protocol, name, run_id)
+        );
+        INSERT INTO state_machines_new
+            (id, protocol, name, mechanism, data, content_hash, created_at)
+            SELECT id, protocol, name, mechanism, data, content_hash, created_at
+            FROM state_machines;
+        DROP TABLE state_machines;
+        ALTER TABLE state_machines_new RENAME TO state_machines;
+        CREATE INDEX idx_state_machines_protocol ON state_machines(protocol);
+        CREATE INDEX idx_state_machines_run ON state_machines(run_id);
+
+        -- Per-work-item tracking for resumability
+        CREATE TABLE run_work_items (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id          INTEGER NOT NULL
+                            REFERENCES analysis_runs(id) ON DELETE CASCADE,
+            work_item_kind  TEXT NOT NULL,
+            work_item_key   TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'pending'
+                            CHECK(status IN ('pending', 'running', 'completed', 'failed')),
+            started_at      TEXT,
+            completed_at    TEXT,
+            tokens_used     INTEGER DEFAULT 0,
+            error           TEXT,
+            input_hash      TEXT,
+            UNIQUE(run_id, work_item_kind, work_item_key)
+        );
+        CREATE INDEX idx_work_items_run ON run_work_items(run_id);
+
+        COMMIT;
+    "#,
+    ),
+];
 
 /// Initialize SQLite pragmas on a raw connection.
 /// Called once when the connection is first opened.
@@ -190,7 +246,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_pragmas(&conn).unwrap();
         let version = run_migrations(&conn).unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
 
         // Verify tables exist
         let count: i64 = conn
@@ -228,6 +284,7 @@ mod tests {
             "security_leads",
             "analysis_runs",
             "schema_version",
+            "run_work_items",
         ];
         for table in &expected_tables {
             let count: i64 = conn
@@ -239,5 +296,97 @@ mod tests {
                 .unwrap();
             assert_eq!(count, 1, "Table '{}' should exist", table);
         }
+    }
+
+    #[test]
+    fn test_migration_v2_creates_run_work_items() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+        let version = run_migrations(&conn).unwrap();
+        assert_eq!(version, 2);
+
+        // Verify run_work_items exists
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='run_work_items'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_migration_v2_preserves_existing_data() {
+        // Simulate a v1 database with data, then upgrade to v2
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+
+        // Create schema_version table (as run_migrations would)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL UNIQUE,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )
+        .unwrap();
+
+        // Manually apply only migration 1
+        conn.execute_batch(MIGRATIONS[0].1).unwrap();
+        conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])
+            .unwrap();
+
+        // Insert v1 state_machines row
+        conn.execute(
+            "INSERT INTO state_machines (protocol, name, mechanism, data, content_hash)
+             VALUES ('tcp', 'connection', 'state', '{}', 'h1')",
+            [],
+        )
+        .unwrap();
+
+        // Now run full migrations — should upgrade to v2 preserving data
+        let version = run_migrations(&conn).unwrap();
+        assert_eq!(version, 2);
+
+        // Verify existing data survived
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM state_machines WHERE name = 'connection'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+
+        // Verify run_id column exists (nullable, so existing row has NULL)
+        let run_id: Option<i64> = conn
+            .query_row(
+                "SELECT run_id FROM state_machines WHERE name = 'connection'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(run_id.is_none());
+    }
+
+    #[test]
+    fn test_migration_v2_state_machines_has_run_id() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Insert an analysis run first
+        conn.execute(
+            "INSERT INTO analysis_runs (protocol, stage, started_at, status) VALUES ('tcp', 'model', '2024-01-01', 'completed')",
+            [],
+        )
+        .unwrap();
+
+        // state_machines should accept run_id
+        conn.execute(
+            "INSERT INTO state_machines (protocol, name, mechanism, data, content_hash, run_id) VALUES ('tcp', 'test', 'auth', '{}', 'hash', 1)",
+            [],
+        )
+        .unwrap();
     }
 }

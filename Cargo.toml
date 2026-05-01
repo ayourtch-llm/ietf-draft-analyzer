@@ -20,7 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml = "0.8"
-governor = "0.8"
+tokio-util = "0.7"
 zstd = "0.13"
 uuid = { version = "1", features = ["v4"] }
 tokio-rusqlite = "0.6"

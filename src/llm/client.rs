@@ -1,0 +1,407 @@
+use crate::config::LlmConfig;
+use crate::error::{Result, RfcAnalyzerError};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Semaphore;
+use tokio_util::sync::CancellationToken;
+
+/// A message in the chat conversation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String, // "system", "user", "assistant"
+    pub content: String,
+}
+
+/// Token usage from an LLM response.
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}
+
+/// The LLM client for OpenAI-compatible chat completions.
+pub struct LlmClient {
+    http: reqwest::Client,
+    config: LlmConfig,
+    api_key: String,
+    semaphore: Arc<Semaphore>,
+    cancel_token: CancellationToken,
+}
+
+impl LlmClient {
+    /// Create a new LLM client. Resolves the API key from the environment.
+    pub fn new(config: LlmConfig, cancel_token: CancellationToken) -> Result<Self> {
+        let api_key = config.resolve_api_key()?;
+        let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests as usize));
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(120))
+            .build()
+            .map_err(|e| RfcAnalyzerError::Config(format!("HTTP client error: {}", e)))?;
+
+        Ok(Self {
+            http,
+            config,
+            api_key,
+            semaphore,
+            cancel_token,
+        })
+    }
+
+    /// Send a chat completion request and return the raw response text.
+    /// Handles retries for 429/5xx, error classification, and concurrency.
+    pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<(String, TokenUsage)> {
+        self.chat_with_format(messages, false).await
+    }
+
+    /// Send a chat request with JSON response format and parse the result.
+    /// Adds `response_format: {"type": "json_object"}` to the request.
+    /// Handles markdown fence stripping and content refusal detection.
+    pub async fn chat_json<T: serde::de::DeserializeOwned>(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Result<(T, TokenUsage)> {
+        let (content, usage) = self.chat_with_format(messages, true).await?;
+        let parsed = super::response::parse_json_response::<T>(&content)?;
+        Ok((parsed, usage))
+    }
+
+    /// Internal: send chat with optional JSON response format.
+    async fn chat_with_format(
+        &self,
+        messages: Vec<ChatMessage>,
+        json_mode: bool,
+    ) -> Result<(String, TokenUsage)> {
+        let _permit = self
+            .semaphore
+            .acquire()
+            .await
+            .map_err(|_| RfcAnalyzerError::Config("Semaphore closed".to_string()))?;
+
+        let mut attempts = 0;
+        let max_attempts = 3;
+
+        loop {
+            attempts += 1;
+            if self.cancel_token.is_cancelled() {
+                return Err(RfcAnalyzerError::Config("Operation cancelled".to_string()));
+            }
+
+            let mut request_body = serde_json::json!({
+                "model": self.config.model,
+                "messages": messages,
+                "temperature": self.config.temperature,
+                "max_tokens": self.config.max_tokens_per_request,
+            });
+            if json_mode {
+                request_body["response_format"] = serde_json::json!({"type": "json_object"});
+            }
+
+            let url = format!("{}/chat/completions", self.config.api_base);
+            let response = self
+                .http
+                .post(&url)
+                .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+                .header(CONTENT_TYPE, "application/json")
+                .json(&request_body)
+                .send()
+                .await
+                .map_err(|e| RfcAnalyzerError::LlmApi {
+                    status: 0,
+                    body: format!("Network error: {}", e),
+                })?;
+
+            let status = response.status().as_u16();
+            let headers = response.headers().clone();
+
+            // Error classification and retry logic:
+            match status {
+                200 => {
+                    let body: serde_json::Value =
+                        response
+                            .json()
+                            .await
+                            .map_err(|e| RfcAnalyzerError::LlmParse {
+                                detail: format!("Failed to parse response JSON: {}", e),
+                            })?;
+
+                    // Check finish_reason FIRST (before content extraction)
+                    let finish_reason = body["choices"][0]["finish_reason"]
+                        .as_str()
+                        .unwrap_or("stop");
+                    if finish_reason == "content_filter" {
+                        return Err(RfcAnalyzerError::LlmContentRefusal {
+                            detail: "Model refused due to content filter".to_string(),
+                        });
+                    }
+
+                    let content = body["choices"][0]["message"]["content"]
+                        .as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
+
+                    if content.is_empty() {
+                        return Err(RfcAnalyzerError::LlmParse {
+                            detail: "Empty response content from LLM".to_string(),
+                        });
+                    }
+
+                    let usage = TokenUsage {
+                        prompt_tokens: body["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
+                        completion_tokens: body["usage"]["completion_tokens"].as_u64().unwrap_or(0),
+                        total_tokens: body["usage"]["total_tokens"].as_u64().unwrap_or(0),
+                    };
+                    return Ok((content, usage));
+                }
+                429 => {
+                    let retry_after = parse_retry_after(&headers);
+                    if attempts >= max_attempts {
+                        return Err(RfcAnalyzerError::LlmRateLimit {
+                            retry_after_secs: retry_after,
+                        });
+                    }
+                    let wait = retry_after.unwrap_or(2u64.pow(attempts as u32));
+                    tracing::warn!(
+                        "Rate limited (429), waiting {}s before retry {}/{}",
+                        wait,
+                        attempts,
+                        max_attempts
+                    );
+                    tokio::time::sleep(Duration::from_secs(wait)).await;
+                    continue;
+                }
+                500..=599 => {
+                    let body = response.text().await.unwrap_or_default();
+                    if attempts >= max_attempts {
+                        return Err(RfcAnalyzerError::LlmApi { status, body });
+                    }
+                    let wait = 2u64.pow(attempts as u32);
+                    tracing::warn!(
+                        "Server error ({}), waiting {}s before retry {}/{}",
+                        status,
+                        wait,
+                        attempts,
+                        max_attempts
+                    );
+                    tokio::time::sleep(Duration::from_secs(wait)).await;
+                    continue;
+                }
+                400 => {
+                    let body = response.text().await.unwrap_or_default();
+                    let body_lower = body.to_lowercase();
+                    if body_lower.contains("context_length")
+                        || body_lower.contains("maximum context length")
+                        || body_lower.contains("too many tokens")
+                    {
+                        return Err(RfcAnalyzerError::LlmContextOverflow);
+                    }
+                    return Err(RfcAnalyzerError::LlmApi { status: 400, body });
+                }
+                _ => {
+                    let body = response.text().await.unwrap_or_default();
+                    return Err(RfcAnalyzerError::LlmApi { status, body });
+                }
+            }
+        }
+    }
+
+    /// Estimate the token count for a string.
+    /// Uses chars/4 heuristic (char count, not byte count).
+    /// Note: the 30% safety margin is applied in context_budget() via the
+    /// 0.7 multiplier on model_context_window, NOT here. This function
+    /// returns a raw estimate.
+    pub fn estimate_tokens(&self, text: &str) -> u64 {
+        (text.chars().count() as u64) / 4
+    }
+
+    /// Get the effective context budget in estimated tokens.
+    /// Budget = model_context_window * 0.7 - max_tokens_per_request - system_prompt_overhead
+    pub fn context_budget(&self, system_prompt_tokens: u64) -> u64 {
+        let effective_window = (self.config.model_context_window as f64 * 0.7) as u64;
+        effective_window
+            .saturating_sub(self.config.max_tokens_per_request as u64)
+            .saturating_sub(system_prompt_tokens)
+    }
+
+    /// Get the model name.
+    pub fn model(&self) -> &str {
+        &self.config.model
+    }
+
+    /// Get the cancellation token.
+    pub fn cancel_token(&self) -> &CancellationToken {
+        &self.cancel_token
+    }
+}
+
+/// Parse Retry-After header value (seconds).
+fn parse_retry_after(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn test_config(base_url: &str) -> LlmConfig {
+        // Set env var for test
+        // SAFETY: Test-only env var mutation, no concurrent access in this test
+        unsafe {
+            std::env::set_var("TEST_API_KEY", "test-key-123");
+        }
+        LlmConfig {
+            api_base: base_url.to_string(),
+            api_key_env: "TEST_API_KEY".to_string(),
+            model: "test-model".to_string(),
+            max_tokens_per_request: 100,
+            max_concurrent_requests: 2,
+            temperature: 0.1,
+            model_context_window: 4096,
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_chat_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{"message": {"content": "Hello!"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+            })))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let client = LlmClient::new(config, CancellationToken::new()).unwrap();
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let (response, usage) = client.chat(messages).await.unwrap();
+        assert_eq!(response, "Hello!");
+        assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_chat_rate_limit_retry() {
+        let server = MockServer::start().await;
+        // First call: 429, second: 200
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(429).insert_header("retry-after", "1"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
+            })))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let client = LlmClient::new(config, CancellationToken::new()).unwrap();
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let (response, _) = client.chat(messages).await.unwrap();
+        assert_eq!(response, "OK");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_chat_401_fails_immediately() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("Unauthorized"))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let client = LlmClient::new(config, CancellationToken::new()).unwrap();
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let result = client.chat(messages).await;
+        assert!(matches!(
+            result,
+            Err(RfcAnalyzerError::LlmApi { status: 401, .. })
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_chat_400_context_overflow() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(400).set_body_string("maximum context length exceeded"),
+            )
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let client = LlmClient::new(config, CancellationToken::new()).unwrap();
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let result = client.chat(messages).await;
+        assert!(matches!(result, Err(RfcAnalyzerError::LlmContextOverflow)));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_chat_content_filter() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{"message": {"content": ""}, "finish_reason": "content_filter"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 0, "total_tokens": 10}
+            })))
+            .mount(&server)
+            .await;
+
+        let config = test_config(&server.uri());
+        let client = LlmClient::new(config, CancellationToken::new()).unwrap();
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        let result = client.chat(messages).await;
+        assert!(matches!(
+            result,
+            Err(RfcAnalyzerError::LlmContentRefusal { .. })
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_context_budget() {
+        // SAFETY: Test-only env var mutation
+        unsafe {
+            std::env::set_var("TEST_API_KEY", "key");
+        }
+        let config = LlmConfig {
+            model_context_window: 128000,
+            max_tokens_per_request: 4096,
+            ..test_config("http://unused")
+        };
+        let client = LlmClient::new(config, CancellationToken::new()).unwrap();
+        // 128000 * 0.7 = 89600 - 4096 - 500 (system) = 85004
+        let budget = client.context_budget(500);
+        assert!(budget > 80000);
+        assert!(budget < 90000);
+    }
+}
