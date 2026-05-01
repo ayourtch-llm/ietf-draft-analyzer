@@ -100,7 +100,13 @@ impl LlmClient {
             }
 
             let url = format!("{}/chat/completions", self.config.api_base);
-            let response = self
+            let request_json = serde_json::to_string(&request_body).unwrap_or_default();
+            let estimated_tokens = request_json.chars().count() / 4;
+            tracing::debug!(
+                "LLM request to {} (model: {}, ~{} tokens, attempt {}/{})",
+                url, self.config.model, estimated_tokens, attempts, max_attempts
+            );
+            let response = match self
                 .http
                 .post(&url)
                 .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
@@ -108,13 +114,41 @@ impl LlmClient {
                 .json(&request_body)
                 .send()
                 .await
-                .map_err(|e| RfcAnalyzerError::LlmApi {
-                    status: 0,
-                    body: format!("Network error: {}", e),
-                })?;
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    // Network/connection error — retry with backoff
+                    let is_connect = e.is_connect();
+                    let is_timeout = e.is_timeout();
+                    if attempts >= max_attempts {
+                        return Err(RfcAnalyzerError::LlmApi {
+                            status: 0,
+                            body: format!(
+                                "Network error after {} attempts (connect={}, timeout={}): {}",
+                                max_attempts, is_connect, is_timeout, e
+                            ),
+                        });
+                    }
+                    let wait = 2u64.pow(attempts as u32);
+                    tracing::warn!(
+                        "Connection error (connect={}, timeout={}): {}. URL: {}. Waiting {}s before retry {}/{}",
+                        is_connect, is_timeout, e, url, wait, attempts, max_attempts
+                    );
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(wait)) => {}
+                        _ = self.cancel_token.cancelled() => {
+                            return Err(RfcAnalyzerError::Config(
+                                "Operation cancelled during retry wait".to_string(),
+                            ));
+                        }
+                    }
+                    continue;
+                }
+            };
 
             let status = response.status().as_u16();
             let headers = response.headers().clone();
+            tracing::debug!("LLM response: HTTP {}", status);
 
             // Error classification and retry logic:
             match status {
