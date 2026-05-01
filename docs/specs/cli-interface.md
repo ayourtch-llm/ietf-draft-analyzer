@@ -36,6 +36,11 @@ RFCs) are recorded in the `protocol_rfcs` table. This is required before
 running `model` or `analyze`. The `run` command passes its protocol argument
 through to `map` automatically.
 
+When `--protocol` is **omitted**, the tool emits a warning:
+*"RFCs cached but not associated with a protocol. Use --protocol <name>
+to enable model/analyze commands."* This prevents the common pitfall of
+running `map` then `model` and getting an empty protocol error.
+
 ### `model` — Build protocol state machines from mapped RFCs
 
 ```

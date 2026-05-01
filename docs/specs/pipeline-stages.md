@@ -18,6 +18,13 @@
    - Try XML format: `https://www.rfc-editor.org/rfc/rfc{N}.xml`
    - Fall back to plain text: `https://www.rfc-editor.org/rfc/rfc{N}.txt`
    - Cache which format worked to avoid future 404s
+   - **404 handling**: If both XML and text return 404 (RFC does not exist,
+     is not yet published, or was never assigned), log a warning and skip
+     the RFC. Do not create a graph node for it. Any edges that would have
+     pointed to it are dropped. This is expected for older RFCs that
+     reference Internet-Drafts by eventual RFC number or for reserved
+     number ranges. Seed RFC 404s are errors (fail the stage); transitive
+     reference 404s are warnings (skip and continue).
 
 2. **Parse**: Route to `parser_xml.rs` or `parser_text.rs` based on format:
    - Extract metadata: title, status, date, obsoletes/updates lists

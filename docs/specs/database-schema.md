@@ -24,10 +24,13 @@ a dedicated background thread with a channel-based async API. See
 
 ```sql
 CREATE TABLE schema_version (
-    version       INTEGER NOT NULL,
+    version       INTEGER NOT NULL UNIQUE,
     applied_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 ```
+
+One row per applied migration. The current schema version is `MAX(version)`.
+The migration runner queries this to determine which migrations to apply.
 
 On startup, the application checks the current version and applies pending
 migrations sequentially. Migrations are defined as SQL in `db/schema.rs`.
@@ -81,11 +84,11 @@ CREATE TABLE cross_refs (
     target_rfc      INTEGER,              -- NULL for internal refs
     target_section  TEXT,
     context         TEXT NOT NULL,         -- surrounding sentence
-    UNIQUE(source_rfc, source_section, target_rfc, target_section)
 );
 
 CREATE INDEX idx_xrefs_source ON cross_refs(source_rfc);
 CREATE INDEX idx_xrefs_target ON cross_refs(target_rfc);
+CREATE INDEX idx_xrefs_pair ON cross_refs(source_rfc, target_rfc);
 ```
 
 ### `dep_edges` — Dependency graph edges
@@ -167,19 +170,20 @@ CREATE TABLE analysis_runs (
     stage           TEXT NOT NULL,        -- 'map', 'model', 'analyze'
     started_at      TEXT NOT NULL,
     completed_at    TEXT,
-    model_used      TEXT NOT NULL,
+    model_used      TEXT,                -- NULL for non-LLM stages (e.g. map)
     tokens_used     INTEGER DEFAULT 0,
     status          TEXT NOT NULL DEFAULT 'running',
     error           TEXT,
-    -- Run manifest: captures all inputs that affect output
-    seed_rfcs       TEXT,                -- JSON array of seed RFC numbers
-    effective_rfcs  TEXT,                -- JSON array of all RFCs in scope
+    -- Run manifest: INPUT fields (participate in input_hash computation)
+    seed_rfcs       TEXT,                -- JSON array of seed RFC numbers (sorted)
     depth           INTEGER,
     normative_only  INTEGER,             -- 0 or 1
-    mechanism_filter TEXT,               -- JSON array or NULL for all
-    category_filter  TEXT,               -- JSON array or NULL for all
+    mechanism_filter TEXT,               -- JSON array, sorted, or NULL for all
+    category_filter  TEXT,               -- JSON array, sorted, or NULL for all
     prompt_version  TEXT,                -- version tag for prompt templates used
-    input_hash      TEXT                 -- composite hash of all inputs
+    input_hash      TEXT,                -- composite hash of input fields above
+    -- Run manifest: OUTPUT fields (stored for provenance, not in hash)
+    effective_rfcs  TEXT                 -- JSON array of all RFCs discovered
 );
 
 CREATE INDEX idx_runs_protocol ON analysis_runs(protocol, stage);

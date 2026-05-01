@@ -121,6 +121,16 @@ All settings are in `rfc-analyzer.toml` with CLI overrides. See
 `cli-interface.md` for details. The LLM endpoint, API key, and model are all
 configurable -- see `llm-integration.md`.
 
+## Progress Reporting
+
+At `info` level (visible without `-v`), each stage logs progress:
+- Stage 1: "Fetching RFC 5/47", "Parsing RFC 9293 (XML)"
+- Stage 2: "Clustering mechanisms for tcp", "Extracting state machine 2/5"
+- Stage 3: "Analyzing category 3/10: AuthBypass", "Found 12 leads so far"
+
+Stage start/end is always logged. The `-v` flags control `tracing` verbosity
+for debug-level detail (full prompt text, raw LLM responses, etc.).
+
 ## Database as Project Artifact
 
 The SQLite database is a **project artifact**, not a disposable cache. It
