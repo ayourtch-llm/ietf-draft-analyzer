@@ -144,9 +144,11 @@ Each stage computes a composite input hash covering all factors that affect
 its output:
 
 - **Stage 1 (Map)**: RFC `content_hash` (SHA-256 of raw content)
-- **Stage 2 (Model)**: hash of input section texts + prompt version + model name
-- **Stage 3 (Analyze)**: hash of state machines + input sections + prompt version
-  + model name + category list
+- **Stage 2 (Model)**: see `phase5-6-spec-additions.md` Section 10 for the
+  full canonical cache-key manifest (includes sorted RFC list, section texts,
+  prompt version, model, temperature, max tokens, context window)
+- **Stage 3 (Analyze)**: see `phase5-6-spec-additions.md` Section 10 for the
+  full canonical cache-key manifest
 
 These composite hashes are stored in `analysis_runs` as the run manifest.
 If a matching hash exists, the stage skips re-processing. This ensures that

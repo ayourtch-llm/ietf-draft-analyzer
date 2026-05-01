@@ -78,8 +78,9 @@ and associates TCP RFCs.
 - Retry logic with exponential backoff for 429/5xx
 - Token usage tracking
 
-### 4.2 Rate limiting
-- `src/llm/rate_limit.rs` — semaphore-based concurrency limiting
+### 4.2 Concurrency control
+- Semaphore-based concurrency limiting in `src/llm/client.rs`
+  (no separate module — lives alongside retry logic)
 
 ### 4.3 Response parsing
 - `src/llm/response.rs` — strip markdown fences, parse JSON, validate schema

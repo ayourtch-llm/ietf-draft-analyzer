@@ -210,8 +210,9 @@ Each LLM response is:
 1. Stripped of markdown code fences (```json ... ```) if present
 2. Parsed as JSON via `serde_json::from_str`
 3. Validated against expected schema (required fields present, enums valid)
-4. On parse failure: logged with the raw response, returned as
-   `RfcAnalyzerError::LlmParse`
+4. On parse failure: truncated error detail logged at WARN level (first
+   200 chars of response); full raw response logged only at TRACE level.
+   Returns `RfcAnalyzerError::LlmParse`
 
 Partial results are accepted -- if the LLM returns 5 valid leads and 1
 malformed one, the 5 valid leads are kept and the malformed one is logged

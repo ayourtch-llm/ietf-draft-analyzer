@@ -106,8 +106,11 @@ Add to `src/error.rs` (the existing `RfcAnalyzerError` enum):
     #[error("LLM response did not contain valid JSON: {detail}")]
     LlmParse { detail: String },
 
-    #[error("LLM rate limited{}", retry_after_secs.map(|s| format!(", retry after {s}s")).unwrap_or_default())]
-    LlmRateLimit { retry_after_secs: Option<u64> },
+    #[error("LLM rate limited")]
+    LlmRateLimit {
+        /// Seconds to wait before retrying. None if server didn't specify.
+        retry_after_secs: Option<u64>,
+    },
 
     #[error("LLM request too large for model context window")]
     LlmContextOverflow,

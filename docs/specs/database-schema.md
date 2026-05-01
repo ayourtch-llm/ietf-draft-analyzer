@@ -62,7 +62,7 @@ CREATE TABLE rfcs (
 ```sql
 CREATE TABLE sections (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
+    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number),
     section_num   TEXT NOT NULL,           -- "3.4.1"
     title         TEXT NOT NULL,
     depth         INTEGER NOT NULL,
@@ -80,7 +80,7 @@ CREATE INDEX idx_sections_rfc ON sections(rfc_number);
 ```sql
 CREATE TABLE cross_refs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
+    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number),
     source_section  TEXT NOT NULL,
     target_rfc      INTEGER,              -- NULL for internal refs
     target_section  TEXT,
@@ -97,8 +97,8 @@ CREATE INDEX idx_xrefs_pair ON cross_refs(source_rfc, target_rfc);
 ```sql
 CREATE TABLE dep_edges (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
-    target_rfc      INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
+    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number),
+    target_rfc      INTEGER NOT NULL REFERENCES rfcs(number),
     kind            TEXT NOT NULL,         -- see EdgeKind enum
     source_section  TEXT,
     target_section  TEXT,
@@ -117,7 +117,7 @@ Valid `kind` values: `obsoletes`, `updates`, `normative_ref`, `informative_ref`,
 ```sql
 CREATE TABLE protocol_rfcs (
     protocol      TEXT NOT NULL,
-    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
+    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number),
     PRIMARY KEY (protocol, rfc_number)
 );
 ```
@@ -261,6 +261,26 @@ covering all factors that affect its output:
 If a completed `analysis_runs` entry with a matching `input_hash` exists,
 the stage skips re-processing. This ensures that changing prompts, switching
 models, or adding RFCs correctly triggers re-analysis.
+
+## Delete Order for `clear` Command
+
+v1 tables do NOT use `ON DELETE CASCADE` (SQLite requires table recreation
+to add it retroactively, which is not worth the migration complexity for
+v1). The `clear` command must delete in the correct order:
+
+- **`clear all` / `clear rfcs`**:
+  `security_leads` → `state_machines` → `run_work_items` → `analysis_runs`
+  → `dep_edges` → `cross_refs` → `sections` → `protocol_rfcs` → `rfcs`
+
+- **`clear analysis`**:
+  `security_leads` → `state_machines` → `run_work_items` → `analysis_runs`
+
+- **`clear graphs`**:
+  `dep_edges`
+
+v2 tables (`run_work_items`, and the `run_id` FKs on `state_machines`/
+`security_leads`) use `ON DELETE CASCADE` on their `analysis_runs(id)`
+reference, so deleting `analysis_runs` automatically cascades to those.
 
 ## Compression
 
