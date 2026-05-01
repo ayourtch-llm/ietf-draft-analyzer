@@ -392,14 +392,14 @@ pub fn summarize_to_fit(
         .filter(|(rfc_num, section)| {
             // Include if IN the cluster
             let in_cluster = cluster_section_ids.iter()
-                .any(|(rfc, sec)| *rfc == rfc_num.0 && *sec == section.number);
+                .any(|(rfc, sec)| *rfc == rfc_num.0 && sec == &section.number);
             if in_cluster {
                 return true;
             }
             // Include if cross-referenced BY a cluster section
             let referenced_by_cluster = all_sections.iter()
                 .filter(|(rfc, sec)| {
-                    cluster_section_ids.iter().any(|(cr, cs)| *cr == rfc.0 && *cs == sec.number)
+                    cluster_section_ids.iter().any(|(cr, cs)| *cr == rfc.0 && cs == &sec.number)
                 })
                 .any(|(_, cluster_sec)| {
                     cluster_sec.cross_refs.iter().any(|xref| {
@@ -504,7 +504,7 @@ fn compute_relevance_score(
         // Check if any cluster section has a cross_ref targeting this section.
         let is_referenced_by_cluster = all_sections.iter()
             .filter(|(rfc, sec)| {
-                cluster_section_ids.iter().any(|(cr, cs)| *cr == rfc.0 && *cs == sec.number)
+                cluster_section_ids.iter().any(|(cr, cs)| *cr == rfc.0 && cs == &sec.number)
             })
             .any(|(_, cluster_sec)| {
                 cluster_sec.cross_refs.iter().any(|xref| {
@@ -655,16 +655,6 @@ mod tests {
 The Stage 2 pipeline: mechanism clustering, state machine extraction,
 validation, and persistence.
 
-> **Phase 4 dependency**: `LlmClient` (from Phase 4) must expose a getter
-> `pub fn config(&self) -> &LlmConfig` so that `run_stage2` can pass
-> `llm_config` fields to `compute_stage2_hash`. If Phase 4's `LlmClient` does
-> not yet have this method, add it as:
-> ```rust
-> impl LlmClient {
->     /// Returns a reference to the underlying LLM configuration.
->     pub fn config(&self) -> &LlmConfig { &self.config }
-> }
-> ```
 
 ```rust
 use crate::config::LlmConfig;
@@ -1372,11 +1362,35 @@ mod tests {
         ).await.unwrap();
         assert_ne!(hash1, hash_window);
 
+        // Different RFC list → different hash
+        // (add another RFC to the DB first)
+        let rfc2 = crate::rfc::model::Rfc {
+            number: RfcNumber(793),
+            content_hash: "h2".to_string(),
+            title: "Old TCP".to_string(),
+            ..rfc.clone()
+        };
+        rfc_store::upsert_rfc(&conn, &rfc2).await.unwrap();
+        let hash_rfcs = compute_stage2_hash(
+            &conn, &[RfcNumber(9293), RfcNumber(793)], None, "gpt-4o", &config1
+        ).await.unwrap();
+        assert_ne!(hash1, hash_rfcs);
+
+        // Different section text → different hash
+        let mut rfc_modified = rfc.clone();
+        rfc_modified.sections[0].text = "Changed text".to_string();
+        rfc_modified.content_hash = "h_modified".to_string();
+        rfc_store::upsert_rfc(&conn, &rfc_modified).await.unwrap();
+        let hash_text = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], None, "gpt-4o", &config1
+        ).await.unwrap();
+        assert_ne!(hash1, hash_text);
+
         // Same inputs → same hash (deterministic)
         let hash4 = compute_stage2_hash(
             &conn, &[RfcNumber(9293)], None, "gpt-4o", &config1
         ).await.unwrap();
-        assert_eq!(hash1, hash4);
+        assert_eq!(hash_text, hash4); // now matches hash_text since RFC was modified
     }
 ```
 
