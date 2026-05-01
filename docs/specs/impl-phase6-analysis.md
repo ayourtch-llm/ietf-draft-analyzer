@@ -137,7 +137,8 @@ pub fn all_categories() -> Vec<&'static str> {
 }
 
 /// Parse category filter from CLI input.
-/// Maps lowercase/underscore variants to canonical names.
+/// Maps lowercase/underscore/hyphen variants to canonical CamelCase names.
+/// E.g. "missing_validation" or "missing-validation" → "MissingValidation"
 pub fn resolve_categories(filter: Option<&[String]>) -> Vec<&'static str> {
     match filter {
         None => all_categories(),
@@ -145,8 +146,8 @@ pub fn resolve_categories(filter: Option<&[String]>) -> Vec<&'static str> {
             let all = all_categories();
             names.iter()
                 .filter_map(|name| {
-                    let lower = name.to_lowercase().replace('-', "_");
-                    all.iter().find(|cat| cat.to_lowercase().replace('-', "_") == lower).copied()
+                    let normalized = name.to_lowercase().replace('-', "").replace('_', "");
+                    all.iter().find(|cat| cat.to_lowercase() == normalized).copied()
                 })
                 .collect()
         }
@@ -239,12 +240,11 @@ scoring, and persistence.
 ```rust
 use crate::db::{analysis_store, rfc_store};
 use crate::error::{RfcAnalyzerError, Result};
-use crate::llm::client::{ChatMessage, LlmClient, TokenUsage};
+use crate::llm::client::{ChatMessage, LlmClient};
 use crate::llm::prompts;
 use crate::pipeline::section_select;
 use crate::pipeline::summarize;
 use crate::rfc::model::*;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio_rusqlite::Connection;
@@ -291,6 +291,14 @@ pub struct SecurityLead {
     pub fingerprint: String,
 }
 
+/// Result of a Stage 3 analysis run, including provenance metadata.
+pub struct Stage3Result {
+    pub leads: Vec<SecurityLead>,
+    pub run_id: Option<i64>,
+    pub total_tokens: u64,
+    pub input_hash: String,
+}
+
 /// Severity ordering for ranking (higher = more severe).
 fn severity_rank(severity: &str) -> u8 {
     match severity.to_lowercase().as_str() {
@@ -304,7 +312,7 @@ fn severity_rank(severity: &str) -> u8 {
 }
 
 /// Run Stage 3: security analysis.
-/// Returns the list of deduplicated, ranked security leads.
+/// Returns a Stage3Result with deduplicated, ranked security leads and provenance.
 pub async fn run_stage3(
     conn: &Connection,
     llm: &LlmClient,
@@ -312,7 +320,7 @@ pub async fn run_stage3(
     category_filter: Option<&[String]>,
     min_severity: &str,
     llm_config: &crate::config::LlmConfig,
-) -> Result<Vec<SecurityLead>> {
+) -> Result<Stage3Result> {
     // Get protocol RFCs
     let rfc_numbers = rfc_store::get_protocol_rfcs(conn, protocol).await?;
     if rfc_numbers.is_empty() {
@@ -323,20 +331,31 @@ pub async fn run_stage3(
     let categories = section_select::resolve_categories(category_filter);
     if categories.is_empty() {
         tracing::warn!("No valid categories after filtering");
-        return Ok(Vec::new());
+        return Ok(Stage3Result {
+            leads: Vec::new(),
+            run_id: None,
+            total_tokens: 0,
+            input_hash: String::new(),
+        });
     }
 
     // Compute input hash
     let input_hash = compute_stage3_hash(
-        conn, &rfc_numbers, &categories, llm.model(), llm_config
+        conn, &rfc_numbers, &categories, llm.model(), llm_config, protocol
     ).await?;
 
     // Check for completed run
-    if let Some(_existing) = analysis_store::find_completed_run(
+    if let Some(existing_run_id) = analysis_store::find_completed_run(
         conn, protocol, "analyze", &input_hash
     ).await? {
         tracing::info!("Stage 3 already completed with matching inputs, loading results");
-        return load_existing_leads(conn, protocol).await;
+        let leads = load_existing_leads(conn, protocol, min_severity).await?;
+        return Ok(Stage3Result {
+            leads,
+            run_id: Some(existing_run_id),
+            total_tokens: 0,
+            input_hash: input_hash.clone(),
+        });
     }
 
     // Check for resumable run
@@ -385,7 +404,12 @@ pub async fn run_stage3(
             analysis_store::complete_run(
                 conn, run_id, "interrupted", total_tokens, &rfc_numbers, None
             ).await?;
-            return Ok(all_leads);
+            return Ok(Stage3Result {
+                leads: all_leads,
+                run_id: Some(run_id),
+                total_tokens,
+                input_hash,
+            });
         }
 
         // Skip if already completed (resumability)
@@ -445,10 +469,12 @@ pub async fn run_stage3(
             ChatMessage { role: "user".to_string(), content: user },
         ];
 
+        let category_tokens: u64;
         match crate::llm::response::parse_json_array_partial::<LeadResponse>(
             &match llm.chat(messages).await {
                 Ok((content, usage)) => {
-                    total_tokens += usage.total_tokens;
+                    category_tokens = usage.total_tokens;
+                    total_tokens += category_tokens;
                     content
                 }
                 Err(RfcAnalyzerError::LlmContextOverflow) => {
@@ -495,7 +521,7 @@ pub async fn run_stage3(
                     Some(format!("truncated: {}", dropped.join(", ")))
                 };
                 analysis_store::complete_work_item(
-                    conn, run_id, "category", category, total_tokens, false, notes.as_deref()
+                    conn, run_id, "category", category, category_tokens, false, notes.as_deref()
                 ).await?;
             }
             Err(e) => {
@@ -518,7 +544,12 @@ pub async fn run_stage3(
     rank_leads(&mut ranked);
 
     tracing::info!("Stage 3 complete: {} leads (after dedup/filter)", ranked.len());
-    Ok(ranked)
+    Ok(Stage3Result {
+        leads: ranked,
+        run_id: Some(run_id),
+        total_tokens,
+        input_hash,
+    })
 }
 
 /// Process a raw LLM lead response into a SecurityLead with ID and fingerprint.
@@ -592,6 +623,7 @@ fn rank_leads(leads: &mut Vec<SecurityLead>) {
 }
 
 /// Store a single security lead in the database.
+/// Deduplicates by fingerprint+protocol (skips insert if fingerprint already exists for this protocol).
 async fn store_lead(
     conn: &Connection,
     protocol: &str,
@@ -603,11 +635,14 @@ async fn store_lead(
 
     conn.call(move |conn| {
         conn.execute(
-            "INSERT OR IGNORE INTO security_leads
+            "INSERT INTO security_leads
                 (id, protocol, technique_name, category, severity, confidence,
                  description, rfc_references, prerequisites, entities_involved,
                  state_machine_name, mitigation, input_hash, run_id, fingerprint)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM security_leads WHERE fingerprint = ?15 AND protocol = ?2
+             )",
             rusqlite::params![
                 lead.id,
                 protocol,
@@ -633,9 +668,11 @@ async fn store_lead(
 }
 
 /// Load existing leads for a protocol (from latest completed run).
-async fn load_existing_leads(conn: &Connection, protocol: &str) -> Result<Vec<SecurityLead>> {
+/// Applies the same dedup/rank/filter pipeline as a fresh run.
+async fn load_existing_leads(conn: &Connection, protocol: &str, min_severity: &str) -> Result<Vec<SecurityLead>> {
+    let min_severity = min_severity.to_string();
     let protocol = protocol.to_string();
-    let result = conn
+    let raw_leads = conn
         .call(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, technique_name, category, severity, confidence,
@@ -671,7 +708,12 @@ async fn load_existing_leads(conn: &Connection, protocol: &str) -> Result<Vec<Se
             Ok(leads)
         })
         .await?;
-    Ok(result)
+
+    // Apply same dedup/rank/filter pipeline as a fresh run
+    let deduplicated = deduplicate_leads(&raw_leads);
+    let mut ranked = filter_by_severity(deduplicated, &min_severity);
+    rank_leads(&mut ranked);
+    Ok(ranked)
 }
 
 /// Format state machines as a brief summary for the LLM prompt context.
@@ -736,15 +778,15 @@ async fn compute_stage3_hash(
     categories: &[&str],
     model: &str,
     config: &crate::config::LlmConfig,
+    protocol: &str,
 ) -> Result<String> {
     let mut sorted_rfcs: Vec<u32> = rfc_numbers.iter().map(|r| r.0).collect();
     sorted_rfcs.sort();
 
-    // Load state machines for hashing
-    let state_machines = analysis_store::get_state_machines(conn, "", None).await
+    // Load state machines for hashing — use actual protocol, sorted by name
+    let mut state_machines = analysis_store::get_state_machines(conn, protocol, None).await
         .unwrap_or_default();
-    let mut sm_data: Vec<&str> = state_machines.iter().map(|(_, _, data)| data.as_str()).collect();
-    sm_data.sort();
+    state_machines.sort_by(|a, b| a.0.cmp(&b.0)); // sort by name alphabetically
 
     // Load section texts
     let mut section_texts = String::new();
@@ -764,10 +806,15 @@ async fn compute_stage3_hash(
     hasher.update(sorted_rfcs.iter().map(|r| r.to_string()).collect::<Vec<_>>().join(",").as_bytes());
     hasher.update(b"|");
 
-    // 2: state machine hashes
+    // 2: state machine hashes — hash each machine's data individually in sorted name order
     let sm_hash = {
         let mut h = Sha256::new();
-        for data in &sm_data { h.update(data.as_bytes()); }
+        for (name, _, data) in &state_machines {
+            h.update(name.as_bytes());
+            h.update(b":");
+            h.update(data.as_bytes());
+            h.update(b";");
+        }
         format!("{:x}", h.finalize())
     };
     hasher.update(sm_hash.as_bytes());
@@ -916,11 +963,15 @@ pub async fn cmd_analyze(
     format: &str,
     cancel_token: CancellationToken,
 ) -> Result<()> {
+    if format != "json" {
+        anyhow::bail!("Only 'json' format is supported in v1. Text/markdown formats are deferred.");
+    }
+
     let start = Instant::now();
     let llm = LlmClient::new(config.llm.clone(), cancel_token)?;
 
     let category_filter = categories.as_deref();
-    let leads = analysis::run_stage3(
+    let result = analysis::run_stage3(
         conn, &llm, protocol, category_filter, min_severity, &config.llm
     ).await?;
 
@@ -943,12 +994,12 @@ pub async fn cmd_analyze(
         &rfc_numbers,
         graph_summary,
         sm_count,
-        leads,
+        result.leads,
         llm.model(),
-        0, // total tokens tracked in run, not here
+        result.total_tokens,
         duration,
-        None,
-        None,
+        result.run_id,
+        Some(result.input_hash),
     );
 
     // Output
