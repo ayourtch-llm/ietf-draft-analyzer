@@ -3,6 +3,10 @@
 This document is self-contained. Implement exactly what is specified here.
 Do not read other spec files unless explicitly referenced for context.
 
+**Development process**: Follow `docs/specs/dev-guidelines.md` — Red-Green
+TDD, commit after each significant change or when tests pass, 85%+ coverage
+target with `cargo tarpaulin`.
+
 ## Overview
 
 Phase 1 creates the foundational layers: error types, configuration loading

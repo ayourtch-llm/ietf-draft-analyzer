@@ -3,6 +3,10 @@
 This document is self-contained. It builds on Phase 1 (which must be
 complete). Implement exactly what is specified here.
 
+**Development process**: Follow `docs/specs/dev-guidelines.md` — Red-Green
+TDD, commit after each significant change or when tests pass, 85%+ coverage
+target with `cargo tarpaulin`.
+
 ## Overview
 
 Phase 2 adds RFC fetching, parsing (XML and plain text), the RFC index,
