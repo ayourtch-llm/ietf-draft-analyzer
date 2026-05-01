@@ -1,0 +1,103 @@
+# Architecture Overview
+
+## Purpose
+
+The RFC Analyzer treats protocol specifications (RFCs) as a first-class attack
+surface. It builds dependency graphs across RFCs, extracts protocol state
+machines, and runs LLM-powered security analysis to produce ranked vulnerability
+leads.
+
+## High-Level Pipeline
+
+```
+                ┌──────────────┐
+  Seed RFCs ──> │  Stage 1:    │──> Dependency Graph (petgraph + SQLite)
+                │  Map         │
+                └──────┬───────┘
+                       │
+                       v
+                ┌──────────────┐
+                │  Stage 2:    │──> Protocol State Machines (SQLite)
+                │  Model       │
+                └──────┬───────┘
+                       │
+                       v
+                ┌──────────────┐
+                │  Stage 3:    │──> Security Leads (JSON report)
+                │  Analyze     │
+                └──────────────┘
+```
+
+Each stage reads from and writes to the SQLite cache, enabling incremental
+re-runs. Content hashing ensures unchanged data is not re-processed.
+
+## Module Structure
+
+```
+src/
+  main.rs              -- CLI entry point (clap), orchestrates commands
+  lib.rs               -- Re-exports all modules for testability
+
+  cli.rs               -- Clap command/arg definitions
+  config.rs            -- Configuration (API keys, base URLs, model params)
+  error.rs             -- Unified error type (thiserror)
+
+  rfc/
+    mod.rs             -- Re-exports
+    fetcher.rs         -- Downloads RFC XML/text from rfc-editor.org
+    parser_xml.rs      -- Parses RFC 7991+ XML format (quick-xml)
+    parser_text.rs     -- Parses plain-text RFC format (regex-based)
+    model.rs           -- Core data structures: Rfc, Section, Reference, etc.
+    index.rs           -- Fetches/parses the RFC index for metadata lookup
+
+  db/
+    mod.rs             -- Re-exports, connection setup
+    schema.rs          -- Table creation SQL, migrations
+    rfc_store.rs       -- CRUD for cached RFCs and parsed sections
+    graph_store.rs     -- Persist/load dependency edges
+    analysis_store.rs  -- Persist/load security leads and state machines
+
+  graph/
+    mod.rs             -- Re-exports
+    builder.rs         -- Constructs the petgraph from parsed references
+    model.rs           -- Node/Edge types for the dependency graph
+    query.rs           -- Graph traversal helpers (transitive deps, etc.)
+
+  pipeline/
+    mod.rs             -- Re-exports, Pipeline struct that chains stages
+    dependency.rs      -- Stage 1: dependency mapping
+    modeling.rs        -- Stage 2: protocol/state machine modeling
+    analysis.rs        -- Stage 3: security analysis
+
+  llm/
+    mod.rs             -- Re-exports
+    client.rs          -- OpenAI-compatible HTTP client (reqwest)
+    prompts.rs         -- Prompt templates for each analysis task
+    response.rs        -- Structured parsing of LLM JSON responses
+    rate_limit.rs      -- Token/request rate limiting, retry with backoff
+
+  output/
+    mod.rs             -- JSON report generation
+    report.rs          -- Final report structure and serialization
+```
+
+## Concurrency Model
+
+- Async runtime: `tokio` (multi-threaded)
+- RFC fetching: concurrent with a semaphore (polite rate-limiting to rfc-editor.org)
+- LLM calls: concurrent with a semaphore matching `max_concurrent_requests`
+- Pipeline stages: sequential (map -> model -> analyze)
+- Within each stage: independent work items (different RFCs, different mechanism
+  clusters) run concurrently
+
+## Configuration
+
+All settings are in `rfc-analyzer.toml` with CLI overrides. See
+`cli-interface.md` for details. The LLM endpoint, API key, and model are all
+configurable -- see `llm-integration.md`.
+
+## Incrementality
+
+Each stage checks `content_hash` of its inputs against stored results. If the
+hash matches, the stage skips re-processing. The `analysis_store` tracks
+`(rfc_number, content_hash, analysis_version)` tuples.
