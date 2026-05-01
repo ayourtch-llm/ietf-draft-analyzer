@@ -253,10 +253,13 @@ Before processing, each stage computes a composite `input_hash` (SHA-256)
 covering all factors that affect its output:
 
 - **Stage 1**: RFC content hashes of seed RFCs + depth + normative_only flag
-- **Stage 2**: hash of input section texts + prompt version + model name +
-  mechanism filter
-- **Stage 3**: hash of state machines + input sections + prompt version +
-  model name + category filter
+- **Stage 2**: See `phase5-6-spec-additions.md` Section 10 for the full
+  canonical cache-key manifest (includes sorted RFC/section lists, prompt
+  version, model, temperature, max tokens, context window, mechanism filter)
+- **Stage 3**: See `phase5-6-spec-additions.md` Section 10 for the full
+  canonical cache-key manifest (includes sorted RFC/section lists, prompt
+  version, model, temperature, max tokens, context window, category filter,
+  state machine hashes)
 
 If a completed `analysis_runs` entry with a matching `input_hash` exists,
 the stage skips re-processing. This ensures that changing prompts, switching
