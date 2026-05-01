@@ -291,6 +291,15 @@ impl LlmClient {
                             detail: format!("Failed to parse response JSON: {}", e),
                         })?;
 
+                    // Check finish_reason FIRST (before content extraction)
+                    let finish_reason = body["choices"][0]["finish_reason"]
+                        .as_str().unwrap_or("stop");
+                    if finish_reason == "content_filter" {
+                        return Err(RfcAnalyzerError::LlmContentRefusal {
+                            detail: "Model refused due to content filter".to_string(),
+                        });
+                    }
+
                     let content = body["choices"][0]["message"]["content"]
                         .as_str()
                         .map(|s| s.to_string())
@@ -299,14 +308,6 @@ impl LlmClient {
                     if content.is_empty() {
                         return Err(RfcAnalyzerError::LlmParse {
                             detail: "Empty response content from LLM".to_string(),
-                        });
-                    }
-
-                    let finish_reason = body["choices"][0]["finish_reason"]
-                        .as_str().unwrap_or("stop");
-                    if finish_reason == "content_filter" {
-                        return Err(RfcAnalyzerError::LlmContentRefusal {
-                            detail: "Model refused due to content filter".to_string(),
                         });
                     }
 
@@ -1132,6 +1133,14 @@ The existing Phase 1 tests need updating:
         // Simulate a v1 database with data, then upgrade to v2
         let conn = Connection::open_in_memory().unwrap();
         init_pragmas(&conn).unwrap();
+
+        // Create schema_version table (as run_migrations would)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL UNIQUE,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );"
+        ).unwrap();
 
         // Manually apply only migration 1
         conn.execute_batch(MIGRATIONS[0].1).unwrap();
