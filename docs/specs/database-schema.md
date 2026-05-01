@@ -62,7 +62,7 @@ CREATE TABLE rfcs (
 ```sql
 CREATE TABLE sections (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number),
+    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
     section_num   TEXT NOT NULL,           -- "3.4.1"
     title         TEXT NOT NULL,
     depth         INTEGER NOT NULL,
@@ -80,7 +80,7 @@ CREATE INDEX idx_sections_rfc ON sections(rfc_number);
 ```sql
 CREATE TABLE cross_refs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number),
+    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
     source_section  TEXT NOT NULL,
     target_rfc      INTEGER,              -- NULL for internal refs
     target_section  TEXT,
@@ -97,8 +97,8 @@ CREATE INDEX idx_xrefs_pair ON cross_refs(source_rfc, target_rfc);
 ```sql
 CREATE TABLE dep_edges (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number),
-    target_rfc      INTEGER NOT NULL REFERENCES rfcs(number),
+    source_rfc      INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
+    target_rfc      INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
     kind            TEXT NOT NULL,         -- see EdgeKind enum
     source_section  TEXT,
     target_section  TEXT,
@@ -117,7 +117,7 @@ Valid `kind` values: `obsoletes`, `updates`, `normative_ref`, `informative_ref`,
 ```sql
 CREATE TABLE protocol_rfcs (
     protocol      TEXT NOT NULL,
-    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number),
+    rfc_number    INTEGER NOT NULL REFERENCES rfcs(number) ON DELETE CASCADE,
     PRIMARY KEY (protocol, rfc_number)
 );
 ```
@@ -133,7 +133,7 @@ CREATE TABLE state_machines (
     data          TEXT NOT NULL,           -- full JSON serialization
     content_hash  TEXT NOT NULL,           -- hash of input sections used
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    run_id        INTEGER REFERENCES analysis_runs(id),
+    run_id        INTEGER REFERENCES analysis_runs(id) ON DELETE CASCADE,
     UNIQUE(protocol, name, run_id)
 );
 ```
@@ -161,7 +161,7 @@ CREATE TABLE security_leads (
     mitigation          TEXT,
     input_hash          TEXT NOT NULL,     -- hash of input context
     created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-    run_id              INTEGER REFERENCES analysis_runs(id),
+    run_id              INTEGER REFERENCES analysis_runs(id) ON DELETE CASCADE,
     fingerprint         TEXT               -- deterministic cross-run identity
 );
 
@@ -220,7 +220,7 @@ and skips re-processing if found.
 ```sql
 CREATE TABLE run_work_items (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id          INTEGER NOT NULL REFERENCES analysis_runs(id),
+    run_id          INTEGER NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
     work_item_kind  TEXT NOT NULL,      -- 'mechanism' or 'category'
     work_item_key   TEXT NOT NULL,      -- mechanism name or category name
     status          TEXT NOT NULL DEFAULT 'pending'
@@ -229,7 +229,7 @@ CREATE TABLE run_work_items (
     completed_at    TEXT,
     tokens_used     INTEGER DEFAULT 0,
     error           TEXT,
-    input_hash      TEXT,              -- per-item input hash for resume decisions
+    input_hash      TEXT,              -- reserved for future use in v1; set to NULL
     UNIQUE(run_id, work_item_kind, work_item_key)
 );
 

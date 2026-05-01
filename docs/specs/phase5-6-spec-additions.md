@@ -14,7 +14,7 @@ framework handles this cleanly.
 BEGIN;
 
 -- Link security_leads to the run that produced them (simple nullable add)
-ALTER TABLE security_leads ADD COLUMN run_id INTEGER REFERENCES analysis_runs(id);
+ALTER TABLE security_leads ADD COLUMN run_id INTEGER REFERENCES analysis_runs(id) ON DELETE CASCADE;
 
 -- Relax state_machines uniqueness: allow multiple runs to produce
 -- different state machines with the same name for the same protocol.
@@ -28,7 +28,7 @@ CREATE TABLE state_machines_new (
     data          TEXT NOT NULL,
     content_hash  TEXT NOT NULL,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    run_id        INTEGER REFERENCES analysis_runs(id),
+    run_id        INTEGER REFERENCES analysis_runs(id) ON DELETE CASCADE,
     UNIQUE(protocol, name, run_id)
 );
 INSERT INTO state_machines_new (id, protocol, name, mechanism, data, content_hash, created_at)
@@ -41,7 +41,7 @@ CREATE INDEX idx_state_machines_run ON state_machines(run_id);
 -- Per-work-item tracking for resumability
 CREATE TABLE run_work_items (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id          INTEGER NOT NULL REFERENCES analysis_runs(id),
+    run_id          INTEGER NOT NULL REFERENCES analysis_runs(id) ON DELETE CASCADE,
     work_item_kind  TEXT NOT NULL,      -- 'mechanism' or 'category'
     work_item_key   TEXT NOT NULL,      -- mechanism name or category name
     status          TEXT NOT NULL DEFAULT 'pending'
@@ -50,7 +50,7 @@ CREATE TABLE run_work_items (
     completed_at    TEXT,
     tokens_used     INTEGER DEFAULT 0,
     error           TEXT,
-    input_hash      TEXT,              -- per-item input hash for resume decisions
+    input_hash      TEXT,              -- reserved for future use in v1; set to NULL
     UNIQUE(run_id, work_item_kind, work_item_key)
 );
 CREATE INDEX idx_work_items_run ON run_work_items(run_id);
@@ -143,15 +143,21 @@ the response body to classify the error:
 
 ### Content Refusal Detection
 
-Content refusal is detected from:
+Content refusal detection proceeds in two steps:
 
-1. **Finish reason**: if the response's `finish_reason` is `"content_filter"`
-   (OpenAI) or equivalent provider signal.
-2. **Response body pattern**: if the assistant's response text contains
-   phrases like "I cannot", "I'm unable to", "against my guidelines" and
-   the response fails JSON validation.
+1. **Check `finish_reason` first** (primary signal): if the response's
+   `finish_reason` is `"content_filter"` (OpenAI) or equivalent provider
+   signal, immediately map to `LlmContentRefusal`. This is the
+   authoritative signal and requires no further inspection.
+2. **Fall back to body-pattern matching** (secondary signal): only if
+   `finish_reason` is `"stop"` but JSON parsing of the response body
+   fails, inspect the assistant's response text for refusal phrases
+   (e.g., "I cannot", "I'm unable to", "against my guidelines"). If a
+   refusal phrase is found, map to `LlmContentRefusal`. If no refusal
+   phrase is found, map to `LlmParse` instead (the response is simply
+   malformed JSON, not a refusal).
 
-When detected, map to `LlmContentRefusal` with the relevant detail text.
+When a refusal is detected, include the relevant detail text in the error.
 Skip the work item and log a warning.
 
 ### Logging Policy
@@ -183,12 +189,13 @@ When a mechanism cluster's combined section text exceeds the context budget:
 **Strategy: extractive summarization (no LLM dependency)**
 
 1. Sort sections by relevance score (descending). Tie-breaker: RFC number
-   ascending, then section number ascending (lexicographic on dotted
-   notation, e.g., "3.2" < "3.10" is compared as strings — implementers
-   should use the same ordering as `parser_text.rs`).
+   ascending, then section number ascending using numeric-segment
+   comparison: split on `.`, compare each segment as `u32`, fall back to
+   string comparison for non-numeric segments (appendix letters like
+   "A", "B"). For example, "3.2" < "3.10" because 2 < 10.
 
    Scoring:
-   - Sections referenced by the mechanism's keyword cluster: +3
+   - Sections cross-referenced BY sections in the cluster but not themselves in the cluster: +3
    - Sections with RFC 2119 keywords (MUST, SHOULD, etc.): +2
    - Security Considerations sections: +2
    - Sections with cross-references to other RFCs in scope: +1
@@ -224,7 +231,6 @@ Update the `ReportMetadata` struct in `src/output/report.rs`:
 pub struct ReportMetadata {
     pub generated_at: DateTime<Utc>,
     pub model_used: String,
-    pub provider: String,                // e.g., "openai", "ollama"
     pub total_tokens_used: u64,
     pub analysis_duration_secs: f64,
     pub run_id: Option<i64>,
@@ -234,7 +240,7 @@ pub struct ReportMetadata {
     pub temperature: f64,
     pub max_tokens_per_request: u32,
     pub schema_version: u32,             // current DB schema version
-    pub report_format: String,           // "json", "text", or "markdown"
+    pub report_format: String,           // "json" only for v1 (text/markdown deferred)
     pub sections_truncated: Vec<String>, // sections dropped by summarize-to-fit
 }
 ```
@@ -255,7 +261,7 @@ Add to `analyze` command in `src/cli.rs`:
         output: Option<PathBuf>,
         /// Output format
         #[arg(long, default_value = "json")]
-        format: String,   // "json", "text", "markdown"
+        format: String,   // "json" only for v1 (text/markdown deferred to future version)
     },
 ```
 
@@ -291,10 +297,9 @@ for `clear analysis` and `clear all` is:
 3. `run_work_items`
 4. `analysis_runs`
 
-`run_work_items` must be deleted before `analysis_runs` because it holds
-a foreign key to `analysis_runs(id)`. Deleting `analysis_runs` first
-would violate the foreign-key constraint (the current schema uses
-`PRAGMA foreign_keys = ON` without `ON DELETE CASCADE`).
+`run_work_items` must be deleted before `analysis_runs` unless relying
+on `ON DELETE CASCADE` (which is now set on all foreign keys). The
+explicit delete order is kept as a safety measure and for clarity.
 
 ## 8. Concurrency and Rate Limiting
 
@@ -347,12 +352,10 @@ concatenated in this order with `|` separators:
    `(rfc_number, section_num)`)
 3. `PROMPT_VERSION` (from `src/llm/prompts.rs`)
 4. Model name (e.g., `"gpt-4o"`)
-5. Provider (e.g., `"openai"`)
-6. Temperature (as string, e.g., `"0.2"`)
-7. `max_tokens_per_request` (as string)
-8. `model_context_window` (as string)
-9. Mechanism filter (sorted, comma-separated, or `"*"` for all)
-10. `env!("CARGO_PKG_VERSION")` (code/schema version)
+5. Temperature (as string, e.g., `"0.2"`)
+6. `max_tokens_per_request` (as string)
+7. `model_context_window` (as string)
+8. Mechanism filter (sorted, comma-separated, or `"*"` for all)
 
 ### Stage 3 (Security Analysis)
 
@@ -365,18 +368,18 @@ concatenated in this order with `|` separators:
    `(rfc_number, section_num)`)
 4. `PROMPT_VERSION`
 5. Model name
-6. Provider
-7. Temperature (as string)
-8. `max_tokens_per_request` (as string)
-9. `model_context_window` (as string)
-10. Category filter (sorted, comma-separated, or `"*"` for all)
-11. `env!("CARGO_PKG_VERSION")`
+6. Temperature (as string)
+7. `max_tokens_per_request` (as string)
+8. `model_context_window` (as string)
+9. Category filter (sorted, comma-separated, or `"*"` for all)
 
 ### Ordering Rules
 
 All list inputs are sorted before hashing to ensure determinism:
 - RFC numbers: ascending numeric
 - Sections: `(rfc_number ASC, section_num ASC)` with section_num compared
-  as dotted strings
+  using numeric-segment comparison: split on `.`, compare each segment as
+  `u32`, fall back to string comparison for non-numeric segments (appendix
+  letters like "A", "B")
 - Mechanism/category filters: alphabetical ascending
 - State machines: sorted by `name` alphabetically

@@ -66,7 +66,8 @@ Options:
   --categories <LIST>  Attack categories to check, comma-separated [default: all]
   --min-severity <S>   Minimum severity to include [default: low]
   -o, --output <PATH>  Output file [default: stdout]
-  --format <FMT>       Output format: json, text, markdown [default: json]
+  --format <FMT>       Output format: json [default: json]
+                       (text and markdown formats are deferred to a future version)
 ```
 
 ### `run` — Full pipeline: map -> model -> analyze
@@ -81,6 +82,7 @@ Arguments:
 Options:
   --depth <N>        Max crawl depth [default: 2]
   -o, --output <PATH>  Output file [default: stdout]
+  --format <FMT>     Output format [default: json] (passed through to analyze)
 ```
 
 ### `graph` — Show the dependency graph

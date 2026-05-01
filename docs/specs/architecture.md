@@ -81,7 +81,6 @@ src/
     client.rs          -- OpenAI-compatible HTTP client (reqwest)
     prompts.rs         -- Prompt templates for each analysis task
     response.rs        -- Structured parsing of LLM JSON responses
-    rate_limit.rs      -- Token/request rate limiting, retry with backoff
 
   output/
     mod.rs             -- JSON report generation

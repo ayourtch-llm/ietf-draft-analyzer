@@ -114,7 +114,7 @@ the `context` field.
    - Log warnings but don't fail
 
 4. **Store**: Serialize each `ProtocolStateMachine` as JSON and store in
-   the `state_machines` table, keyed by `(protocol, name)`.
+   the `state_machines` table, keyed by `(protocol, name, run_id)`.
 
 ### Context Window Handling
 
