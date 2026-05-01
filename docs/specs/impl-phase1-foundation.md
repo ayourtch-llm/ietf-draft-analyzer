@@ -75,8 +75,6 @@ for Phase 1-3 now (fetch, parse, DB, config, IO). LLM variants will be
 added in Phase 4.
 
 ```rust
-use std::path::PathBuf;
-
 #[derive(Debug, thiserror::Error)]
 pub enum RfcAnalyzerError {
     #[error("Failed to fetch RFC {rfc}: {source}")]
@@ -109,9 +107,6 @@ pub enum RfcAnalyzerError {
 
     #[error("Configuration error: {0}")]
     Config(String),
-
-    #[error("Configuration file not found: {0}")]
-    ConfigNotFound(PathBuf),
 
     #[error("No RFCs mapped for protocol '{0}'. Run 'map --protocol {0}' first.")]
     NoMappedRfcs(String),
@@ -287,7 +282,7 @@ but only validated when used (Phases 4+).
 ```rust
 use crate::error::{RfcAnalyzerError, Result};
 use serde::Deserialize;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
@@ -403,8 +398,10 @@ impl Config {
 
     /// Validate configuration values. Called after loading.
     /// Fails fast with clear messages for out-of-range values.
+    /// Note: LLM api_key_env is validated (non-empty, env var set) only
+    /// when the LLM client is actually constructed (Phase 4+), not here.
     pub fn validate(&self) -> Result<()> {
-        // LLM validation (checked at load time, but only required for use in Phase 4+)
+        // LLM structural validation (format checks, not runtime availability)
         if self.llm.api_base.ends_with('/') {
             return Err(RfcAnalyzerError::Config(
                 "llm.api_base must not end with '/'".to_string()
@@ -488,7 +485,8 @@ const MIGRATIONS: &[(i64, &str)] = &[
             obsoletes     TEXT,
             updates       TEXT,
             obsoleted_by  TEXT,
-            updated_by    TEXT
+            updated_by    TEXT,
+            references_json TEXT             -- JSON array of Reference objects
         );
 
         CREATE TABLE sections (
@@ -702,12 +700,24 @@ use chrono::NaiveDate;
 use tokio_rusqlite::Connection;
 
 /// Insert a fully parsed RFC into the database.
-/// Inserts into rfcs, sections, and cross_refs tables in a transaction.
-/// If the RFC already exists with the same content_hash, this is a no-op.
-/// If the RFC exists with a different content_hash, it is updated.
+/// Inserts into rfcs, sections, cross_refs tables in a transaction.
+/// If the RFC already exists with the same content_hash, returns early
+/// (no-op). If the RFC exists with a different content_hash, it is updated.
 pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
     let rfc = rfc.clone();
     conn.call(move |conn| {
+        // Check if we already have this exact version
+        let existing_hash: Option<String> = conn
+            .query_row(
+                "SELECT content_hash FROM rfcs WHERE number = ?1",
+                [rfc.number.0],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if existing_hash.as_deref() == Some(&rfc.content_hash) {
+            return Ok(());
+        }
+
         let tx = conn.transaction()?;
 
         // Compress raw_text with zstd
@@ -728,12 +738,16 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
             &rfc.updated_by.iter().map(|r| r.0).collect::<Vec<_>>()
         ).unwrap();
 
+        // Serialize references as JSON
+        let references_json = serde_json::to_string(&rfc.references)
+            .unwrap_or_else(|_| "[]".to_string());
+
         // Upsert the RFC row
         tx.execute(
             "INSERT INTO rfcs (number, title, format, status, date,
                 raw_content, content_hash, obsoletes, updates,
-                obsoleted_by, updated_by)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                obsoleted_by, updated_by, references_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(number) DO UPDATE SET
                 title = excluded.title,
                 format = excluded.format,
@@ -745,7 +759,8 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
                 obsoletes = excluded.obsoletes,
                 updates = excluded.updates,
                 obsoleted_by = excluded.obsoleted_by,
-                updated_by = excluded.updated_by",
+                updated_by = excluded.updated_by,
+                references_json = excluded.references_json",
             rusqlite::params![
                 rfc.number.0,
                 rfc.title,
@@ -758,6 +773,7 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
                 updates_json,
                 obsoleted_by_json,
                 updated_by_json,
+                references_json,
             ],
         )?;
 
@@ -775,7 +791,7 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
                     rfc.number.0,
                     section.number,
                     section.title,
-                    section.depth,
+                    i64::from(section.depth),
                     section.anchor,
                     section.text,
                     section.pn,
@@ -830,7 +846,8 @@ pub async fn get_rfc(conn: &Connection, rfc_number: u32) -> Result<Option<Rfc>> 
             // Load the RFC row
             let mut stmt = conn.prepare(
                 "SELECT number, title, format, status, date, raw_content,
-                    content_hash, obsoletes, updates, obsoleted_by, updated_by
+                    content_hash, obsoletes, updates, obsoleted_by, updated_by,
+                    references_json
                  FROM rfcs WHERE number = ?1"
             )?;
 
@@ -847,12 +864,14 @@ pub async fn get_rfc(conn: &Connection, rfc_number: u32) -> Result<Option<Rfc>> 
                     row.get::<_, Option<String>>(8)?,
                     row.get::<_, Option<String>>(9)?,
                     row.get::<_, Option<String>>(10)?,
+                    row.get::<_, Option<String>>(11)?,
                 ))
             }).optional()?;
 
             let Some((number, title, format_str, status_str, date_str,
                        raw_content, content_hash, obsoletes_json,
-                       updates_json, obsoleted_by_json, updated_by_json)) = rfc_row
+                       updates_json, obsoleted_by_json, updated_by_json,
+                       references_json_str)) = rfc_row
             else {
                 return Ok(None);
             };
@@ -880,10 +899,11 @@ pub async fn get_rfc(conn: &Connection, rfc_number: u32) -> Result<Option<Rfc>> 
             )?;
             let sections: Vec<Section> = sect_stmt
                 .query_map([rfc_number], |row| {
+                    let depth_i64: i64 = row.get(2)?;
                     Ok(Section {
                         number: row.get(0)?,
                         title: row.get(1)?,
-                        depth: row.get(2)?,
+                        depth: u8::try_from(depth_i64).unwrap_or(0),
                         anchor: row.get(3)?,
                         text: row.get(4)?,
                         cross_refs: Vec::new(), // filled below
@@ -919,15 +939,10 @@ pub async fn get_rfc(conn: &Connection, rfc_number: u32) -> Result<Option<Rfc>> 
                 }
             }
 
-            // Load references (from cross_refs where source_section indicates
-            // it's from the References section — but actually References are
-            // stored in the Rfc struct, not in cross_refs. For Phase 1, we
-            // store references as part of the serialized Rfc, not in a separate
-            // table. We'll reconstruct from the parsed sections.)
-            // NOTE: Formal references are not stored in a separate table.
-            // They are re-extracted from sections when needed, or stored as
-            // part of a serialized structure. For now, return empty.
-            let references = Vec::new();
+            // Load references from JSON column
+            let references: Vec<Reference> = references_json_str
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
 
             let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
                 .unwrap_or_else(|_| NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
@@ -1057,7 +1072,6 @@ Add these as a `#[cfg(test)] mod tests` block at the bottom of `config.rs`:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     #[test]
     fn test_default_config() {
@@ -1123,6 +1137,35 @@ mod tests {
         config.fetcher.request_delay_ms = 10; // below 50
         assert!(config.validate().is_err());
     }
+
+    #[test]
+    fn test_validate_bad_max_tokens() {
+        let mut config = Config::default();
+        config.llm.max_tokens_per_request = 0;
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_bad_context_window() {
+        let mut config = Config::default();
+        config.llm.model_context_window = 100; // below 4096
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_empty_api_key_env() {
+        let mut config = Config::default();
+        config.llm.api_key_env = String::new();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_load_invalid_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.toml");
+        std::fs::write(&path, "this is not [valid toml").unwrap();
+        assert!(Config::load(&path).is_err());
+    }
 }
 ```
 
@@ -1138,10 +1181,10 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_pragmas(&conn).unwrap();
 
-        let fk: String = conn
+        let fk: i64 = conn
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(fk, "1");
+        assert_eq!(fk, 1);
     }
 
     #[test]
@@ -1169,6 +1212,29 @@ mod tests {
         let v1 = run_migrations(&conn).unwrap();
         let v2 = run_migrations(&conn).unwrap();
         assert_eq!(v1, v2);
+    }
+
+    #[test]
+    fn test_all_tables_created() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+
+        let expected_tables = [
+            "rfcs", "sections", "cross_refs", "dep_edges",
+            "protocol_rfcs", "state_machines", "security_leads",
+            "analysis_runs", "schema_version",
+        ];
+        for table in &expected_tables {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "Table '{}' should exist", table);
+        }
     }
 }
 ```
@@ -1306,6 +1372,102 @@ mod tests {
 
         let empty = get_protocol_rfcs(&conn, "dns").await.unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_protocol_assignment_missing_rfc_fails() {
+        // Foreign keys are ON, so assigning a non-existent RFC should fail
+        let conn = open_memory_database().await.unwrap();
+        let result = assign_protocol(&conn, "tcp", 99999).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_references_round_trip() {
+        let conn = open_memory_database().await.unwrap();
+        let mut rfc = make_test_rfc();
+        rfc.references = vec![
+            Reference {
+                label: "[RFC793]".to_string(),
+                target_rfc: Some(RfcNumber(793)),
+                title: "Transmission Control Protocol".to_string(),
+                is_normative: true,
+            },
+            Reference {
+                label: "[RFC1122]".to_string(),
+                target_rfc: Some(RfcNumber(1122)),
+                title: "Requirements for Internet Hosts".to_string(),
+                is_normative: false,
+            },
+        ];
+        upsert_rfc(&conn, &rfc).await.unwrap();
+
+        let loaded = get_rfc(&conn, 9293).await.unwrap().unwrap();
+        assert_eq!(loaded.references.len(), 2);
+        assert_eq!(loaded.references[0].label, "[RFC793]");
+        assert!(loaded.references[0].is_normative);
+        assert_eq!(loaded.references[1].target_rfc, Some(RfcNumber(1122)));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_removes_old_sections() {
+        let conn = open_memory_database().await.unwrap();
+        let mut rfc = make_test_rfc();
+        assert_eq!(rfc.sections.len(), 2);
+        upsert_rfc(&conn, &rfc).await.unwrap();
+
+        // Update RFC with only 1 section (simulating re-parse)
+        rfc.content_hash = "changed_hash".to_string();
+        rfc.sections = vec![rfc.sections[0].clone()];
+        upsert_rfc(&conn, &rfc).await.unwrap();
+
+        let loaded = get_rfc(&conn, 9293).await.unwrap().unwrap();
+        assert_eq!(loaded.sections.len(), 1);
+        assert_eq!(loaded.sections[0].number, "1");
+    }
+
+    #[tokio::test]
+    async fn test_same_content_hash_is_noop() {
+        let conn = open_memory_database().await.unwrap();
+        let rfc = make_test_rfc();
+        upsert_rfc(&conn, &rfc).await.unwrap();
+
+        // Upsert again with same content_hash — should be a no-op
+        let mut rfc2 = rfc.clone();
+        rfc2.title = "This should NOT be saved".to_string();
+        upsert_rfc(&conn, &rfc2).await.unwrap();
+
+        let loaded = get_rfc(&conn, 9293).await.unwrap().unwrap();
+        // Title should be the original, not the modified one
+        assert_eq!(loaded.title, "Transmission Control Protocol (TCP)");
+    }
+
+    #[tokio::test]
+    async fn test_duplicate_cross_refs_different_context() {
+        // Verify that multiple cross-refs from the same source to the same
+        // target but with different context are all preserved
+        let conn = open_memory_database().await.unwrap();
+        let mut rfc = make_test_rfc();
+        rfc.sections[0].cross_refs = vec![
+            CrossRef {
+                target_rfc: Some(RfcNumber(793)),
+                target_section: Some("3".to_string()),
+                context: "First reference to RFC 793 Section 3.".to_string(),
+            },
+            CrossRef {
+                target_rfc: Some(RfcNumber(793)),
+                target_section: Some("3".to_string()),
+                context: "Second reference to RFC 793 Section 3.".to_string(),
+            },
+        ];
+        upsert_rfc(&conn, &rfc).await.unwrap();
+
+        let loaded = get_rfc(&conn, 9293).await.unwrap().unwrap();
+        assert_eq!(loaded.sections[0].cross_refs.len(), 2);
+        assert_ne!(
+            loaded.sections[0].cross_refs[0].context,
+            loaded.sections[0].cross_refs[1].context
+        );
     }
 }
 ```
