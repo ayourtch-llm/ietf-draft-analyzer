@@ -194,8 +194,12 @@ pub async fn run_stage3(
                 None,
             )
             .await?;
+            // Apply dedup/filter/rank even on partial results
+            let deduplicated = deduplicate_leads(&all_leads);
+            let mut ranked = filter_by_severity(deduplicated, min_severity);
+            rank_leads(&mut ranked);
             return Ok(Stage3Result {
-                leads: all_leads,
+                leads: ranked,
                 run_id: Some(run_id),
                 total_tokens,
                 input_hash,
@@ -322,10 +326,16 @@ pub async fn run_stage3(
                 continue;
             }
             Err(e) => {
+                // Check if this was a cancellation
+                let status = if llm.cancel_token().is_cancelled() {
+                    "interrupted"
+                } else {
+                    "failed"
+                };
                 analysis_store::complete_run(
                     conn,
                     run_id,
-                    "failed",
+                    status,
                     total_tokens,
                     &rfc_numbers,
                     Some(&e.to_string()),
@@ -649,9 +659,7 @@ async fn compute_stage3_hash(
     sorted_rfcs.sort();
 
     // Load state machines for hashing — use actual protocol, sorted by name
-    let mut state_machines = analysis_store::get_state_machines(conn, protocol, None)
-        .await
-        .unwrap_or_default();
+    let mut state_machines = analysis_store::get_state_machines(conn, protocol, None).await?;
     state_machines.sort_by(|a, b| a.0.cmp(&b.0)); // sort by name alphabetically
 
     // Load section texts
