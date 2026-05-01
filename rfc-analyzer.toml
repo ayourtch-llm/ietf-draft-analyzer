@@ -1,0 +1,17 @@
+[llm]
+api_base = "http://ayourtch-desktop:8000/v1"
+api_key_env = "OPENAI_API_KEY"
+model = "bad-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf"
+max_tokens_per_request = 4096
+max_concurrent_requests = 1
+temperature = 0.2
+model_context_window = 128000
+
+[fetcher]
+base_url = "https://www.rfc-editor.org"
+prefer_xml = true
+request_delay_ms = 500
+
+[analysis]
+max_depth = 2
+normative_only = false

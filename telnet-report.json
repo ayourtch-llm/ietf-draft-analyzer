@@ -1,0 +1,129 @@
+{
+  "protocol_name": "telnet",
+  "rfcs_analyzed": [
+    854,
+    855,
+    857,
+    858,
+    1184
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 5,
+    "total_edges": 0,
+    "connected_components": 5,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 0,
+  "security_leads": [
+    {
+      "id": "430c15f3-9a6d-4d33-872a-604b0b30c8e1",
+      "technique_name": "Replay Attack on LINEMODE State Negotiation",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker performs an on-path capture of valid LINEMODE MODE or SLC suboption negotiation packets during an active Telnet session. Step 2: Attacker replays the captured packet(s) to the target client or server at any point during the connection lifecycle. Step 3: The receiving entity processes the replayed command because the specification lacks sequence numbers, nonces, timestamps, or cryptographic binding for freshness verification. For MODE commands, this can force unintended mode transitions (e.g., disabling EDIT/TRAPSIG bits) or exploit the MODE_ACK resolution mechanism to bypass confirmation. For SLC commands, it can overwrite local special character mappings (e.g., erase/forward characters), disrupting input processing, causing keystroke manipulation, or triggering unexpected buffer forwarding behavior.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "If a MODE command is received that is different from the current mode mask, then a reply is sent with either the new mode mask and the MODE_ACK bit set, or a subset of the new mode mask."
+        },
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "The sender of this command REQUESTS that the list of octet triplets be used to set the local character to be used to perform the specified function."
+        },
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "When an SLC command is received, the action taken should be: ... If we agree with the new setting, we switch to it and reply with the same value, but also set the SLC_ACK bit."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "LINEMODE option successfully negotiated",
+        "active Telnet session"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Introduce sequence numbers or timestamps in MODE and SLC suboptions to verify command freshness. Restrict dynamic mode/character renegotiation to the initial connection setup phase, or implement session-context binding for all state-changing commands.",
+      "fingerprint": "9c9856b269a54f8c8069b7194824f4cffd130794100fc8bacf86a8d9b32775ca"
+    },
+    {
+      "id": "54c65df7-9a4b-45fe-afc7-bdec3ad2a61d",
+      "technique_name": "Unbounded SLC Suboption Payload",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker crafts and transmits an IAC SB LINEMODE SLC command containing a maliciously oversized list of octet triplets. Step 2: The receiving Telnet implementation parses the suboption without verifying its total length against allocated buffer limits, as RFC 1184 Section 2.4 omits any maximum size constraint for the triplet list. Step 3: The unbounded payload overflows the internal parser buffer, resulting in memory corruption, application crash, or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "The SLC suboption uses a list of octet triplets. The first octet specifies the function, the second octet specifies modifiers to the function, and the third octet specifies the ASCII character for the function."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has network access to the Telnet session",
+        "LINEMODE option is negotiated or actively being negotiated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict length validation for all variable-length Telnet suboptions. Limit the SLC triplet list to a reasonable maximum (e.g., 256 bytes), validate buffer boundaries before parsing, and safely reject or truncate oversized payloads according to RFC 854 error handling guidelines.",
+      "fingerprint": "a8291b4878e03a8fee64f30483dd5297b532774d7aa9f548c2b5eb5177b6e786"
+    },
+    {
+      "id": "46c5fbdf-a874-42a2-aea7-81ede40934c9",
+      "technique_name": "LINEMODE Negotiation Stripping",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An on-path attacker intercepts the initial Telnet option negotiation phase between client and server. Step 2: The attacker drops or blocks DO/WILL LINEMODE commands, forcing both endpoints to fall back to their default state of WONT/DONT LINEMODE as defined in the specification. Step 3: The connection operates in character-at-a-time mode with MODE mask set to 0 (unset EDIT and TRAPSIG bits). This downgrades the session by disabling local line editing and signal trapping, potentially causing sensitive input (like passwords) to be transmitted without proper echo control and preventing users from locally processing interrupt/abort signals.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "3",
+          "quote": "The default specification for this option is WONT LINEMODE DONT LINEMODE meaning there will not be any subnegotiation of the mode of the connection."
+        },
+        {
+          "rfc": 1184,
+          "section": "2.1",
+          "quote": "IAC WILL LINEMODE ... The sender of this command REQUESTS permission to begin sub-negotiation... IAC DO LINEMODE ... REQUESTS that the remote side begin sub-negotiation"
+        },
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "Under normal operation, the server side of the connection will initiate mode changes... EDIT When set, the client side of the connection should process all input lines... TRAPSIG When set, the client side should translate appropriate interrupts/signals to their Telnet equivalent."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "ability to intercept and modify Telnet negotiation packets"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce application-layer validation of negotiated options post-handshake; prefer secure, encrypted alternatives like SSH over plain Telnet; implement client-side fallback mechanisms that restore local editing/signal trapping if LINEMODE is unexpectedly disabled.",
+      "fingerprint": "2a0f6445faa045d7b37d12e7f114fa7a391114d50d640d7a0d9de1c01b6354c5"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-01T23:12:41.861734+00:00",
+    "model_used": "bad-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "total_tokens_used": 86549,
+    "analysis_duration_secs": 215.954339333,
+    "run_id": 10,
+    "input_hash": "f2e5271e3d5a9b6d4f53a48078c43c85ca568cb3a6ae65b2370bc6658e63c9e7",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

@@ -1,0 +1,847 @@
+{
+  "protocol_name": "tls13",
+  "rfcs_analyzed": [
+    8446
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 14,
+  "security_leads": [
+    {
+      "id": "510bdb68-8cdd-4ccc-a25d-7a01adf5bae7",
+      "technique_name": "0-RTT Replay via State Confusion",
+      "category": "StateConfusion",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: The client sends a ClientHello with an 'early_data' extension and Application Data encrypted under the early traffic keys (client_early_traffic_secret). Step 2: An on-path attacker replays this entire first flight to a different server instance or zone that does not share the anti-replay recording store. Step 3: The receiving server accepts the PSK, validates the binder, but fails to recognize the replayed ClientHello in its local state (due to lack of global consistency). It processes the early data and sends an 'early_data' extension in EncryptedExtensions. Step 4: The client receives the ServerHello from the second server, completes the handshake, and retries the request over 1-RTT. The attacker blocks the first ServerHello, causing the application to receive two identical requests (one via 0-RTT accepted by the first zone, one via 1-RTT retried after confusion), leading to duplicate stateful operations.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "8",
+          "quote": "Specifically, if a server system has multiple zones where tickets from zone A will not be accepted in zone B, then an attacker can duplicate a ClientHello and early data intended for A to both A and B... If the attacker blocks the ServerHello from A, then the client will complete the handshake with B and probably retry the request, leading to duplication on the server system as a whole."
+        },
+        {
+          "rfc": 8446,
+          "section": "4.2.10",
+          "quote": "A server which receives an 'early_data' extension MUST behave in one of three ways: ... Return its own 'early_data' extension in EncryptedExtensions, indicating that it intends to process the early data."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "multi-server deployment with inconsistent anti-replay state"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement globally consistent ClientHello recording stores (e.g., using Bloom filters or distributed databases) to ensure 0-RTT is accepted at most once per server instance. Applications must treat 0-RTT data as potentially replayed and avoid sending non-idempotent commands.",
+      "fingerprint": "16b62e198524923ffd0a404a1f8d3023f8f55b2b5612a0e0a5ab27183c45eb79"
+    },
+    {
+      "id": "1bc51a67-1ead-4999-a8ea-00d61324cb2b",
+      "technique_name": "MissingValidation_PSK_Binder",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: The server receives a ClientHello containing multiple PSK identities and binders (Section 4.2.11). Step 2: The specification recommends that servers SHOULD NOT attempt to validate multiple binders but rather select a single PSK and validate solely the corresponding binder to prevent timing attacks or side-channel leakage (Section 8.2, Appendix E.6). Step 3: If an implementation fails to strictly validate the selected binder against the handshake transcript before accepting the PSK, or if it processes unvalidated binders for anti-replay storage keys, an attacker can craft malicious ClientHellos with invalid binders for less-preferred identities. This bypasses cryptographic verification of the PSK's binding to the current session, potentially allowing replay attacks or cache poisoning without triggering proper handshake aborts.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.11",
+          "quote": "Prior to accepting PSK key establishment, the server MUST validate the corresponding binder value... Servers SHOULD NOT attempt to validate multiple binders; rather, they SHOULD select a single PSK and validate solely the binder that corresponds to that PSK."
+        },
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "The server MUST derive the storage key only from validated sections of the ClientHello. If the ClientHello contains multiple PSK identities, then an attacker can create multiple ClientHellos with different binder values for the less-preferred identity on the assumption that the server will not verify it..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server supports 0-RTT or PSK resumption"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly validate the binder corresponding to the selected PSK identity before processing any other PSK-related state. Ensure anti-replay storage keys are derived exclusively from validated transcript data (e.g., ClientHello.random or the verified binder) to prevent replay cache pollution attacks.",
+      "fingerprint": "6045b32fdb1232ee40588cfdad462d647867578325066db3e52f78b615e7f127"
+    },
+    {
+      "id": "ff308e6c-6525-467a-a890-e074b8ff5321",
+      "technique_name": "0-RTT Early Data Replay",
+      "category": "ReplayAttack",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker on-path intercepts a client's initial ClientHello containing the 'early_data' extension and associated 0-RTT Application Data messages.\nStep 2: The attacker replays this exact flight of messages (ClientHello + early data) to the server at a later time, either immediately or after some delay.\nStep 3: If the server accepts the replayed PSK identity and does not have robust anti-replay state tracking (e.g., due to distributed server clusters lacking consistent ticket storage), it will decrypt and process the duplicated application data as if it were fresh. This can lead to unintended side effects like duplicate financial transactions or state corruption.\nStep 4: Even if the server rejects 0-RTT and falls back to a full 1-RTT handshake, the client may automatically retry sending the early data over the new connection, resulting in application-layer message duplication.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "2.3",
+          "quote": "There are no guarantees of non-replay between connections... This is especially relevant if the data is authenticated either with TLS client authentication or inside the application protocol."
+        },
+        {
+          "rfc": 8446,
+          "section": "8",
+          "quote": "TLS does not provide inherent replay protections for 0-RTT data. There are two potential threats to be concerned with: Network attackers who mount a replay attack by simply duplicating a flight of 0-RTT data."
+        },
+        {
+          "rfc": 8446,
+          "section": "E.5",
+          "quote": "Replayable 0-RTT data presents a number of security threats to TLS-using applications... Duplication of actions which cause side effects (e.g., purchasing an item or transferring money) to be duplicated"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client supports and uses 0-RTT/Early Data",
+        "server accepts PSK resumption with early data enabled"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict anti-replay mechanisms such as Single-Use Tickets (Section 8.1) or Client Hello Recording (Section 8.2). Ensure distributed server clusters share consistent state for ticket validation. Application protocols must ensure idempotency and MUST NOT rely on 0-RTT data without a profile defining safe usage.",
+      "fingerprint": "477d59f2a911f73626750ae43a00b7de5d147613cd282423eaa2d7956acdf494"
+    },
+    {
+      "id": "66edaadd-c38d-4a73-8b5a-77aff6fc0de3",
+      "technique_name": "0-RTT Replay Attack",
+      "category": "AuthBypass",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker intercepts a valid ClientHello containing early data (0-RTT) and the associated PSK binder.\nStep 2: The attacker replays this exact handshake to the server, potentially bypassing application-layer idempotency checks or reusing authentication tokens sent in the early data.\nStep 3: If the server's anti-replay mechanism (recording store or freshness window) fails due to state loss, clock skew, or distributed cluster inconsistencies, the server accepts the replayed 0-RTT data as fresh, effectively bypassing the intended one-time use of authentication credentials.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "E.5",
+          "quote": "Replayable 0-RTT data presents a number of security threats to TLS-using applications... The mechanisms described in Section 8 are intended to prevent replay at the TLS layer but do not provide complete protection against receiving multiple copies of client data."
+        },
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "If one is found, it either aborts the handshake with an 'illegal_parameter' alert or accepts the PSK but rejects 0-RTT."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path (MITM)",
+        "server anti-replay state is lost or inconsistent across distributed nodes",
+        "application does not enforce idempotency for early data"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Implement robust server-side recording stores with consistent state across clusters. Enforce strict freshness windows using synchronized clocks. Application protocols must treat 0-RTT data as potentially replayed and enforce idempotency or require explicit application-level confirmation for critical actions.",
+      "fingerprint": "2d831da92f41c7d0364367530aaa636d8cd4be6cc396e5386bd31de8a4bb5d7f"
+    },
+    {
+      "id": "558e185e-0fe3-4b14-98fe-34c1e752858a",
+      "technique_name": "Ambiguous Early Data Rejection and Key Derivation",
+      "category": "ImplementationAmbiguity",
+      "severity": "critical",
+      "confidence": 0.85,
+      "description": "Step 1: When a server receives an 'early_data' extension but cannot accept it (e.g., due to ticket age or parameter mismatch), the specification states the server MUST discard all first-flight data using one of two mechanisms: falling back to 1-RTT by attempting trial decryption with handshake keys, or ignoring early data records up to max_early_data_size.\nStep 2: The specification notes that if the server rejects early data, it will generally not have the 0-RTT record protection keys and must use trial decryption. It also states that servers operating statelessly MUST ignore unprotected change_cipher_spec records between ClientHellos.\nStep 3: The ambiguity in how exactly to skip/discard early data (trial decryption vs. length-based skipping) combined with the requirement to handle malformed or corrupted early data creates implementation variance. An attacker can send carefully crafted early data that causes a server to misalign its record parsing, leading to successful deprotection of subsequent handshake messages under 0-RTT keys or causing the server to accept replayed/modified application data because the trial decryption incorrectly succeeds on padding or malformed ciphertext.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.10",
+          "quote": "If the client attempts a 0-RTT handshake but the server rejects it, the server will generally not have the 0-RTT record protection keys and must instead use trial decryption... to find the first non-0-RTT message."
+        },
+        {
+          "rfc": 8446,
+          "section": "5",
+          "quote": "Servers operating statelessly MUST ignore these records [change_cipher_spec]."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server supports 0-RTT"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict length-based skipping for rejected early data rather than trial decryption. Ensure that any record failing AEAD verification during early data processing immediately terminates the connection without attempting to parse subsequent messages under handshake keys.",
+      "fingerprint": "f15aeffdd834429f05066dca44f6b23254acc81dc8895307178c5037d594788a"
+    },
+    {
+      "id": "7cc367cb-74c1-4a3c-9c41-57c51fbc85b1",
+      "technique_name": "Distributed Cluster Replay via Ticket Propagation Delay",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker intercepts a ClientHello with early data intended for Server Zone A.\nStep 2: The attacker duplicates the flight and sends it to both Zone A (which accepts 0-RTT) and Zone B (which lacks the ticket state or anti-replay cache, forcing a full handshake).\nStep 3: Zone A processes the 0-RTT data immediately. Zone B rejects 0-RTT but completes the 1-RTT handshake.\nStep 4: The client, unaware of Zone A's processing, retries the request over the new connection established with Zone B (or due to network retry behavior), causing the application message to be executed twice across the server infrastructure.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "8",
+          "quote": "Specifically, if a server system has multiple zones where tickets from zone A will not be accepted in zone B, then an attacker can duplicate a ClientHello and early data intended for A to both A and B... If the attacker blocks the ServerHello from A, then the client will complete the handshake with B and probably retry the request, leading to duplication on the server system as a whole."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server infrastructure uses multiple zones/clusters without globally consistent anti-replay state"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure uniform deployment of TLS 1.3 across all server zones before enabling 0-RTT (Section D.3). Implement strict Client Hello Recording or Single-Use Tickets with globally consistent storage. Applications must handle fallback scenarios gracefully and avoid automatic retransmission of early data.",
+      "fingerprint": "41ac60b37781b9a19ab8ef3ee120ac6d621997ebf23d56cb9c814f13da2b0619"
+    },
+    {
+      "id": "2f44b91b-6b4a-4554-a19e-77201b29f18b",
+      "technique_name": "MissingValidation_0RTT_Replay",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: A client sends early data (0-RTT) along with a ClientHello using a PSK (Section 4.2.10). Step 2: The server must verify freshness and implement anti-replay mechanisms like recording ClientHellos or checking ticket age within a tolerance window (Section 8, Section 8.3). Step 3: If the server fails to validate the `obfuscated_ticket_age` against its current time or lacks a robust recording store for recent ClientHellos, it may accept replayed early data. Because TLS does not provide inherent replay protection for 0-RTT, missing this validation allows attackers to duplicate application messages (e.g., financial transactions), leading to duplication attacks that bypass idempotency checks at the application layer.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "8",
+          "quote": "TLS does not provide inherent replay protections for 0-RTT data. There are two potential threats to be concerned with: Network attackers who mount a replay attack by simply duplicating a flight of 0-RTT data."
+        },
+        {
+          "rfc": 8446,
+          "section": "4.2.10",
+          "quote": "For PSKs provisioned via NewSessionTicket, a server MUST validate that the ticket age for the selected PSK identity... is within a small tolerance of the time since the ticket was issued"
+        }
+      ],
+      "prerequisites": [
+        "attacker can capture and replay network traffic",
+        "server accepts 0-RTT data"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict anti-replay measures: record received ClientHellos or PSK binders within a defined freshness window, validate ticket age against server time, and ensure distributed systems share replay state or restrict 0-RTT acceptance to single authoritative zones.",
+      "fingerprint": "8b9c4192087858848d8c2ab1dc0890ee917fb673a42912e686ae687586a3ff1d"
+    },
+    {
+      "id": "1b8738a5-18e4-4fd5-89fe-b279eed1cc0d",
+      "technique_name": "Inconsistent ClientHello Parsing and Version Intolerance",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The specification mandates that TLS 1.3 servers MUST ignore unrecognized extensions in the ClientHello (Section 4.1.2) and MUST correctly ignore all unrecognized cipher suites and parameters (Section 9.3). However, it also states that if a TLS 1.3 ClientHello is received with an invalid value in legacy_compression_methods, the server MUST abort with an 'illegal_parameter' alert.\nStep 2: The specification allows clients to send SSL version 2.0 compatible CLIENT-HELLOs for backward compatibility but explicitly states implementations are NOT RECOMMENDED to accept them (Section D.5). It also notes that many legacy servers do not properly implement version negotiation, leading to 'version intolerance' where acceptable ClientHellos are rejected.\nStep 3: The ambiguity lies in how strictly endpoints must parse the boundaries of extensions versus legacy fields, and whether a server should abort on minor structural deviations or ignore them. Inconsistent handling of extension presence/absence (e.g., missing mandatory extensions vs. unrecognized ones) combined with version intolerance allows an active attacker to craft malformed ClientHellos that trigger different error paths across implementations, potentially bypassing security checks or forcing fallbacks to weaker protocols.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.1.2",
+          "quote": "Servers MUST ignore unrecognized extensions."
+        },
+        {
+          "rfc": 8446,
+          "section": "9.3",
+          "quote": "A server receiving a ClientHello which does not conform to these requirements MUST abort the handshake with a 'missing_extension' alert."
+        },
+        {
+          "rfc": 8446,
+          "section": "D.5",
+          "quote": "Implementations are NOT RECOMMENDED to accept an SSL version 2.0 compatible CLIENT-HELLO in order to negotiate older versions of TLS."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client or server supports legacy fallback"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce parsing of mandatory extensions and cipher suites. Reject any ClientHello that does not strictly conform to the TLS 1.3 format requirements before processing cryptographic parameters. Disable legacy SSL/TLS version fallbacks entirely.",
+      "fingerprint": "cadedcb85ae96389df3e712dfebbb0458d7f94f7f2df128e33def2723bc80414"
+    },
+    {
+      "id": "229257bc-6a8c-4be1-867e-d1513e939d8f",
+      "technique_name": "ClientHello Recording State Exhaustion",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker sends a high volume of ClientHello messages containing valid PSK identities and binders to trigger the server's anti-replay mechanism (Section 8.2). Step 2: The server is required to record unique values derived from the ClientHello (e.g., random value or validated binder) within a given time window to prevent replays. Step 3: If the attacker crafts many distinct but valid-looking ClientHellos, the server's recording store grows without bound, leading to memory exhaustion and eventual service degradation or crash.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "Recording all ClientHellos causes state to grow without bound, but a server can instead record ClientHellos within a given time window..."
+        },
+        {
+          "rfc": 8446,
+          "section": "8",
+          "quote": "The server MUST ensure that any instance of it (be it a machine, a thread, or any other entity within the relevant serving infrastructure) would accept 0-RTT for the same 0-RTT handshake at most once..."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send valid PSK identities and binders",
+        "server implements ClientHello recording anti-replay"
+      ],
+      "entities_involved": [
+        "client (attacker)",
+        "server"
+      ],
+      "mitigation": "Implement strict limits on the size of the recording store, use probabilistic data structures like Bloom filters with false-positive rejection for 0-RTT instead of aborting handshakes, and enforce maximum ticket lifetimes to bound the window.",
+      "fingerprint": "4b37053be7bdcfffb30b463c3b1f491eb869f36238b3ee425dd5814c2f702bff"
+    },
+    {
+      "id": "45aa6fd5-6e01-46c8-9f73-68af1e59b845",
+      "technique_name": "0-RTT Anti-Replay State Recording Race",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The server receives a ClientHello containing early data and a PSK identity (Section 8.2). Step 2: To prevent replay, the server must check if this specific ClientHello has been recorded within its freshness window. However, in distributed or multi-threaded server deployments, multiple instances may receive the same replayed ClientHello concurrently before either instance has written to the recording store. Step 3: If the server implementation does not use a globally consistent, atomic storage mechanism (like a distributed lock or consensus-based record) for the 'Client Hello Recording' anti-replay state, both concurrent requests may pass the freshness check and the duplicate check simultaneously. This results in the server accepting the same 0-RTT data twice, leading to application-layer duplication attacks (e.g., double spending).",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "If one is found, it either aborts the handshake with an 'illegal_parameter' alert or accepts the PSK but rejects 0-RTT. If no matching ClientHello is found, then it accepts 0-RTT and then stores the ClientHello for as long as the expected_arrival_time is inside the window."
+        },
+        {
+          "rfc": 8446,
+          "section": "8",
+          "quote": "The server MUST ensure that any instance of it (be it a machine, a thread, or any other entity within the relevant serving infrastructure) would accept 0-RTT for the same 0-RTT handshake at most once"
+        }
+      ],
+      "prerequisites": [
+        "Attacker is on-path and can replay ClientHello/early data to multiple server instances simultaneously",
+        "Server deployment uses distributed state or lacks atomic global anti-replay storage"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement globally consistent, atomic anti-replay recording (e.g., using a distributed lock or consensus protocol) before accepting 0-RTT data. Alternatively, limit 0-RTT acceptance to a single authoritative server instance per ticket zone.",
+      "fingerprint": "685366d009bc578c820a12ee19825dbf3020415127572d9e148966fd4137abab"
+    },
+    {
+      "id": "55c4442c-bfe7-4484-aac5-92ce33309fc4",
+      "technique_name": "Inconsistent PSK Binder Validation and Replay Cache Key Derivation",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.88,
+      "description": "Step 1: The specification requires servers to validate the PSK binder corresponding to the selected PSK identity before accepting PSK key establishment (Section 4.2.11). It explicitly recommends that servers SHOULD NOT attempt to validate multiple binders and should select a single PSK first.\nStep 2: For anti-replay protection using ClientHello recording, the server MUST derive the storage key only from validated sections of the ClientHello. The text warns that if an attacker sends multiple PSK identities with different binder values, and the server prefers one identity (A) over another (B), changing the binder for B without affecting A could cause the ClientHello to be accepted as non-duplicate if the unvalidated binder for B is used in the storage key.\nStep 3: The ambiguity arises from the interaction between selective binder validation and replay cache key derivation. If an implementation derives the replay cache key using parts of the ClientHello that were not fully validated (like the unselected PSK's binder or random values before full transcript hashing), it may fail to detect replays or allow cache pollution attacks, leading to successful 0-RTT replay.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.11",
+          "quote": "Servers SHOULD NOT attempt to validate multiple binders; rather, they SHOULD select a single PSK and validate solely the binder that corresponds to that PSK."
+        },
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "The server MUST derive the storage key only from validated sections of the ClientHello."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send multiple PSK identities",
+        "server uses ClientHello recording for anti-replay"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Derive the replay cache storage key exclusively from the validated binder of the selected PSK or the ClientHello.random field. Ensure that no unvalidated handshake transcript components influence anti-replay state management.",
+      "fingerprint": "137502e9e9f7a373e4cbb3965afced34077c42b8c367a29932212ee98141fa02"
+    },
+    {
+      "id": "67f2c915-3fcb-4104-b5d1-cd51eb92eed8",
+      "technique_name": "Key Update State Confusion via Message Truncation",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: A peer sends a KeyUpdate message with 'update_requested' set to true, encrypted under the old keys. Step 2: An on-path attacker truncates or drops subsequent messages from that peer while they are in flight, preventing the receiver from seeing the full handshake/traffic transition. Step 3: The receiver updates its sending keys upon receiving KeyUpdate but may not have received all messages encrypted with the old key. If the protocol implementation does not strictly enforce that a KeyUpdate with the old key is fully processed before accepting new-key traffic, it can lead to state confusion where the receiver expects data under one key generation while the sender has already transitioned, potentially causing decryption failures or silent data loss.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.6.3",
+          "quote": "Both sides MUST enforce that a KeyUpdate with the old key is received before accepting any messages encrypted with the new key. Failure to do so may allow message truncation attacks."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce key generation boundaries. Do not accept records encrypted with new keys until the corresponding KeyUpdate handshake message has been fully decrypted and verified using the old keys.",
+      "fingerprint": "acbd9b2e59918be4191b75640fba82bf7ebaf587ba089d237df07ad3eeeeb443"
+    },
+    {
+      "id": "5b2d4616-e18b-4051-98a7-244ec6c38df8",
+      "technique_name": "PSK Binder Validation CPU Exhaustion",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends multiple ClientHello messages containing a large number of PSK identities and corresponding binders (Section 4.2.11). Step 2: The server is required to validate the binder for the selected PSK before proceeding with the handshake. While the spec recommends validating only one binder, implementations may still perform cryptographic HMAC operations to compute or verify partial transcripts. Step 3: An attacker can force the server to perform expensive key derivation and HMAC computations for each attempted PSK identity, leading to CPU exhaustion.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.11",
+          "quote": "Servers SHOULD NOT attempt to validate multiple binders; rather, they SHOULD select a single PSK and validate solely the binder that corresponds to that PSK."
+        },
+        {
+          "rfc": 8446,
+          "section": "7.1",
+          "quote": "There are multiple potential Early Secret values, depending on which PSK the server ultimately selects. The client will need to compute one for each potential PSK..."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send ClientHello messages"
+      ],
+      "entities_involved": [
+        "client (attacker)",
+        "server"
+      ],
+      "mitigation": "Strictly limit the number of PSK identities allowed in a single ClientHello, implement timing-safe but fast rejection of invalid binders, and cap the computational cost per handshake attempt.",
+      "fingerprint": "023a1c5c560caaf5f7aa8312f67b3be61df6dc271ce3a36618aa7e47fa6469b3"
+    },
+    {
+      "id": "50d3ef08-fdca-4b8e-8a21-3932ee74cc9a",
+      "technique_name": "PSK Binder Mismatch and Recording Store Bypass",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The client sends a ClientHello with multiple PSK identities (A and B) in the 'pre_shared_key' extension. Step 2: The server prefers identity A and validates its binder, but ignores or skips validation of identity B's binder per optimization recommendations. Step 3: An attacker modifies the binder for identity B to be invalid while keeping identity A valid. If the server uses a storage key derived from unvalidated parts of the ClientHello (like the invalid binder B), it fails to recognize this as a duplicate ClientHello in its recording store. Step 4: The server accepts the PSK and processes early data, but the anti-replay state is polluted or bypassed because the storage lookup failed due to the attacker's modification of unvalidated fields.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "If the ClientHello contains multiple PSK identities, then an attacker can create multiple ClientHellos with different binder values for the less-preferred identity... If the validated binder or the ClientHello.random is used as the storage key, then this attack is not possible."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server uses unvalidated ClientHello fields for anti-replay storage keys"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Derive the anti-replay recording store key exclusively from validated sections of the ClientHello, such as the successfully verified PSK binder or the ClientHello.random value. Do not use unvalidated binders in storage key derivation.",
+      "fingerprint": "3a1d9db617c0d6332ea8897dbc31ed1ed504d7d10d26d3533562de89c8aadf0d"
+    },
+    {
+      "id": "2e734437-060f-4d25-9939-e76b1ca82ea6",
+      "technique_name": "Downgrade Attack via Legacy Version Intolerance",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An active attacker intercepts the ClientHello and modifies the 'supported_versions' extension or forces a fallback to an older TLS version (e.g., TLS 1.2) by dropping packets or sending fake HelloRetryRequests.\nStep 2: The server falls back to a legacy protocol version that lacks modern downgrade protection mechanisms or supports weaker cryptographic parameters.\nStep 3: The attacker exploits weaknesses in the deprecated cipher suites or authentication methods of the older version to bypass integrity checks or impersonate the client/server, effectively bypassing TLS 1.3's authenticated key exchange guarantees.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "D.1",
+          "quote": "Multiple connection attempts may be required in order to negotiate a backward-compatible connection; however, this practice is vulnerable to downgrade attacks and is NOT RECOMMENDED."
+        },
+        {
+          "rfc": 8446,
+          "section": "D.3",
+          "quote": "To avoid a downgrade attack, the client SHOULD NOT disable TLS 1.3, only 0-RTT."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path (MITM)",
+        "server or client misconfigured to allow fallbacks to insecure legacy versions",
+        "legacy protocol supports weak ciphers or lacks downgrade protection"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Strictly enforce TLS 1.3 negotiation. Disable fallback to older versions unless absolutely necessary for legacy support, and ensure all endpoints implement proper downgrade protection (e.g., checking the ServerHello random value bytes). Use HSTS and certificate pinning where applicable.",
+      "fingerprint": "2c70b950d59ba80d84149e41cbfc029ea0f94a4864841e7a935deb3f5bf45163"
+    },
+    {
+      "id": "ef7062ad-dac5-48d0-a95a-876d421671ca",
+      "technique_name": "HelloRetryRequest Early Data Confusion",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: The client sends a ClientHello with an 'early_data' extension and early Application Data. Step 2: The server responds with a HelloRetryRequest (HRR) to request new cryptographic parameters. Step 3: Per spec, the client MUST remove the 'early_data' extension in its updated ClientHello. However, if an implementation incorrectly retains or re-adds the 'early_data' extension after receiving an HRR, it may attempt to send early data encrypted under keys that are no longer valid for the new handshake transcript. Step 4: The server receives malformed or undecryptable records, leading to a handshake abort or unexpected state where early data is processed against mismatched cryptographic context.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.1.2",
+          "quote": "Removing the 'early_data' extension (Section 4.2.10) if one was present. Early data is not permitted after a HelloRetryRequest."
+        },
+        {
+          "rfc": 8446,
+          "section": "4.2.10",
+          "quote": "Request that the client send another ClientHello by responding with a HelloRetryRequest. A client MUST NOT include the 'early_data' extension in its followup ClientHello."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path (to trigger HRR or manipulate extensions)"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must strictly validate that the 'early_data' extension is absent in any ClientHello following a HelloRetryRequest. Servers should abort with an 'illegal_parameter' alert if early data extensions are present post-HRR.",
+      "fingerprint": "14fb59133710909cf9bcee812e3adbfa3e7378add1d9c6609903c9d05eb302f4"
+    },
+    {
+      "id": "89b334f5-8d16-435b-8ac2-c66cfe1b5aa7",
+      "technique_name": "Crossing KeyUpdate State Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Both the client and server independently decide to update their cryptographic keys and send a KeyUpdate message with 'update_requested' set (Section 4.6.3). Step 2: These messages cross in flight before either party has received the other's KeyUpdate. Step 3: Because the protocol allows this, both sides will process the peer's new traffic keys while still expecting to receive their own response KeyUpdate. If the implementation does not strictly enforce that a KeyUpdate with the old key is fully processed and acknowledged before transitioning to accepting messages encrypted with the new key, it may lead to message truncation or decryption failures as the state machines for sending and receiving keys diverge temporarily.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.6.3",
+          "quote": "If implementations independently send their own KeyUpdates with request_update set to 'update_requested' and they cross in flight, then each side will also send a response... Additionally, both sides MUST enforce that a KeyUpdate with the old key is received before accepting any messages encrypted with the new key. Failure to do so may allow message truncation attacks."
+        }
+      ],
+      "prerequisites": [
+        "Both client and server support KeyUpdate",
+        "Network latency allows crossing of KeyUpdate messages"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce the state machine rule that no new-key encrypted records are accepted until the peer's KeyUpdate (encrypted with the old key) has been successfully received and processed.",
+      "fingerprint": "61917c94848ad876a5fd4338b6ab3a29262e2316263e93063d507c973856562c"
+    },
+    {
+      "id": "93418a49-071e-4be0-b412-b16a1d4bc9fc",
+      "technique_name": "Early Exporter Transplant Replay",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker replays a ClientHello to the server.\nStep 2: Because the replayed ClientHello produces the same early exporter master secret and early traffic keys, the resulting early exporter value is identical to the original connection.\nStep 3: If an application uses the early exporter for channel binding or authentication (e.g., signing the exporter output), the attacker can transplant these authenticators from a previous legitimate connection into the replayed connection without compromising the underlying PSK.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "E.5.1",
+          "quote": "Replays of the ClientHello produce the same early exporter... an attacker who compromises the PSK can transplant authenticators between connections without compromising the authentication key."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or has captured previous handshake transcripts",
+        "application uses early exporters for channel binding/authentication"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Applications MUST NOT use the early exporter to generate server-to-client encryption keys. Do not rely solely on early exporter values for critical authentication bindings without additional context or freshness guarantees.",
+      "fingerprint": "49fc099ef53ddf4844d3ee92d69b34091ee67e4b804dc30541705160d72a53dd"
+    },
+    {
+      "id": "313aafcb-fb19-4d27-b5dc-d96d96293546",
+      "technique_name": "Traffic Analysis via Record Length and Padding",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The TLS record layer allows variable-length records with optional padding to hide traffic sizes (Section 5.4). Step 2: However, the specification notes that while padding is encrypted, timing channels may still be exposed during record processing (e.g., how long it takes to process a record or trickle in records) (Section E.3). Step 3: An on-path attacker can exploit these timing and length variations to infer application-layer message sizes or distinguish between periods of transmission and silence, leaking information about the underlying protocol or data.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "5.4",
+          "quote": "All encrypted TLS records can be padded to inflate the size of the TLSCiphertext. This allows the sender to hide the size of the traffic from an observer."
+        },
+        {
+          "rfc": 8446,
+          "section": "E.3",
+          "quote": "TLS is susceptible to a variety of traffic analysis attacks based on observing the length and timing of encrypted packets... Because the padding is encrypted alongside the actual content, an attacker cannot directly determine the length of the padding but may be able to measure it indirectly by the use of timing channels exposed during record processing..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "timing side-channels are exploitable"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement constant-time record processing and application-layer padding to obscure message boundaries. Use cover traffic to mask periods of silence.",
+      "fingerprint": "d058b762768ddf5a91502eb7355a02599805aa3b3eb1eacccef9501f78bc2321"
+    },
+    {
+      "id": "9d2b5dec-b9a8-4717-9c98-b87ab1f40f22",
+      "technique_name": "MissingValidation_Key_Share_Subgroup",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: During the handshake, endpoints exchange (EC)DHE public keys via the `key_share` extension (Section 4.2.8). Step 2: The specification mandates that peers MUST validate each other's public keys to ensure they are not the identity element or part of a small subgroup (e.g., ensuring 1 < Y < p-1 for DH, or point validation for ECDHE) (Sections 4.2.8.1 and 4.2.8.2). Step 3: If an implementation fails to validate the received public key against these mathematical constraints before computing the shared secret, a malicious peer can send crafted keys that force the local system into a small subgroup or zero-value state. This results in a predictable or trivially computable shared secret, completely breaking confidentiality and enabling decryption of handshake traffic.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.8.1",
+          "quote": "Peers MUST validate each other's public key Y by ensuring that 1 < Y < p-1. This check ensures that the remote peer is properly behaved and isn't forcing the local system into a small subgroup."
+        },
+        {
+          "rfc": 8446,
+          "section": "4.2.8.2",
+          "quote": "For secp256r1, secp384r1, and secp521r1, peers MUST validate each other's public value Q by ensuring that the point is a valid point on the elliptic curve."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "vulnerable implementation performs (EC)DHE key exchange"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Always validate received Diffie-Hellman public keys against group parameters before use. For finite field DH, check 1 < Y < p-1. For ECDHE, verify the point is on the curve and not the identity element. Reject invalid keys with an appropriate alert.",
+      "fingerprint": "95387e912e73a854e0c231ec5bee2456f232b8b3cab6a4270e1ca0bc2368247e"
+    },
+    {
+      "id": "d28baee5-0b82-4749-b65c-6495279c9649",
+      "technique_name": "HelloRetryRequest Amplification via Empty Key Shares",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: A client sends a ClientHello with an empty 'key_share' extension to request group selection from the server (Section 4.2.8). Step 2: The server responds with a HelloRetryRequest containing its selected group and potentially a cookie. Step 3: An attacker can repeatedly send initial ClientHellos with empty key shares, forcing the server to generate stateless responses or compute cryptographic parameters for each request without completing the handshake, consuming CPU resources.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.8",
+          "quote": "Clients MAY send an empty client_shares vector in order to request group selection from the server, at the cost of an additional round trip (see Section 4.1.4)."
+        },
+        {
+          "rfc": 8446,
+          "section": "4.2.2",
+          "quote": "Allowing the server to offload state to the client, thus allowing it to send a HelloRetryRequest without storing any state."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or has network access"
+      ],
+      "entities_involved": [
+        "client (attacker)",
+        "server"
+      ],
+      "mitigation": "Implement rate limiting on HelloRetryRequest responses per source IP, and prefer requiring clients to send at least one valid key share in the initial ClientHello.",
+      "fingerprint": "1ea5c55a6b15116e06c65b1326edb43cd1c48816f6cc2d0a62d335760c7d82fb"
+    },
+    {
+      "id": "fc2c74c6-65b9-4b6c-bd37-42fc3fe24ea5",
+      "technique_name": "Ambiguous Downgrade Protection via Random Value Modification",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.82,
+      "description": "Step 1: TLS 1.3 includes a downgrade protection mechanism where servers negotiating TLS 1.2 or below MUST set the last 8 bytes of their ServerHello.Random value to specific constants (e.g., 'DOWNGRDX01' for TLS 1.2).\nStep 2: Clients receiving a ServerHello indicating TLS 1.2 or below MUST check that these bytes do not match the downgrade markers and abort if they do.\nStep 3: The specification notes that this mechanism does not provide downgrade protection when static RSA is used, as the ServerKeyExchange signature in older versions may not cover the random values in a way that prevents modification by an active attacker. Furthermore, implementations of TLS 1.2 clients and servers historically did not behave exactly as specified regarding these checks.\nStep 4: The ambiguity lies in how strictly endpoints must enforce these random value checks across different protocol versions and cipher suites. Inconsistent enforcement allows an on-path attacker to strip the downgrade markers or modify them, forcing a connection into a weaker version (like TLS 1.2 with static RSA) where downgrade protection is inherently broken.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.1.3",
+          "quote": "TLS 1.3 servers MUST set the last 8 bytes of their Random value to the bytes: 44 4F 57 4E 47 52 44 01"
+        },
+        {
+          "rfc": 8446,
+          "section": "4.1.3",
+          "quote": "It does not provide downgrade protection when static RSA is used."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client or server supports TLS 1.2 fallback"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce random value checks for all downgraded connections. Preferentially disable static RSA cipher suites entirely and mandate (EC)DHE key exchange to ensure signatures cover the modified random values, making downgrade attacks detectable.",
+      "fingerprint": "e9fa9f08d78086ca8186b0e389bd2b74e9d24ae9b0660729f1cfbd8817c98480"
+    },
+    {
+      "id": "f63882a3-360e-4dba-993e-f692711a674f",
+      "technique_name": "Padding-Based Record Size Exhaustion",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker sends encrypted TLS records with maximum allowed padding (up to 2^14 + 256 bytes) as permitted by the record layer specification. Step 2: The server must decrypt and verify each record using AEAD algorithms, scanning from the end of the cleartext for a non-zero octet to determine the content type (Section 5.4). Step 3: By sending many large padded records, an attacker can force the server to expend significant CPU cycles on decryption and padding verification without delivering meaningful application data.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "5.1",
+          "quote": "The length MUST NOT exceed 2^14 bytes. An endpoint that receives a record that exceeds this length MUST terminate the connection with a 'record_overflow' alert."
+        },
+        {
+          "rfc": 8446,
+          "section": "5.4",
+          "quote": "The padding sent is automatically verified by the record protection mechanism; upon successful decryption of a TLSCiphertext.encrypted_record, the receiving implementation scans the field from the end toward the beginning until it finds a non-zero octet."
+        }
+      ],
+      "prerequisites": [
+        "attacker has established a TLS connection or can send early data"
+      ],
+      "entities_involved": [
+        "client (attacker)",
+        "server"
+      ],
+      "mitigation": "Enforce strict limits on the number of large records per second, implement application-layer rate limiting, and optimize padding verification to avoid scanning unnecessarily large cleartext buffers.",
+      "fingerprint": "f2e6d72e1bb82a01be11c9c747f4f2c6f44b8a5be8a5ead34382f48339d0e469"
+    },
+    {
+      "id": "44f85fe6-b88c-4419-8f91-2b97becf5c01",
+      "technique_name": "Unencrypted PSK Identities in ClientHello",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: During the TLS handshake, the client sends a 'pre_shared_key' extension containing a list of PSK identities (ticket labels) in cleartext within the ClientHello message (Section 4.2.11). Step 2: The specification explicitly notes that 'The client's proposed PSK identities are not encrypted, nor is the one that the server selects' (Section E.1). Step 3: An on-path attacker can observe these unencrypted identity labels to fingerprint clients, track sessions across connections, or correlate different TLS handshakes belonging to the same user or device.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.11",
+          "quote": "The 'pre_shared_key' extension is used to negotiate the identity of the pre-shared key to be used with a given handshake in association with PSK key establishment."
+        },
+        {
+          "rfc": 8446,
+          "section": "E.1",
+          "quote": "Note that they do not include the client's certificate; future applications which wish to bind to the client's certificate may need to define a new exporter that includes the full handshake transcript."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use externally provisioned PSKs with opaque, non-reusable identifiers. Implement application-layer obfuscation for ticket labels if session tracking must be hidden.",
+      "fingerprint": "8a5ddc623cad42ca75da1a0de5e6ec4963b45a0505b617b7f73d9ff2cb949509"
+    },
+    {
+      "id": "f9eac5e7-a7bd-4cb9-9253-e0b9757acc42",
+      "technique_name": "PSK Binder Validation Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: A client sends a ClientHello with multiple PSK identities and corresponding binders (Section 4.2.11). Step 2: The server selects its preferred PSK identity but an attacker modifies the binder for a less-preferred identity to be valid under a different key or hash, hoping the server will validate it before checking the preferred one, or if the server attempts to validate multiple binders concurrently. Step 3: If the server implementation does not strictly follow the recommendation to select a single PSK and validate solely that binder (Section 4.2.11), an attacker could potentially trigger side effects like replay cache pollution or force the server into a state where it accepts a maliciously crafted ClientHello structure, bypassing intended anti-replay checks for the primary identity.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.11",
+          "quote": "Servers SHOULD NOT attempt to validate multiple binders; rather, they SHOULD select a single PSK and validate solely the binder that corresponds to that PSK."
+        },
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "The server MUST derive the storage key only from validated sections of the ClientHello. If the ClientHello contains multiple PSK identities, then an attacker can create multiple ClientHellos with different binder values for the less-preferred identity on the assumption that the server will not verify it"
+        }
+      ],
+      "prerequisites": [
+        "Client offers multiple PSKs",
+        "Server implementation deviates from RFC recommendation to validate only the selected binder"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers MUST strictly select one PSK identity first, validate its binder, and derive anti-replay storage keys ONLY from validated data (like the verified binder or ClientHello.random) to prevent unvalidated binder manipulation.",
+      "fingerprint": "aef00b6b0e32edcfe48993c98163239717d838ae181fd81367eddb0456503b9b"
+    },
+    {
+      "id": "9e99358a-a140-444a-8376-e4c8b78eb244",
+      "technique_name": "PSK Binder Validation Bypass via Unchecked Identities",
+      "category": "AuthBypass",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: A client offers multiple PSK identities in the 'pre_shared_key' extension.\nStep 2: The server prioritizes and validates only the first (or most preferred) binder but fails to cryptographically bind the selected identity to the handshake transcript for all offered identities.\nStep 3: An attacker modifies the ClientHello to reorder or alter less-preferred PSK identities, potentially causing the server to accept a connection with a mismatched cryptographic context or bypassing strict identity verification if the implementation incorrectly assumes binder validation covers all listed identities.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.2.11",
+          "quote": "Servers SHOULD NOT attempt to validate multiple binders; rather, they SHOULD select a single PSK and validate solely the binder that corresponds to that PSK."
+        },
+        {
+          "rfc": 8446,
+          "section": "8.2",
+          "quote": "If the ClientHello contains multiple PSK identities, then an attacker can create multiple ClientHellos with different binder values for the less-preferred identity on the assumption that the server will not verify it..."
+        }
+      ],
+      "prerequisites": [
+        "client offers multiple PSK identities",
+        "server implementation flaw in transcript binding or binder validation scope"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Ensure implementations strictly validate that the selected PSK identity's binder covers the entire handshake transcript up to that point. Limit clients to offering a single PSK identity when possible, or ensure servers cryptographically bind all offered identities to prevent manipulation.",
+      "fingerprint": "12050f6c90ea7b11f8683ef8c87c046d1943c7f5d77fb9d108d720452499cbb7"
+    },
+    {
+      "id": "642d84c7-9a3f-4724-b1c2-73481caf3a5a",
+      "technique_name": "Certificate Request/Verify Handshake Loop",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: A server requests client authentication by sending a CertificateRequest message (Section 4.3.2). Step 2: The client responds with a Certificate and CertificateVerify message. If the signature verification fails or the certificate is invalid, the handshake aborts. Step 3: An attacker can repeatedly initiate handshakes that trigger client certificate requests, forcing both parties to perform expensive asymmetric cryptographic operations (RSA/ECDSA signing and verification) without completing the connection, consuming CPU resources on both ends.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.3.2",
+          "quote": "A server which is authenticating with a certificate MAY optionally request a certificate from the client."
+        },
+        {
+          "rfc": 8446,
+          "section": "4.4.3",
+          "quote": "The receiver of a CertificateVerify message MUST verify the signature field... If the verification fails, the receiver MUST terminate the handshake with a 'decrypt_error' alert."
+        }
+      ],
+      "prerequisites": [
+        "server is configured to request client certificates"
+      ],
+      "entities_involved": [
+        "client (attacker)",
+        "server"
+      ],
+      "mitigation": "Implement rate limiting on handshakes requiring mutual authentication, cache certificate validation results where appropriate, and consider disabling client certificate requests for untrusted or high-volume endpoints.",
+      "fingerprint": "a6e58e459644b4455797e5aeb27a4d43ec83c239fe5bce3b676acad0e48e95ba"
+    },
+    {
+      "id": "015cd820-c1f7-4f7f-9c10-f4eac01fc72e",
+      "technique_name": "Server Random Value Downgrade Indicator",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: To provide downgrade protection, TLS 1.3 servers negotiate older versions (TLS 1.2 or below) by setting specific magic bytes in the last 8 bytes of the ServerHello.random field (Section 4.1.3). Step 2: These values ('DOWNGRD0' and 'DOWNGRD1') are publicly known constants defined in the specification. Step 3: An on-path attacker can inspect the ServerHello.random field to determine if a downgrade attack occurred or if the server is actively enforcing version constraints, leaking information about the server's security posture and supported protocol versions.",
+      "rfc_references": [
+        {
+          "rfc": 8446,
+          "section": "4.1.3",
+          "quote": "TLS 1.3 has a downgrade protection mechanism embedded in the server's random value... If negotiating TLS 1.2, TLS 1.3 servers MUST set the last 8 bytes of their Random value to the bytes: 44 4F 57 4E 47 52 44 01"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "downgrade negotiation occurs"
+      ],
+      "entities_involved": [
+        "server"
+      ],
+      "mitigation": "N/A (Protocol feature for downgrade protection). Ensure clients strictly validate these values to prevent actual downgrades.",
+      "fingerprint": "07f57769d739cf90f642dd8f035c3fd99a2e71d12f737e88075fce1a93600329"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-01T23:43:15.451547+00:00",
+    "model_used": "bad-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "total_tokens_used": 520734,
+    "analysis_duration_secs": 188.8095935,
+    "run_id": 16,
+    "input_hash": "c7479e235c213140928ccb2dd822d34a71a9acb9a673fc68f9995a5b68d0c8d7",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

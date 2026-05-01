@@ -1,0 +1,1283 @@
+{
+  "protocol_name": "kerberos",
+  "rfcs_analyzed": [
+    4120
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 11,
+  "security_leads": [
+    {
+      "id": "773d2a0a-469e-41a1-bd2b-24c8a09a1c29",
+      "technique_name": "DNS Spoofing for Principal Canonicalization",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: The client attempts to determine the host part of a service principal name by querying DNS for canonicalization (mapping one name to another). Step 2: Because the DNS query is not required to be secure or authenticated, an on-path attacker can spoof the DNS response. Step 3: The client accepts the forged mapping and obtains credentials/authenticates to the wrong principal, allowing the attacker to impersonate the intended service.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "1.3",
+          "quote": "Implementations of Kerberos and protocols based on Kerberos MUST NOT use insecure DNS queries to canonicalize the hostname components of the service principal names... since an attacker can modify the mapping and impersonate the party."
+        },
+        {
+          "rfc": 4120,
+          "section": "Security Considerations",
+          "quote": "Implementations of Kerberos must not use DNS to map one name to another (canonicalize) in order to determine the host part of the principal name with which one is to communicate. To allow this canonicalization would allow a compromise of the DNS to result in a client obtaining credentials and correctly authenticating to the wrong principal."
+        }
+      ],
+      "prerequisites": [
+        "attacker can spoof or manipulate DNS responses",
+        "client relies on insecure DNS for hostname resolution"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "DNS server"
+      ],
+      "mitigation": "Use secure name service facilities (e.g., DNSSEC) or statically configured domain names. Do not rely on unprotected DNS records for canonicalization.",
+      "fingerprint": "be638c4a2db136387fc667e4779516c29d7bc596dc15d9c37fddaef98e85522e"
+    },
+    {
+      "id": "a7886fd7-de33-4903-8f90-d5ef8b175a4b",
+      "technique_name": "DNS Canonicalization Spoofing",
+      "category": "AuthBypass",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: The client application or implementation uses insecure DNS queries to canonicalize the hostname component of a service principal name (e.g., mapping 'host.example.com' to its primary FQDN). Step 2: An attacker compromises or spoofs the DNS records for the target host, pointing them to an attacker-controlled server. Step 3: The client requests credentials from the KDC for the spoofed canonical name and authenticates to the attacker's server instead of the legitimate service, effectively bypassing intended access controls.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "1.3",
+          "quote": "Implementations of Kerberos and protocols based on Kerberos MUST NOT use insecure DNS queries to canonicalize the hostname components of the service principal names... In an environment without secure name service, application authors MAY append a statically configured domain name to unqualified hostnames before passing the name to the security mechanisms"
+        },
+        {
+          "rfc": 4120,
+          "section": "Security Considerations",
+          "quote": "Implementations of Kerberos must not use DNS to map one name to another (canonicalize) in order to determine the host part of the principal name with which one is to communicate. To allow this canonicalization would allow a compromise of the DNS to result in a client obtaining credentials and correctly authenticating to the wrong principal."
+        }
+      ],
+      "prerequisites": [
+        "attacker can spoof or compromise DNS responses",
+        "client implementation uses insecure DNS for hostname canonicalization"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "application server"
+      ],
+      "mitigation": "Use statically configured, trusted domain names in client configurations. Disable automatic DNS canonicalization of service principal hostnames. Use secure name services (e.g., DNSSEC) if dynamic resolution is strictly required.",
+      "fingerprint": "43583184362a526fbe2c61a023dc105cd656e7aaafdf97121980d00a06615af8"
+    },
+    {
+      "id": "750507e9-e0ab-4db7-a9e4-081d9b575747",
+      "technique_name": "KRB_ERROR Message Replay and Modification",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: The KRB_ERROR message is explicitly defined as not being integrity-protected or encrypted in its raw form (Section 3.1). Step 2: An on-path attacker can capture a legitimate KRB_ERROR response sent by the KDC to a client. Step 3: The attacker can replay this unauthenticated error message back to the client, potentially causing denial of service, confusing the client's state machine, or tricking it into retrying requests unnecessarily without providing valid credentials.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "The KRB_ERROR message contains information that can be used to associate it with the message to which it replies. The contents of the KRB_ERROR message are not integrity-protected. As such, the client cannot detect replays, fabrications, or modifications."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.9",
+          "quote": "Note that because the KRB_ERROR message is not integrity protected, it is quite possible for an intruder to synthesize or modify it."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client processes unauthenticated error messages"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Clients should treat KRB_ERROR fields as untrusted for security-critical operations. Applications should implement their own replay detection or rely on higher-layer transport security (e.g., TLS) when available, though Kerberos is typically stateless over UDP.",
+      "fingerprint": "958c602dd4751b38fcc44c87cb0b36e1da85cf8b1e98bc549b727b46e280ce72"
+    },
+    {
+      "id": "520366b0-d90b-4104-8b1f-fce637310cd5",
+      "technique_name": "KDC Overload via Unauthenticated AS Requests",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker sends a high volume of KRB_AS_REQ messages to the Kerberos Key Distribution Center (KDC) requesting credentials for arbitrary or non-existent principals.\nStep 2: Because pre-authentication is optional and not strictly enforced by default policy, the KDC processes these requests without requiring proof of identity first.\nStep 3: The KDC performs database lookups, generates encrypted responses (or errors), and consumes CPU/memory resources to handle each request. This can exhaust server resources or network bandwidth, preventing legitimate users from authenticating.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "10",
+          "quote": "Kerberos is vulnerable to many kinds of denial of service attacks: those on the network, which would prevent clients from contacting the KDC; those on the domain name system, which could prevent a client from finding the IP address of the Kerberos server; and those by overloading the Kerberos KDC itself with repeated requests."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "Without pre-authentication, the authentication server does not know whether the client is actually the principal named in the request. It simply sends a reply without knowing or caring whether they are the same."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has network access to KDC",
+        "Pre-authentication is not strictly enforced by realm policy"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Enforce mandatory pre-authentication (e.g., PA-ENC-TIMESTAMP or PKINIT) for all AS requests. Implement rate limiting and connection throttling on the KDC to mitigate high-volume request floods.",
+      "fingerprint": "b6ecbfae55c050c2d3e155083c3b20a57faf5c29d50e1607b36d61b527a4477d"
+    },
+    {
+      "id": "10f657c9-15ea-4a83-b53b-ef73743858d3",
+      "technique_name": "Transited Policy Check Bypass",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: A client requests a service ticket in a cross-realm authentication scenario and sets the DISABLE-TRANSITED-CHECK flag in the KDC request options. Step 2: The local KDC honors this flag (as it is encouraged but not required) and issues a derivative ticket without validating the transited field against its realm's trusted KDC policy. Step 3: The application server receives the ticket with the TRANSITED-POLICY-CHECKED flag unset. If the server fails to perform its own strict transited-realm validation, it may accept authentication from an untrusted intermediate realm, bypassing cross-realm authorization policies.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "1.2",
+          "quote": "A client may request that the KDCs not check the transited field by setting the DISABLE-TRANSITED-CHECK flag. KDCs SHOULD honor this flag."
+        },
+        {
+          "rfc": 4120,
+          "section": "2.7",
+          "quote": "A client MAY request that the KDCs not check the transited field by setting the DISABLE-TRANSITED-CHECK flag. KDCs are encouraged but not required to honor this flag. Application servers MUST either do the transited-realm checks themselves or reject cross-realm tickets without TRANSITED-POLICY-CHECKED set."
+        }
+      ],
+      "prerequisites": [
+        "cross-realm authentication is in use",
+        "KDC honors DISABLE-TRANSITED-CHECK flag",
+        "application server fails to validate transited field locally"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "application server"
+      ],
+      "mitigation": "Configure KDCs to ignore or reject the DISABLE-TRANSITED-CHECK option. Application servers must strictly enforce and validate the TRANSITED-POLICY-CHECKED flag, rejecting any cross-realm tickets where this check was not performed by a trusted KDC.",
+      "fingerprint": "fb150904936c606274d6193ab5495c023a89bb346a7bc9afadae97ddd3d3b357"
+    },
+    {
+      "id": "c81ef363-e9b9-4cff-a4c9-ae6cfd242c8e",
+      "technique_name": "Replay Cache Dependency and Clock Skew Exploitation",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Kerberos relies on a server-side replay cache to detect replays of authenticators within an allowable clock skew window (typically ~5 minutes) because timestamps alone are insufficient against network delays or clock drift (Section 3.2.3). Step 2: If the application server loses track of its replay cache (e.g., due to a restart, crash, or memory overflow), it must reject all requests until the clock skew interval passes. Step 3: An attacker can exploit this by recording a valid KRB_AP_REQ and waiting for the server's cache to be cleared or reset. Once the window expires, the attacker replays the captured authenticator, which will now appear fresh to the server because it falls outside the old cache bounds but within the new clock skew tolerance.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If a server loses track of authenticators presented within the allowable clock skew, it MUST reject all requests until the clock skew interval has passed, providing assurance that any lost or replayed authenticators will fall outside the allowable clock skew and can no longer be successfully replayed."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If this were not done, an attacker could subvert the authentication by recording the ticket and authenticator sent over the network to a server and replaying them following an event that caused the server to lose track of recently seen authenticators."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server loses replay cache state"
+      ],
+      "entities_involved": [
+        "client",
+        "application server"
+      ],
+      "mitigation": "Implementations must strictly enforce the requirement to reject all requests until the clock skew interval passes after a cache loss. Use of monotonic clocks or persistent replay caches across restarts is recommended where possible.",
+      "fingerprint": "76d3048a79a78ff97963a74014bd9ae2ccb7c2692056f25f62b549991d89f60e"
+    },
+    {
+      "id": "78ccbaf8-964c-4da1-82d1-9ce2a6fbe198",
+      "technique_name": "Transited Field Bypass via DISABLE-TRANSITED-CHECK",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The client requests a service ticket and sets the DISABLE-TRANSITED-CHECK flag in the KDC_OPTIONS field of the KRB_TGS_REQ message (Section 5.4.1). Step 2: The KDC receives the request and, although encouraged to honor the flag, is not strictly required to do so by older implementations or due to policy misconfigurations. If honored, the KDC issues a service ticket without verifying the transited field against its realm's trust policy (Section 3.3.3.2). Step 3: The application server receives the ticket. Because the DISABLE-TRANSITED-CHECK flag was used, the TRANSITED-POLICY-CHECKED flag in the ticket is reset to 0 (Section 5.3). Step 4: The application server must now perform its own transited field checks. If the server relies on the KDC's policy check or fails to strictly validate the untrusted realms listed in the empty or manipulated transited field, it may accept authentication from an attacker who routed through a compromised realm, bypassing cross-realm trust policies.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.3.3.2",
+          "quote": "A client MAY request that the KDCs not check the transited field by setting the DISABLE-TRANSITED-CHECK flag. KDCs SHOULD honor this flag."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.3",
+          "quote": "If this flag is reset (0), then the application server must check the transited field itself, and if unable to do so, it must reject the authentication."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.4.1",
+          "quote": "KDCs are encouraged but not required to honor the DISABLE-TRANSITED-CHECK option."
+        }
+      ],
+      "prerequisites": [
+        "attacker can influence client KDC options or exploit a misconfigured client/KDC"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "application server"
+      ],
+      "mitigation": "Enforce strict transited field validation on all application servers regardless of the TRANSITED-POLICY-CHECKED flag. Configure KDCs to ignore or reject DISABLE-TRANSITED-CHECK requests from untrusted clients.",
+      "fingerprint": "4d98b4a942b9ad305cb4132393be874d2c461585e436a88c70658aa3125a2283"
+    },
+    {
+      "id": "87be9957-cbb1-4a26-bf78-d23fb104d7d9",
+      "technique_name": "Kerberos UDP Response Size Limit Bypass",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker sends a KRB_KDC_REQ to the KDC via UDP/IP transport (Section 7.2.1). Step 2: The KDC generates a response that exceeds the maximum safe UDP datagram size (typically >512 bytes or path MTU). Step 3: Per Section 7.2.1, if the response cannot be handled using UDP because it is too large, the KDC MUST return KRB_ERR_RESPONSE_TOO_BIG, forcing the client to retry over TCP. However, an attacker can manipulate the request (e.g., via specific etype lists or authorization data) to force the KDC to generate a massive encrypted payload that triggers this error repeatedly, causing UDP fragmentation/drop issues or exhausting network resources before the fallback occurs. Additionally, if implementations fail to strictly enforce the size check and attempt to send the oversized UDP packet anyway, it leads to silent packet loss and DoS.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "7.2.1",
+          "quote": "If the response cannot be handled using UDP (for example, because it is too large), the KDC MUST return KRB_ERR_RESPONSE_TOO_BIG, forcing the client to retry the request using the TCP transport."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send requests to the KDC",
+        "network path has strict MTU limits"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Enforce strict UDP payload size limits and ensure clients robustly handle KRB_ERR_RESPONSE_TOO_BIG by immediately switching to TCP. Implement rate limiting on requests that trigger large responses.",
+      "fingerprint": "7a568c27f8b41a0ed83dae31380c172cab6ea44a1006aa396eb2fef0d7d15a96"
+    },
+    {
+      "id": "1c865214-c696-4647-b534-342ff4dbca0f",
+      "technique_name": "Pre-authentication Bypass via Unencrypted AS_REQ",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The Kerberos protocol allows clients to send KRB_AS_REQ messages without pre-authentication data if the realm policy does not require it (Section 3.1). Step 2: Without pre-authentication, the KDC returns a KRB_AS_REP encrypted with the user's secret key, providing known plaintext/ciphertext pairs that can be used for offline dictionary or brute-force attacks against weak passwords (Section 10). Step 3: An attacker on the network can observe these exchanges and exploit the lack of pre-authentication to downgrade the authentication strength from password-verified to a vulnerable state susceptible to credential theft.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "Without pre-authentication, the authentication server does not know whether the client is actually the principal named in the request... an attacker can send a KRB_AS_REQ message to get known plaintext in order to attack the principal's key."
+        },
+        {
+          "rfc": 4120,
+          "section": "10",
+          "quote": "Unless pre-authentication options are required by the policy of a realm, the KDC will not know whether a request for authentication succeeds... For this reason it is strongly encouraged that Kerberos realms require the use of pre-authentication."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "realm does not enforce pre-authentication policy"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Enforce pre-authentication (e.g., PA-ENC-TIMESTAMP or PKINIT) as a mandatory realm policy. Configure KDCs to reject AS-REQ messages that lack valid pre-authentication data.",
+      "fingerprint": "4e8975c8c3966ac61df22ad2368c1a1c9b5fb5a57d7e5f0cd9f9fb81f205a4c3"
+    },
+    {
+      "id": "6fc65020-90fb-424e-bc43-1026fda41fa7",
+      "technique_name": "Ambiguous Character Set Handling",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The specification defines principal and realm names using the ASN.1 type GeneralString (Section 5.2.1). Step 2: It acknowledges that historical implementations treat GeneralStrings as arbitrary 8-bit strings based on their local OS locale, often ignoring ISO-2022 escape sequences or even embedding unescaped UTF-8 characters. Step 3: The spec introduces KerberosString to constrain this to IA5String but explicitly states that implementations MAY choose to accept GeneralString values containing non-IA5String characters and treat them as locale-specific. This ambiguity allows an attacker to craft principal names with specific byte sequences that might be interpreted differently by a client, KDC, or server depending on their locale settings, potentially leading to name spoofing, ACL bypasses, or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.2.1",
+          "quote": "In practice, many implementations treat GeneralStrings as if they were 8-bit strings of whichever character set the implementation defaults to... Implementations MAY choose to accept GeneralString values that contain characters other than those permitted by IA5String..."
+        },
+        {
+          "rfc": 4120,
+          "section": "10",
+          "quote": "Interoperability conflicts caused by incompatible character-set usage (see 5.2.1) can result in denial of service for clients that utilize character-sets in Kerberos strings other than those stored in the KDC database."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "victim uses a different locale/character set configuration"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "KDC"
+      ],
+      "mitigation": "Enforce strict IA5String encoding for all principal and realm names. Reject any GeneralString containing non-IA5 characters or escape sequences. Ensure consistent locale settings across the Kerberos infrastructure.",
+      "fingerprint": "4feae0173e23f7d717321e927558ea229a63679e7d866ab37da44c31166443fb"
+    },
+    {
+      "id": "b5e0298b-20ea-4350-b01a-a256c28044a6",
+      "technique_name": "Untrusted Directory Server Realm Spoofing",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: A client uses an untrusted directory server to determine the realm of a host it wishes to contact. Step 2: An attacker compromises or controls the directory server and returns a malicious realm name. Step 3: The client accepts authentication with the wrong principal (a similar name in a compromised realm), allowing the attacker to intercept credentials or impersonate the service.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "Security Considerations",
+          "quote": "Implementations of Kerberos should not use untrusted directory servers to determine the realm of a host. To allow this would allow the compromise of the directory server to enable an attacker to direct the client to accept authentication with the wrong principal..."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls or compromises the directory service",
+        "client relies on external/untrusted directories for realm resolution"
+      ],
+      "entities_involved": [
+        "client",
+        "directory server"
+      ],
+      "mitigation": "Obtain realm configuration from trusted, statically configured sources. Do not rely on untrusted directory servers for realm determination.",
+      "fingerprint": "95a688c657b92915c297abcce3049a8f3c114e6c84b00ef021a43871811c48d8"
+    },
+    {
+      "id": "c041c076-eaea-4b2a-b18b-5b1ebb8895e5",
+      "technique_name": "Authorization Data Ignorance Leading to Privilege Escalation",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: A client obtains a ticket containing authorization data elements that restrict its privileges (e.g., AD-KDCIssued or AD-IF-RELEVANT). Step 2: The client presents the AP-REQ to an application server. Step 3: The application server, if it is an older RFC 1510-compliant implementation or poorly configured, ignores unknown authorization data elements (Section 1.5.1 and Section 5.2.6). Step 4: Because the server does not process the restrictive authorization data, it grants access based solely on authentication, bypassing intended privilege restrictions. The state machine transitions to an authorized state despite the ticket containing explicit restrictions that were not enforced.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "1.5.1",
+          "quote": "Many RFC 1510-compliant implementations ignore unknown authorization data elements. Depending on these implementations to honor authorization data restrictions may create a security weakness."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.2.6",
+          "quote": "If an unknown authorization data element type is received by a server either in an AP-REQ or in a ticket contained in an AP-REQ, then, unless it is encapsulated in a known authorization data element amending the criticality of the elements it contains, authentication MUST fail."
+        }
+      ],
+      "prerequisites": [
+        "attacker can obtain tickets with restrictive authorization data",
+        "target server uses legacy or non-compliant Kerberos implementation"
+      ],
+      "entities_involved": [
+        "client",
+        "application server"
+      ],
+      "mitigation": "Ensure all application servers strictly enforce unknown authorization data elements by failing authentication. Update legacy implementations to comply with RFC 4120 Section 5.2.6.",
+      "fingerprint": "eed76c9f6da18ba9c39c124332d5e63e2aabb9ce052e50154e28a74cadee1d1f"
+    },
+    {
+      "id": "3bb0e260-ce2c-44f9-a8bc-0806ea3ac1a8",
+      "technique_name": "Encryption Type Downgrade via ETYPE-INFO/ETYPE-INFO2",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The client sends a KRB_AS_REQ or KRB_TGS_REQ containing an 'etype' field listing desired encryption types in preference order (Section 5.4.1). Step 2: If pre-authentication is not strictly enforced by policy, the KDC may respond with a KRB_ERROR requesting additional pre-authentication, which can include ETYPE-INFO or ETYPE-INFO2 fields to negotiate supported encryption types and salts (Section 8.1, Section 5.2.7.3). Step 3: An on-path attacker can drop legitimate responses containing strong encryption types and forge a response that only lists weak algorithms (e.g., DES-CBC-MD5 or RC4), forcing the client to fall back to weaker cryptography for session key derivation and message protection.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.4.1",
+          "quote": "etype [8] SEQUENCE OF Int32 -- EncryptionType in preference order --"
+        },
+        {
+          "rfc": 4120,
+          "section": "8.1",
+          "quote": "The ETYPE-INFO2 method MUST be supported; this method is used to communicate the set of supported encryption types... The ETYPE-INFO method SHOULD be supported for interoperability with older implementation."
+        },
+        {
+          "rfc": 4120,
+          "section": "10",
+          "quote": "Although the DES-CBC-MD5 encryption method and DES-MD5 checksum methods are listed as SHOULD be implemented for backward compatibility, the single DES encryption algorithm on which these are based is weak, and stronger algorithms should be used whenever possible."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client or KDC supports legacy/weak encryption types (e.g., DES, RC4)",
+        "pre-authentication policy is not strictly enforced"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Enforce strict pre-authentication policies. Configure KDCs and clients to reject weak encryption types (DES, RC4) via configuration or policy flags. Use ETYPE-INFO2 exclusively and validate the returned etype against a whitelist of strong algorithms.",
+      "fingerprint": "4df9945c25497d9d157a65e26b0046dcf4e5a4a43c453face5970e9525f9d6b1"
+    },
+    {
+      "id": "62e49835-109e-4256-a7e1-61f6c3167f2a",
+      "technique_name": "Replay Cache State Race Condition",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The server maintains a replay cache to remember authenticators presented within the allowable clock skew (Section 3.2.3). Step 2: If multiple servers share a service principal but use separate or unsynchronized replay caches, an attacker can authenticate to one service, record the ticket and authenticator, and then replay it to another service with the same principal that does not have the first authenticator recorded in its cache (Section 3.2.3). Step 3: Additionally, if a server loses track of authenticators within the clock skew window due to a crash or state loss, an attacker can wait for the skew interval to pass and then replay previously captured authenticators that would otherwise be rejected, bypassing replay protection entirely.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If multiple servers ... share a service principal ... either they MUST share this replay cache, or the application protocol MUST be designed so as to eliminate the need for it."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If a server loses track of authenticators presented within the allowable clock skew, it must reject all requests until the clock skew interval has passed..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or can capture network traffic",
+        "multiple services share the same service principal key"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "application server 1",
+        "application server 2"
+      ],
+      "mitigation": "Ensure all services sharing a service principal key use a synchronized, shared replay cache. Implement robust state persistence for the replay cache to prevent loss during crashes.",
+      "fingerprint": "456a90049bb5356d19f0128faf83aebd28bfdbb7a45ce5700141e616c114d061"
+    },
+    {
+      "id": "e37ce0bd-9d26-40ab-90e7-5fd596ec5a63",
+      "technique_name": "Replay Cache State Loss Leading to Authentication Bypass",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An application server maintains a replay cache of authenticators presented within the allowable clock skew (Section 3.2.3). Step 2: A system event or implementation bug causes the server to lose track of its replay cache state. Step 3: The specification states that if a server loses track, it MUST reject all requests until the clock skew interval passes. However, vulnerable implementations may fail to enforce this strict rejection and instead continue processing requests with an empty or reset cache. Step 4: An attacker records a valid KRB_AP_REQ (ticket + authenticator) and replays it after the cache loss event. The server accepts the replayed request as fresh because its state does not reflect the prior use, granting unauthorized access.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If a server loses track of authenticators presented within the allowable clock skew, it must reject all requests until the clock skew interval has passed, providing assurance that any lost or replayed authenticators will fall outside the allowable clock skew and can no longer be successfully replayed."
+        }
+      ],
+      "prerequisites": [
+        "attacker can capture network traffic",
+        "server implementation fails to enforce mandatory rejection upon cache loss"
+      ],
+      "entities_involved": [
+        "client",
+        "application server"
+      ],
+      "mitigation": "Implementations must strictly reject all authentication requests immediately upon detecting replay cache state loss. Use persistent, tamper-proof storage for replay caches and enforce a hard lockout period equal to the maximum clock skew.",
+      "fingerprint": "8e1327d003612f008eca603599c1c70eb99d2ba04d1ee7b21220e77f8b8b0c95"
+    },
+    {
+      "id": "b5b1aa2a-fc9b-4455-8cca-6ab23f2153ff",
+      "technique_name": "Missing Transited Policy Validation in Cross-Realm Auth",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: A client requests cross-realm authentication and sets the DISABLE-TRANSITED-CHECK flag to bypass KDC validation of the transited path. Step 2: The application server receives a ticket without the TRANSITED-POLICY-CHECKED flag set. Step 3: If the application server fails to locally validate the transited field against its trust policy, it may accept authentication from an untrusted intermediate realm, allowing an attacker to route authentication through compromised KDCs.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "2.7",
+          "quote": "Application servers MUST either do the transited-realm checks themselves or reject cross-realm tickets without TRANSITED-POLICY-CHECKED set."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.3",
+          "quote": "If this flag is reset (0), then the application server must check the transited field itself, and if unable to do so, it must reject the authentication."
+        }
+      ],
+      "prerequisites": [
+        "cross-realm authentication path exists",
+        "application server fails to validate transited field when flag is unset"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC (intermediate)",
+        "application server"
+      ],
+      "mitigation": "Application servers MUST validate the transited field against a policy of trusted realms. Reject tickets lacking the TRANSITED-POLICY-CHECKED flag if local validation is not performed.",
+      "fingerprint": "473f7e60d5e44cd987fdcff5e4efb529156047de2ad4aa6d56e8fba88888f811"
+    },
+    {
+      "id": "10de628d-a541-41a5-8f0c-d25d2c870df3",
+      "technique_name": "Ambiguous KRB_ERROR Integrity Protection",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The specification explicitly states that the KRB_ERROR message is not integrity-protected (Section 3.1 and Section 5.9). Step 2: It warns that 'the client SHOULD NOT use any fields in this message for security-critical purposes' but does not mandate how clients must handle untrusted error messages. Step 3: This ambiguity allows an on-path attacker to fabricate or modify KRB_ERROR responses (e.g., injecting KDC_ERR_PREAUTH_REQUIRED with specific pre-auth hints) to force a client into using weaker encryption types, trigger unnecessary retries for DoS, or mislead the user about authentication failures. Implementations vary in how they process these untrusted messages.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "The contents of the KRB_ERROR message are not integrity-protected. As such, the client cannot detect replays, fabrications, or modifications."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.9",
+          "quote": "Note that because the KRB_ERROR message is not integrity protected, it is quite possible for an intruder to synthesize or modify it. In particular, this means that the client SHOULD NOT use any fields in this message for security-critical purposes..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Clients MUST treat all KRB_ERROR messages as untrusted. Do not use fields from KRB_ERROR for clock synchronization or key derivation. Implement strict timeouts and fallback mechanisms that do not rely on error message content.",
+      "fingerprint": "b3366bcec118b4091e34e9cecc8f5c9bebb274361fc977247c8778ae792e5051"
+    },
+    {
+      "id": "be1be6d7-7136-45dc-8e59-9c9201acfe96",
+      "technique_name": "Cross-Realm Authentication Path Flooding",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker initiates cross-realm authentication requests by requesting TGTs for remote realms.\nStep 2: The local KDC must construct an authentication path, potentially querying intermediate KDCs and performing transited policy checks.\nStep 3: By sending malformed or excessively nested cross-realm requests, an attacker can force the KDC to perform expensive cryptographic operations and database lookups across multiple realms. If the DISABLE-TRANSITED-CHECK flag is abused or if path resolution loops occur due to misconfiguration, it can lead to CPU exhaustion or infinite processing loops.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "1.2",
+          "quote": "An authentication path is the sequence of intermediate realms that are transited in communicating from one realm to another."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.3.1",
+          "quote": "Note that in this case misconfiguration of the Kerberos servers may cause loops in the resulting authentication path, which the client should be careful to detect and avoid."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has network access to KDC",
+        "Cross-realm trust relationships are configured"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Implement strict limits on cross-realm request rates. Enforce maximum depth for authentication paths and detect/abort circular path resolution loops at the KDC.",
+      "fingerprint": "71b691fedf051cad564bb14282cdfd2968de7455fa5f468d4ff3307c850087a5"
+    },
+    {
+      "id": "1bdce3ff-3b93-44d0-bb7e-5d8cab998fbc",
+      "technique_name": "Replay Cache Desynchronization Bypass",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: A server loses track of its replay cache (e.g., due to a crash or misconfiguration) while authenticators are still within the allowable clock skew window. Step 2: An attacker records a valid KRB_AP_REQ containing a ticket and authenticator sent by a legitimate client. Step 3: The attacker replays this captured request to the server after it has lost its cache state. Because the server cannot verify the authenticator against previously seen tuples, it accepts the replayed credentials as fresh, granting unauthorized access.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If a server loses track of authenticators presented within the allowable clock skew, it MUST reject all requests until the clock skew interval has passed... If this were not done, an attacker could subvert the authentication by recording the ticket and authenticator sent over the network to a server and replaying them following an event that caused the server to lose track of recently seen authenticators."
+        }
+      ],
+      "prerequisites": [
+        "attacker can capture network traffic",
+        "server loses replay cache state within clock skew window",
+        "multiple services sharing a principal do not share a centralized replay cache"
+      ],
+      "entities_involved": [
+        "client",
+        "application server"
+      ],
+      "mitigation": "Implement persistent, shared replay caches across all servers using the same service principal. Ensure servers reject all requests immediately upon detecting cache loss until the clock skew window expires.",
+      "fingerprint": "b9031c1e56d68603ad1bd0dce60cda081f206e6cf53d663c5118dcceffc973d8"
+    },
+    {
+      "id": "f063a4d1-aea4-4468-8ba8-2387182ea3c7",
+      "technique_name": "Cleartext Principal Identity Exposure",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.95,
+      "description": "Step 1: The client sends a KRB_AS_REQ or KRB_TGS_REQ message to the KDC. Step 2: According to Section 3.1 and Section 5.4.1, the request contains the client's identity (cname) and realm in cleartext. Step 3: An on-path attacker can observe these requests to enumerate valid Kerberos principals, track user login patterns, and map network identities without needing cryptographic keys.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "In the request, the client sends (in cleartext) its own identity and the identity of the server for which it is requesting credentials..."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.4.1",
+          "quote": "cname [1] PrincipalName OPTIONAL -- Used only in AS-REQ --"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Use encrypted tunnels (e.g., TLS/IPsec) for Kerberos traffic, or rely on pre-authentication mechanisms that do not expose the principal name in early unencrypted exchanges. Implement network segmentation to restrict KDC access.",
+      "fingerprint": "feb36bd684bfdd9609f91e242943e3b812c7c07945867c6eb878c69a57f2cb9e"
+    },
+    {
+      "id": "c55beeaf-9fd3-40c7-b9e6-9953fa4303f8",
+      "technique_name": "Unprotected Error Message Information Disclosure",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: A client sends a request to the KDC or server that results in an error (e.g., invalid pre-authentication, unknown principal). Step 2: The server responds with a KRB_ERROR message. Section 5.9 and 3.1 state that KRB_ERROR messages are not integrity-protected or encrypted. Step 3: An attacker can intercept these unencrypted errors to determine if specific principals exist (via KDC_ERR_C_PRINCIPAL_UNKNOWN), identify supported encryption types, or gather configuration details about the realm's policies.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.9",
+          "quote": "Note that because the KRB_ERROR message is not integrity protected, it is quite possible for an intruder to synthesize or modify it."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.1.3",
+          "quote": "If the requested client principal named in the request is unknown because it doesn't exist in the KDC's principal database, then an error message with a KDC_ERR_C_PRINCIPAL_UNKNOWN is returned."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Implement strict rate-limiting and logging for authentication failures. Use network-level encryption to protect error messages from eavesdropping. Configure KDCs to return generic errors where possible in untrusted networks.",
+      "fingerprint": "2b5704ee6b572adef5dcfa76dc4576290beb902cb7eab18a2648c89c42106117"
+    },
+    {
+      "id": "a4d31c49-1e73-42c4-87b7-c883ee050790",
+      "technique_name": "Unknown Authorization Data Ignorance",
+      "category": "AuthBypass",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: A ticket is issued with an unknown or unrecognized authorization data element type intended to restrict the client's privileges. Step 2: An RFC 1510-compliant or poorly updated application server receives the AP-REQ containing this ticket and ignores the unknown authorization data element instead of failing authentication. Step 3: The server grants access based solely on the authenticated principal name, bypassing the intended restrictive authorization policy embedded in the ignored data.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "Security Considerations",
+          "quote": "Many RFC 1510-compliant implementations ignore unknown authorization data elements. Depending on these implementations to honor authorization data restrictions may create a security weakness."
+        },
+        {
+          "rfc": 4120,
+          "section": "1.5.1",
+          "quote": "If an unknown authorization data element type is received by a server other than the ticket-granting service either in an AP-REQ or in a ticket contained in an AP-REQ, then authentication MUST fail."
+        }
+      ],
+      "prerequisites": [
+        "ticket contains restrictive authorization data",
+        "application server uses legacy/buggy implementation that ignores unknown AD types instead of failing"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "application server"
+      ],
+      "mitigation": "Ensure all application servers are updated to strictly enforce the requirement that authentication MUST fail upon receiving unknown authorization data elements. Use AD-IF-RELEVANT encapsulation for optional restrictions so non-compliant servers can safely ignore them without bypassing mandatory ones.",
+      "fingerprint": "1b55a95172c2737a7328604c85071ee59e9a8b41213dfa13a06401ec55c2c059"
+    },
+    {
+      "id": "fda86c87-4278-4b0b-81a2-e6df3beb9de4",
+      "technique_name": "TCP Connection Exhaustion via Stream Multiplexing",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker establishes multiple TCP connections to the KDC on port 88.\nStep 2: The client sends multiple KRB_KDC_REQ messages over a single TCP stream without waiting for responses (multiplexing), or rapidly opens and closes streams.\nStep 3: If the KDC implementation does not strictly limit concurrent open TCP connections or properly manage connection timeouts, an attacker can exhaust available file descriptors or socket buffers on the server, causing legitimate requests to fail.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "7.2.2",
+          "quote": "Care must be taken in managing TCP/IP connections on the KDC to prevent denial of service attacks based on the number of open TCP/IP connections."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has network access to KDC",
+        "KDC implementation lacks strict connection limits or timeout handling"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Implement strict limits on concurrent TCP connections per IP address. Enforce reasonable timeouts for idle streams and ensure proper cleanup of closed connections.",
+      "fingerprint": "6647f04eafcf9867d26bb2ce3a48d1013d6efae76182811d4124070ff9bec498"
+    },
+    {
+      "id": "b00b7f13-9a2e-4fd1-8a09-84face2f3cad",
+      "technique_name": "Shared Service Principal Replay Cache Bypass",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Multiple servers sharing a single service principal key are required to share the same replay cache to prevent cross-service replays (Section 3.2.3). Step 2: If one service in the cluster does not properly record authenticators into the shared cache (or uses a separate, isolated cache), an attacker can authenticate successfully against that vulnerable service. Step 3: The attacker then replays the same captured authenticator to another server sharing the principal key but which *did* log the request, or vice versa, exploiting inconsistent cache implementations to bypass replay detection entirely.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If multiple servers (for example, different services on one machine, or a single service implemented on multiple machines) share a service principal... either they MUST share this replay cache, or the application protocol MUST be designed so as to eliminate the need for it."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If any of the application protocols does not have replay protection built in, an authenticator used with such a service could later be replayed to a different service with the same service principal but no replay protection..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "multiple servers share a service principal key"
+      ],
+      "entities_involved": [
+        "client",
+        "application server cluster"
+      ],
+      "mitigation": "Ensure all services sharing a principal strictly implement and synchronize the shared replay cache. Alternatively, design application protocols to include independent sequence numbers or challenge-response mechanisms.",
+      "fingerprint": "58478e69a6e6351d08777cbd0f9e2cbf4b95a89020b36a20699ef5fb9577557f"
+    },
+    {
+      "id": "2d85c765-85a3-40be-86dd-1fac6ee89cc7",
+      "technique_name": "TCP Stream Length Field Manipulation",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker establishes a TCP connection to the KDC and sends multiple requests over a single stream (Section 7.2.2). Step 2: The attacker crafts a request with an artificially inflated length field in the 4-octet header, or sends a payload that exceeds internal buffer limits of the KDC implementation. Step 3: If the KDC does not properly validate the length against available memory or protocol constraints before allocation, it may lead to resource exhaustion (DoS) or memory corruption. While Section 7.2.2 specifies handling for high-bit set lengths, implementations must still enforce maximum payload sizes to prevent oversized buffer allocations.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "7.2.2",
+          "quote": "Each request (KRB_KDC_REQ) and response (KRB_KDC_REP or KRB_ERROR) sent over the TCP stream is preceded by the length of the request as 4 octets in network byte order. The high bit of the length is reserved for future expansion and MUST currently be set to zero."
+        }
+      ],
+      "prerequisites": [
+        "attacker has TCP connectivity to KDC",
+        "KDC implementation lacks strict buffer size validation"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Validate the 4-octet length field against a maximum allowed payload size before memory allocation. Enforce connection limits and timeout mechanisms to prevent resource exhaustion from malformed or oversized streams.",
+      "fingerprint": "ef2a63a4d8c3defdbf89322751e0376fc56ef59d623df0a74af85aff56642ce5"
+    },
+    {
+      "id": "ac7c2f65-f9ad-4eaf-9181-b478b4517684",
+      "technique_name": "Inconsistent Bit String Encoding",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The KerberosFlags type is defined as a BIT STRING with a minimum size of 32 bits (Section 5.2.8). Step 2: The spec notes that strict ASN.1 DER encoding for boolean vectors should truncate trailing zero bits, but most implementations unconditionally send all 32 bits to avoid compatibility issues. Step 3: It states that 'a lenient implementation MAY choose to accept fewer than 32 bits and to treat the missing bits as set to zero.' This creates an ambiguity where a client might send a truncated flag field (e.g., omitting trailing zeros), and different servers may interpret the missing bits differently or reject the message, potentially leading to inconsistent handling of critical ticket options like FORWARDABLE or RENEWABLE.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.2.8",
+          "quote": "The size constraint on the KerberosFlags type requires that at least 32 bits be encoded at all times, though a lenient implementation MAY choose to accept fewer than 32 bits and to treat the missing bits as set to zero."
+        }
+      ],
+      "prerequisites": [
+        "attacker can craft malformed KDC-REQ or AP-REQ messages"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Implementations MUST send exactly 32 bits for KerberosFlags. Receivers SHOULD strictly enforce the 32-bit length and reject shorter encodings rather than padding with zeros, to prevent ambiguity in flag interpretation.",
+      "fingerprint": "eb95bb14a113c548f1c5f2d21ac51d15b1954dc7e16ad71a8cf4408a39eaa82c"
+    },
+    {
+      "id": "7dcad8fa-5d45-4a81-9682-2571217f7e9c",
+      "technique_name": "KRB_ERROR Message Forgery/Replay",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker intercepts or generates a KRB_ERROR message. Step 2: Because the KRB_ERROR message is not integrity-protected, the client cannot verify its authenticity or detect replays/modifications. Step 3: The client may incorrectly adjust system clocks, generate flawed authenticators, or mishandle error recovery based on the forged error data.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.9",
+          "quote": "Note that because the KRB_ERROR message is not integrity protected, it is quite possible for an intruder to synthesize or modify it. In particular, this means that the client SHOULD NOT use any fields in this message for security-critical purposes..."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "The contents of the KRB_ERROR message are not integrity-protected. As such, the client cannot detect replays, fabrications, or modifications."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or can inject packets",
+        "client uses KRB_ERROR fields for security-critical operations"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC/server"
+      ],
+      "mitigation": "Clients MUST NOT use KRB_ERROR message fields for security-critical purposes such as clock synchronization or authenticator generation. Treat error messages as untrusted.",
+      "fingerprint": "b26413ff58e152eca5ae2ccfecbb40bedb5ff8e1d7d226c4168aa6608195bd47"
+    },
+    {
+      "id": "699131b2-7d7e-44ce-bdd8-acdbadc14452",
+      "technique_name": "KRB_ERROR Message Forgery/Replay",
+      "category": "AuthBypass",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker intercepts or generates a KRB_ERROR message, which is explicitly not integrity-protected by the protocol specification. Step 2: The client processes the forged error message and uses its fields (such as timestamps or pre-authentication hints) for security-critical operations like clock synchronization or generating fresh authenticators. Step 3: Because the attacker controls these values, they can manipulate the client's authentication state or bypass replay detection mechanisms, potentially allowing unauthorized access or session hijacking.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.9",
+          "quote": "Note that because the KRB_ERROR message is not integrity protected, it is quite possible for an intruder to synthesize or modify it. In particular, this means that the client SHOULD NOT use any fields in this message for security-critical purposes, such as setting a system clock or generating a fresh authenticator."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "The KRB_ERROR message contains information that can be used to associate it with the message to which it replies. The contents of the KRB_ERROR message are not integrity-protected. As such, the client cannot detect replays, fabrications, or modifications."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client implementation incorrectly uses unauthenticated KRB_ERROR fields for security decisions"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Clients must never use fields from unsigned KRB_ERROR messages for clock synchronization or authenticator generation. Use the nonce matching mechanism in legitimate AS_REP/TGS_REP responses for time validation instead.",
+      "fingerprint": "bfde2e4fa5a9faa725b9a8a50024e22fc3a6b523ec73470934ab3dc1ac17dd56"
+    },
+    {
+      "id": "c5057af1-2169-445e-a5e4-7008ed0a27d0",
+      "technique_name": "Replay Cache Inconsistency Across Shared-Key Services",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Multiple application servers share the same service principal key but maintain separate replay caches. Step 2: A client authenticates to Server A and presents a valid authenticator. Step 3: The attacker replays this authenticator to Server B. Because Server B's cache does not contain the entry from Server A, it accepts the replayed request, bypassing replay protection.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "Security Considerations",
+          "quote": "All services sharing a key need to use the same replay cache. If separate replay caches are used, then an authenticator used with one such service could later be replayed to a different service with the same service principal."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If multiple servers... share a service principal... either they MUST share this replay cache, or the application protocol MUST be designed so as to eliminate the need for it."
+        }
+      ],
+      "prerequisites": [
+        "multiple services share a single Kerberos service key",
+        "services maintain isolated replay caches"
+      ],
+      "entities_involved": [
+        "client",
+        "application servers"
+      ],
+      "mitigation": "All services sharing a principal key MUST use a shared, synchronized replay cache. Alternatively, implement application-level challenge-response or subkey negotiation to prevent replays.",
+      "fingerprint": "ba75b78c3c94f9ea4e745fe7567adeca7f564dadb950163ca2812f5d1e4fc240"
+    },
+    {
+      "id": "bb1ed524-24f7-460c-a023-45b6e50d68e6",
+      "technique_name": "Unbounded Authorization Data & Transited Field Growth",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: A client requests a ticket and includes extensive authorization data or triggers cross-realm authentication (Section 5.3, Section 3.3.3.2). Step 2: The transited field in the ticket can grow significantly as intermediate realms add their names to the encoded contents OCTET STRING. Authorization data fields are also optional SEQUENCE OF structures that can be populated with large amounts of data. Step 3: If implementations do not enforce maximum limits on these variable-length fields, processing and storage of tickets containing oversized payloads can lead to memory exhaustion or parsing failures during decryption/validation.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.3",
+          "quote": "authorization-data      [10] AuthorizationData OPTIONAL"
+        },
+        {
+          "rfc": 4120,
+          "section": "3.3.3.2",
+          "quote": "Because this field has the name of each transited realm added to it, it might potentially be very long. To decrease the length of this field, its contents are encoded."
+        }
+      ],
+      "prerequisites": [
+        "attacker can submit TGS requests with crafted authorization data",
+        "cross-realm authentication path is utilized"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "application server"
+      ],
+      "mitigation": "Implement strict maximum size limits for the transited field and authorization-data fields during ticket issuance and validation. Reject requests or tickets that exceed configured thresholds.",
+      "fingerprint": "6d100af5ed3c80170a92068565acfe7b9744536a85c1135b5275696f543cd741"
+    },
+    {
+      "id": "e1ea5669-73ff-47f7-b533-2ca182f914df",
+      "technique_name": "Unknown Authorization Data Ignorance",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: A server receives a ticket containing unknown authorization data elements. Step 2: The implementation ignores the unknown elements instead of rejecting them or handling them securely. Step 3: If the application relies on these authorization restrictions for access control, the missing validation allows the client to bypass intended privilege limitations.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "Security Considerations",
+          "quote": "Many RFC 1510-compliant implementations ignore unknown authorization data elements. Depending on these implementations to honor authorization data restrictions may create a security weakness."
+        },
+        {
+          "rfc": 4120,
+          "section": "1.5.1",
+          "quote": "If an unknown authorization data element type is received by a server other than the ticket-granting service either in an AP-REQ or in a ticket contained in an AP-REQ, then authentication MUST fail."
+        }
+      ],
+      "prerequisites": [
+        "ticket contains unrecognized authorization data types",
+        "server implementation ignores unknown authz elements"
+      ],
+      "entities_involved": [
+        "client",
+        "application server"
+      ],
+      "mitigation": "Servers MUST reject authentication if they receive unknown authorization data elements that are not encapsulated in AD-IF-RELEVANT. Ensure strict validation of all authorization data types.",
+      "fingerprint": "7d7d01f04e0b4efda16923c0e5649a9a187c270d2d7ae8ef28ef68f13cb38717"
+    },
+    {
+      "id": "b24e14ac-6301-4f59-97b2-7a6132a412da",
+      "technique_name": "Replay Cache Saturation via Clock Skew Manipulation",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker sends a high volume of KRB_AP_REQ messages to an application server with valid tickets but varying timestamps within the allowable clock skew window.\nStep 2: The application server must store these authenticators in its replay cache to prevent future replays within the skew period.\nStep 3: If the attacker floods the server with unique-looking requests, the replay cache can fill up. Per RFC 4120, if a server loses track of authenticators or the cache is full/overflowed improperly, it may be forced to reject all new requests until the clock skew interval passes, causing a self-inflicted denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If a server loses track of authenticators presented within the allowable clock skew, it must reject all requests until the clock skew interval has passed, providing assurance that any lost or replayed authenticators will fall outside the allowable clock skew and can no longer be successfully replayed."
+        }
+      ],
+      "prerequisites": [
+        "Attacker possesses valid tickets for target service",
+        "Application server uses a fixed-size or poorly managed replay cache"
+      ],
+      "entities_involved": [
+        "client",
+        "application server"
+      ],
+      "mitigation": "Implement bounded, LRU (Least Recently Used) replay caches with appropriate eviction policies. Ensure servers do not enter a state where they reject all requests due to cache overflow; instead, drop the oldest entries securely.",
+      "fingerprint": "3e325d470e6ebc1fd407fce43a1044efaa5fee678c39909021db85dab23a303b"
+    },
+    {
+      "id": "3885c68a-caa3-4fbc-a395-499de8bfa355",
+      "technique_name": "KRB_AS_REQ/REP Nonce Replay Without Pre-Authentication",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: In the AS exchange without pre-authentication, the client sends a nonce to associate replies with requests (Section 3.1). Step 2: An attacker can capture a KRB_AS_REQ and replay it to the KDC. Because Kerberos allows retransmission handling over UDP, the KDC may respond with a valid KRB_AS_REP containing the same nonce if it considers the request identical to a recent one (Section 3.1.2). Step 3: While this doesn't directly grant access without the client key, replaying requests can be used for denial-of-service or to flood the KDC's logging/replay tracking mechanisms, and provides known plaintext for offline dictionary attacks against weak passwords.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.1",
+          "quote": "In the request, the client sends... a randomly generated nonce, which can be used to detect replays and to associate replies with the matching requests."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.1.2",
+          "quote": "If a KDC receives a request identical to one it has recently processed successfully, the KDC MUST respond with a KRB_AS_REP message rather than a replay error."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "pre-authentication is not enforced by realm policy"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Enforce pre-authentication (e.g., PA-ENC-TIMESTAMP) as strongly encouraged in the security considerations. This binds the request to knowledge of the client's secret key, preventing trivial replay and known-plaintext attacks.",
+      "fingerprint": "3de3da7a7e3799ab8bdcb6554bf4cc0812b33d3c8988fa718c0c6db7ee3ef620"
+    },
+    {
+      "id": "d5a91a30-138f-40d2-a412-aac726580181",
+      "technique_name": "Transited Policy Check Downgrade",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: During cross-realm authentication, the client or an intermediate KDC can set the DISABLE-TRANSITED-CHECK flag in the KDCOptions field of a TGS request (Section 2.7, Section 5.4.1). Step 2: The KDC honors this flag and issues derivative tickets without validating the transited realm list against its security policy (Section 3.3.3). Step 3: An attacker who can influence client configuration or compromise an intermediate realm can force the disabling of transited checks, downgrading the authentication path verification to a state where untrusted realms are not filtered out, potentially allowing credential interception or impersonation through malicious cross-realm paths.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "2.7",
+          "quote": "A client MAY request that the KDCs not check the transited field by setting the DISABLE-TRANSITED-CHECK flag. KDCs are encouraged but not required to honor this flag."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.4.1",
+          "quote": "DISABLE-TRANSITED-CHECK ... If this flag is set in the request, checking of the transited field is disabled... KDCs are encouraged but not required to honor the DISABLE-TRANSITED-CHECK option."
+        }
+      ],
+      "prerequisites": [
+        "attacker can influence client configuration or compromise an intermediate realm",
+        "cross-realm authentication is in use"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "intermediate realm"
+      ],
+      "mitigation": "Configure KDCs to ignore the DISABLE-TRANSITED-CHECK flag and always enforce transited policy checks. Validate authentication paths using trusted configuration sources rather than relying on client-side flags.",
+      "fingerprint": "0bdff088d22206c0e840f2640d9a8260e9ebb082dc58414614435bf6c8598507"
+    },
+    {
+      "id": "3089d348-4d84-42f7-a621-44aa7d67709a",
+      "technique_name": "Clock Skew Window Race Condition",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Kerberos relies on loosely synchronized clocks with a configurable skew window (typically 5 minutes) to validate timestamps in authenticators and tickets (Section 3.2.3). Step 2: An attacker can exploit the race between clock synchronization updates and ticket validation by manipulating network time or exploiting implementation-specific timing in how the local clock is adjusted against KDC replies (Section 3.1.5). Step 3: If a client adjusts its system clock directly instead of using the offset method recommended, an attacker colluding with a user can generate a valid-looking KRB_AS_REP that bypasses strict time checks, allowing authentication outside the intended skew window.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.1.5",
+          "quote": "This technique MUST be used when adjusting for clock skew instead of directly changing the system clock..."
+        },
+        {
+          "rfc": 4120,
+          "section": "3.2.3",
+          "quote": "If the local (server) time and the client time in the authenticator differ by more than the allowable clock skew ... the KRB_AP_ERR_SKEW error is returned."
+        }
+      ],
+      "prerequisites": [
+        "attacker can manipulate network time or intercept KDC replies",
+        "client implementation does not strictly follow offset adjustment"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "server"
+      ],
+      "mitigation": "Clients must use the recommended clock offset adjustment technique rather than modifying system time. Servers should enforce strict, atomic timestamp comparisons and minimize the allowable clock skew.",
+      "fingerprint": "10a59cd9682bff86ee314d8e2e75fc38e5505ef57984975170595dbd8c688baf"
+    },
+    {
+      "id": "657a6a08-9b87-4924-91cc-960801a9c633",
+      "technique_name": "Ambiguous Transited Policy Checking",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The specification allows the DISABLE-TRANSITED-CHECK flag to be set by a client (Section 2.7). Step 2: It states that 'KDCs are encouraged but not required to honor this flag.' Step 3: This creates an ambiguity where some KDCs may ignore the request and check transited policies anyway, while others will skip them entirely. An attacker could exploit this by forcing a client to use DISABLE-TRANSITED-CHECK, relying on a lenient KDC to issue tickets without proper cross-realm validation, potentially allowing authentication through untrusted intermediate realms.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "2.7",
+          "quote": "A client MAY request that the KDCs not check the transited field by setting the DISABLE-TRANSITED-CHECK flag. KDCs are encouraged but not required to honor this flag."
+        }
+      ],
+      "prerequisites": [
+        "attacker can influence client configuration or force specific flags"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "KDCs SHOULD always honor transited policy checks regardless of the DISABLE-TRANSITED-CHECK flag. Clients should avoid setting this flag unless absolutely necessary and understand the security implications.",
+      "fingerprint": "0c4f0191fda9bcbc54b979b3b711df7118fb3d66a3651e6a7a26657209f0b7ac"
+    },
+    {
+      "id": "d4c39ad4-b6f6-493d-9ab5-8662fb202c6e",
+      "technique_name": "KRB_ERROR Message Manipulation and Clock Skew Exploitation",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker intercepts or fabricates a KRB_ERROR message in response to a client's AS-REQ or TGS-REQ (Section 5.9). Step 2: The KRB_ERROR message is not integrity protected and contains fields like stime (server time) and e-data (which can contain METHOD-DATA for pre-authentication hints). Step 3: A vulnerable client implementation may use the stime field from the unauthenticated error to adjust its local clock or incorrectly process pre-authentication requirements based on manipulated e-data. Step 4: This causes the client's state machine to operate with incorrect time synchronization or malformed pre-authentication data, leading to authentication failures, replay vulnerabilities, or successful offline dictionary attacks against subsequent legitimate exchanges.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.9",
+          "quote": "Note that because the KRB_ERROR message is not integrity protected, it is quite possible for an intruder to synthesize or modify it. In particular, this means that the client SHOULD NOT use any fields in this message for security-critical purposes, such as setting a system clock or generating a fresh authenticator."
+        },
+        {
+          "rfc": 4120,
+          "section": "5.9.1",
+          "quote": "If the errorcode is KDC_ERR_PREAUTH_REQUIRED, then the e-data field will contain an encoding of a sequence of padata fields..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Clients must strictly ignore stime and e-data fields in KRB_ERROR messages for security-critical operations. Implementations should validate error message structure and rely on authenticated timestamps from successful exchanges or secure NTP.",
+      "fingerprint": "13463bf26380dad1299e5bcf2b2353126ea07ebcef4ece7573db5875af28133e"
+    },
+    {
+      "id": "10dc1b6d-59ac-44a9-800b-2b753312d0f7",
+      "technique_name": "Transited Field Policy Check Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Cross-realm authentication relies on the transited field in tickets to list realms that verified the client (Section 2.7). Step 2: A client can request the DISABLE-TRANSITED-CHECK flag, and while KDCs are 'encouraged but not required' to honor it, a race or policy inconsistency between different KDCs in a chain could result in a ticket being issued without proper transited validation (Section 1.2). Step 3: If an intermediate KDC fails to check the transited field due to implementation variance or timing in policy updates, an untrusted realm may be omitted from the list, allowing an attacker to bypass cross-realm trust policies when the final application server processes the ticket.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "1.2",
+          "quote": "A client may request that the KDCs not check the transited field by setting the DISABLE-TRANSITED-CHECK flag. KDCs SHOULD honor this flag."
+        },
+        {
+          "rfc": 4120,
+          "section": "2.7",
+          "quote": "Application servers MUST either do the transited-realm checks themselves or reject cross-realm tickets without TRANSITED-POLICY-CHECKED set."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls or compromises an intermediate realm KDC",
+        "cross-realm authentication path is used"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC (intermediate)",
+        "application server"
+      ],
+      "mitigation": "Application servers must strictly enforce transited field validation regardless of the TRANSITED-POLICY-CHECKED flag. KDCs should be configured to mandate transited checks and treat DISABLE-TRANSITED-CHECK as a hard rejection rather than an optional override.",
+      "fingerprint": "7968ce7d975f710f53d298692b6e693129d2a256746a6314b06c99dfc5ab3f10"
+    },
+    {
+      "id": "05e9b1c0-7e29-46c0-a6c5-039ddb48c244",
+      "technique_name": "Postdated Ticket Validation Bypass",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: A client requests a postdated ticket by setting the POSTDATED and ALLOW-POSTDATE options in KRB_AS_REQ (Section 2.4). Step 2: The KDC issues the ticket with both the POSTDATED and INVALID flags set. Step 3: The client stores this invalid ticket. If the ticket is stolen before its starttime, it should be rendered permanently invalid via a hot-list mechanism upon validation attempt. Step 4: A vulnerable application server or TGS may fail to strictly check the INVALID flag or bypass the requirement that postdated tickets MUST be validated by the KDC before use (Section 2.2). If the server accepts the ticket based solely on its current time being within a loose skew window without verifying validation status, an attacker can use stolen postdated credentials prematurely.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "2.2",
+          "quote": "Application servers MUST reject tickets that have this flag set. A postdated ticket will be issued in this form. Invalid tickets MUST be validated by the KDC before use..."
+        },
+        {
+          "rfc": 4120,
+          "section": "2.4",
+          "quote": "When the KDC issues a POSTDATED ticket, it will also be marked as INVALID, so that the application client MUST present the ticket to the KDC to be validated before use."
+        }
+      ],
+      "prerequisites": [
+        "attacker can steal credentials",
+        "target server ignores INVALID flag or validation requirements"
+      ],
+      "entities_involved": [
+        "client",
+        "application server",
+        "KDC"
+      ],
+      "mitigation": "Enforce strict checking of the INVALID flag in all application servers. Ensure clients always validate postdated tickets with the KDC prior to presentation. Implement hot-listing mechanisms that are checked during validation.",
+      "fingerprint": "80d77776f6e74c5193daf80ac0c095ae34e55c02e8ff86510520c962f4ea68b6"
+    },
+    {
+      "id": "ae19934d-3778-4fd0-980b-644705389f50",
+      "technique_name": "Large Response UDP Amplification",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker sends KRB_KDC_REQ messages to the KDC requesting tickets with large authorization data or using encryption types that produce larger ciphertexts.\nStep 2: The KDC generates a response (KRB_TGS_REP or KRB_AS_REP) that exceeds the UDP MTU size.\nStep 3: Per specification, the KDC must return KRB_ERR_RESPONSE_TOO_BIG and force the client to retry over TCP. An attacker can repeatedly trigger this condition, causing network congestion due to oversized UDP packets or forcing a fallback to TCP stateful connections, consuming server resources.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "7.2.1",
+          "quote": "If the response cannot be handled using UDP (for example, because it is too large), the KDC MUST return KRB_ERR_RESPONSE_TOO_BIG, forcing the client to retry the request using the TCP transport."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has network access to KDC",
+        "KDC supports UDP transport"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Limit the size of authorization data and ticket extensions. Implement response size limits and ensure efficient fallback handling for TCP retries to prevent resource exhaustion.",
+      "fingerprint": "b75158acf228895013f6c33d5cea7b078be5948a1da08526e6da7923a6fff948"
+    },
+    {
+      "id": "892503cf-8e99-4d7d-8171-82fab0d43596",
+      "technique_name": "Cleartext Transited Realm Path Disclosure",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.85,
+      "description": "Step 1: During cross-realm authentication, a client obtains a TGT that includes a transited field listing the realms traversed. Step 2: Section 3.3.3.2 and 6.2 describe how this field is encoded and included in tickets sent to application servers. Step 3: An attacker monitoring ticket exchanges can reconstruct the authentication path between realms, revealing organizational trust relationships and network topology.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "3.3.3.2",
+          "quote": "The realm part of the client's identity will be taken from the TGT. The name of the realm that issued the TGT... will be added to the transited field of the ticket to be issued."
+        },
+        {
+          "rfc": 4120,
+          "section": "6.2",
+          "quote": "The application server is ultimately responsible for accepting or rejecting authentication and SHOULD check that only suitably trusted KDCs are relied upon... The transited field in the ticket identifies which realms (and thus which KDCs) were involved in the authentication process"
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe cross-realm ticket exchanges"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC",
+        "application server"
+      ],
+      "mitigation": "Restrict visibility of cross-realm tickets to authorized application servers. Use network segmentation and monitor for unusual cross-realm authentication patterns.",
+      "fingerprint": "73c34e13ef54c76609c71685747b237aeb31facc9d9ef963b946aee05b719e1c"
+    },
+    {
+      "id": "fa9c213e-4179-4623-bc99-1e2857bb7cb2",
+      "technique_name": "Transport Downgrade from TCP to UDP",
+      "category": "Downgrade",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: Kerberos clients MAY initially attempt requests over UDP transport (Section 7.2.2). Step 2: If a response is too large for UDP, the KDC returns KRB_ERR_RESPONSE_TOO_BIG, forcing the client to retry using TCP (Section 7.2.1). Step 3: An attacker can manipulate packet sizes or drop TCP responses to force the client to remain on UDP. While Kerberos supports both, UDP lacks inherent stream integrity and connection state, potentially downgrading the transport security posture and making it easier for an attacker to perform replay attacks or disrupt session continuity compared to a secured TCP channel.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "7.2.1",
+          "quote": "If the response cannot be handled using UDP (for example, because it is too large), the KDC MUST return KRB_ERR_RESPONSE_TOO_BIG, forcing the client to retry the request using the TCP transport."
+        },
+        {
+          "rfc": 4120,
+          "section": "7.2.2",
+          "quote": "Clients MUST support the sending of TCP requests, but MAY choose to try a request initially using the UDP transport."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client allows fallback to UDP"
+      ],
+      "entities_involved": [
+        "client",
+        "KDC"
+      ],
+      "mitigation": "Configure clients and KDCs to prefer or mandate TCP transport. Implement TLS/DTLS encapsulation for Kerberos traffic where supported to ensure transport-level integrity.",
+      "fingerprint": "edbe31291eb4b1b2ff51bb2cca5de0131f05903379c302ac6c4fe64a874c5269"
+    },
+    {
+      "id": "c676e5bf-c65e-4dfb-ac13-f02d54a67896",
+      "technique_name": "Inconsistent Empty SEQUENCE OF Handling",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: The specification notes that some messages contain optional SEQUENCE OF types (Section 5.1.3). Step 2: It states that 'Implementations SHOULD NOT send empty SEQUENCE OF encodings... but SHOULD accept them as being equivalent to an omitted OPTIONAL type.' Step 3: This creates ambiguity where a sender might include an empty sequence, and a receiver might reject it or treat it differently than an absent field. In security-critical contexts (e.g., authorization data), this could lead to inconsistent parsing of restrictions, potentially bypassing intended access controls.",
+      "rfc_references": [
+        {
+          "rfc": 4120,
+          "section": "5.1.3",
+          "quote": "Implementations SHOULD NOT send empty SEQUENCE OF encodings that are marked OPTIONAL, but SHOULD accept them as being equivalent to an omitted OPTIONAL type."
+        }
+      ],
+      "prerequisites": [
+        "attacker can craft messages with empty optional fields"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST strictly reject empty SEQUENCE OF encodings for OPTIONAL fields and treat them as malformed. Do not accept them as equivalent to omitted fields.",
+      "fingerprint": "fa33f697a5174ed570eef2360f699751d5675eabdf9550ab2ddb030920147701"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-01T23:34:44.484328+00:00",
+    "model_used": "bad-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "total_tokens_used": 546670,
+    "analysis_duration_secs": 233.661603833,
+    "run_id": 14,
+    "input_hash": "3048fc055705d63f56bcafe569088d0b0c2282367f61ea33f49f40189e221e47",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}
