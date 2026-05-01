@@ -552,9 +552,9 @@ fn extract_summary(section: &Section) -> String {
         }
     }
 
-    // Sentences with RFC 2119 keywords
+    // Sentences with RFC 2119 keywords (all 10 per RFC 2119)
     let rfc2119_keywords = ["MUST", "MUST NOT", "SHALL", "SHALL NOT",
-        "SHOULD", "SHOULD NOT", "REQUIRED", "RECOMMENDED"];
+        "SHOULD", "SHOULD NOT", "REQUIRED", "RECOMMENDED", "MAY", "OPTIONAL"];
     for sentence in section.text.split('.') {
         let trimmed = sentence.trim();
         if rfc2119_keywords.iter().any(|kw| trimmed.contains(kw)) {
@@ -797,7 +797,15 @@ pub async fn run_stage2(
         ChatMessage { role: "user".to_string(), content: user },
     ];
 
-    let (clustering, usage) = llm.chat_json::<ClusteringResponse>(messages).await?;
+    let (clustering, usage) = match llm.chat_json::<ClusteringResponse>(messages).await {
+        Ok(result) => result,
+        Err(e) => {
+            analysis_store::complete_run(
+                conn, run_id, "failed", 0, &rfc_numbers, Some(&e.to_string())
+            ).await?;
+            return Err(e);
+        }
+    };
     total_tokens += usage.total_tokens;
 
     // Filter clusters if mechanism_filter is specified
