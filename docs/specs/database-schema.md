@@ -84,7 +84,7 @@ CREATE TABLE cross_refs (
     source_section  TEXT NOT NULL,
     target_rfc      INTEGER,              -- NULL for internal refs
     target_section  TEXT,
-    context         TEXT NOT NULL,         -- surrounding sentence
+    context         TEXT NOT NULL          -- surrounding sentence
 );
 
 CREATE INDEX idx_xrefs_source ON cross_refs(source_rfc);
