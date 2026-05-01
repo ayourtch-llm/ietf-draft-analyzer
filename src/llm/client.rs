@@ -171,14 +171,31 @@ impl LlmClient {
                         });
                     }
 
-                    let content = body["choices"][0]["message"]["content"]
+                    let raw_content = body["choices"][0]["message"]["content"]
                         .as_str()
                         .map(|s| s.to_string())
                         .unwrap_or_default();
 
+                    // Strip <think>...</think> blocks (Qwen3 thinking mode)
+                    let content = strip_thinking_tags(&raw_content);
+
                     if content.is_empty() {
+                        tracing::warn!(
+                            "Empty response content from LLM (raw length: {} chars)",
+                            raw_content.len()
+                        );
+                        tracing::trace!("Raw LLM response: {}", &raw_content[..raw_content.len().min(500)]);
+                        // Retry once with a nudge — sometimes models need encouragement
+                        if attempts < max_attempts {
+                            tracing::info!("Retrying with prompt nudge...");
+                            attempts += 1;
+                            continue;
+                        }
                         return Err(RfcAnalyzerError::LlmParse {
-                            detail: "Empty response content from LLM".to_string(),
+                            detail: format!(
+                                "Empty response content from LLM (raw was {} chars, may be thinking-only)",
+                                raw_content.len()
+                            ),
                         });
                     }
 
@@ -280,6 +297,24 @@ impl LlmClient {
     pub fn cancel_token(&self) -> &CancellationToken {
         &self.cancel_token
     }
+}
+
+/// Strip `<think>...</think>` blocks from LLM responses (Qwen3 thinking mode).
+/// Returns the content after all thinking blocks are removed.
+fn strip_thinking_tags(content: &str) -> String {
+    let mut result = content.to_string();
+    // Remove all <think>...</think> blocks (potentially multi-line)
+    while let Some(start) = result.find("<think>") {
+        if let Some(end) = result.find("</think>") {
+            let end_tag_len = "</think>".len();
+            result = format!("{}{}", &result[..start], &result[end + end_tag_len..]);
+        } else {
+            // Unclosed <think> tag — remove everything from <think> onward
+            result = result[..start].to_string();
+            break;
+        }
+    }
+    result.trim().to_string()
 }
 
 /// Parse Retry-After header value (seconds).

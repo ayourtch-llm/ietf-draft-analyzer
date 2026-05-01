@@ -376,6 +376,19 @@ pub async fn run_stage2(
                 )
                 .await?;
             }
+            Err(RfcAnalyzerError::LlmParse { detail }) => {
+                tracing::warn!("Mechanism '{}': LLM response parse failed: {}", mechanism, detail);
+                analysis_store::complete_work_item(
+                    conn,
+                    run_id,
+                    "mechanism",
+                    mechanism,
+                    0,
+                    true,
+                    Some(&format!("Parse error: {}", detail)),
+                )
+                .await?;
+            }
             Err(e) => {
                 // Check if this was a cancellation
                 let status = if llm.cancel_token().is_cancelled() {
