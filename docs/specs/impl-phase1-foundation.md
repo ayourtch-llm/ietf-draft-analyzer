@@ -900,10 +900,13 @@ pub async fn get_rfc(conn: &Connection, rfc_number: u32) -> Result<Option<Rfc>> 
             let sections: Vec<Section> = sect_stmt
                 .query_map([rfc_number], |row| {
                     let depth_i64: i64 = row.get(2)?;
+                    let depth = u8::try_from(depth_i64).map_err(|_| {
+                        rusqlite::Error::IntegralValueOutOfRange(2, depth_i64)
+                    })?;
                     Ok(Section {
                         number: row.get(0)?,
                         title: row.get(1)?,
-                        depth: u8::try_from(depth_i64).unwrap_or(0),
+                        depth,
                         anchor: row.get(3)?,
                         text: row.get(4)?,
                         cross_refs: Vec::new(), // filled below

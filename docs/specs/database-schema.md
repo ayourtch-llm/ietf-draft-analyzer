@@ -52,7 +52,8 @@ CREATE TABLE rfcs (
     obsoletes     TEXT,                   -- JSON array of integers
     updates       TEXT,                   -- JSON array of integers
     obsoleted_by  TEXT,                   -- JSON array of integers
-    updated_by    TEXT                    -- JSON array of integers
+    updated_by    TEXT,                   -- JSON array of integers
+    references_json TEXT                  -- JSON array of Reference objects
 );
 ```
 
