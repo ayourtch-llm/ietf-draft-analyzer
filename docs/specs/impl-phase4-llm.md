@@ -358,9 +358,12 @@ impl LlmClient {
     }
 
     /// Estimate the token count for a string.
-    /// Uses chars/4 heuristic with 30% safety margin.
+    /// Uses chars/4 heuristic (char count, not byte count).
+    /// Note: the 30% safety margin is applied in context_budget() via the
+    /// 0.7 multiplier on model_context_window, NOT here. This function
+    /// returns a raw estimate.
     pub fn estimate_tokens(&self, text: &str) -> u64 {
-        (text.len() as u64) / 4
+        (text.chars().count() as u64) / 4
     }
 
     /// Get the effective context budget in estimated tokens.
@@ -983,7 +986,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_success() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1003,7 +1006,7 @@ mod tests {
         assert_eq!(usage.total_tokens, 15);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_rate_limit_retry() {
         let server = MockServer::start().await;
         // First call: 429, second: 200
@@ -1029,7 +1032,7 @@ mod tests {
         assert_eq!(response, "OK");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_401_fails_immediately() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1045,7 +1048,7 @@ mod tests {
         assert!(matches!(result, Err(RfcAnalyzerError::LlmApi { status: 401, .. })));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_400_context_overflow() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1064,7 +1067,7 @@ mod tests {
         assert!(matches!(result, Err(RfcAnalyzerError::LlmContextOverflow)));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_chat_content_filter() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
@@ -1083,7 +1086,7 @@ mod tests {
         assert!(matches!(result, Err(RfcAnalyzerError::LlmContentRefusal { .. })));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn test_context_budget() {
         // SAFETY: Test-only env var mutation
         unsafe { std::env::set_var("TEST_API_KEY", "key"); }
