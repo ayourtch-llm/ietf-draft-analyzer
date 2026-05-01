@@ -176,15 +176,36 @@ impl LlmClient {
                         .map(|s| s.to_string())
                         .unwrap_or_default();
 
+                    // Log raw vs stripped content for debugging
+                    let thinking_len = raw_content.find("</think>")
+                        .map(|end| end + "</think>".len())
+                        .unwrap_or(0);
+                    tracing::debug!(
+                        "LLM response: raw={} chars, thinking={} chars, finish_reason={}",
+                        raw_content.len(), thinking_len, finish_reason
+                    );
+                    if raw_content.len() > 0 && raw_content.len() < 500 {
+                        tracing::debug!("LLM raw content: {}", raw_content);
+                    } else if raw_content.len() >= 500 {
+                        tracing::debug!(
+                            "LLM raw content (first 500 chars): {}",
+                            raw_content.chars().take(500).collect::<String>()
+                        );
+                    }
+
                     // Strip <think>...</think> blocks (Qwen3 thinking mode)
                     let content = strip_thinking_tags(&raw_content);
 
+                    tracing::debug!(
+                        "LLM content after stripping: {} chars",
+                        content.len()
+                    );
+
                     if content.is_empty() {
                         tracing::warn!(
-                            "Empty response content from LLM (raw length: {} chars)",
-                            raw_content.len()
+                            "Empty response content from LLM (raw={} chars, thinking={} chars)",
+                            raw_content.len(), thinking_len
                         );
-                        tracing::trace!("Raw LLM response: {}", &raw_content[..raw_content.len().min(500)]);
                         // Retry once with a nudge — sometimes models need encouragement
                         if attempts < max_attempts {
                             tracing::info!("Retrying with prompt nudge...");
