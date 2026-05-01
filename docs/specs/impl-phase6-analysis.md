@@ -376,6 +376,18 @@ pub async fn run_stage3(
     let mut total_tokens: u64 = 0;
     let mut all_leads: Vec<SecurityLead> = Vec::new();
 
+    // Load already-persisted leads from prior attempts of this run (for resume)
+    // This ensures the final result includes leads from completed categories
+    let prior_leads = load_existing_leads(conn, run_id, min_severity).await
+        .unwrap_or_default();
+    all_leads.extend(prior_leads);
+
+    // Deduplicate categories before processing
+    let categories: Vec<&str> = {
+        let mut seen = std::collections::HashSet::new();
+        categories.into_iter().filter(|c| seen.insert(*c)).collect()
+    };
+
     // Load all sections
     let mut all_sections: Vec<(RfcNumber, Section)> = Vec::new();
     for rfc_num in &rfc_numbers {
@@ -439,9 +451,6 @@ pub async fn run_stage3(
         let sm_tokens = llm.estimate_tokens(&sm_summary);
         let budget = llm.context_budget(system_prompt_tokens + sm_tokens);
 
-        let section_refs: Vec<(RfcNumber, &Section)> = selected.iter()
-            .map(|(rfc, sec)| (*rfc, *sec))
-            .collect();
         let cluster_ids: Vec<(u32, String)> = selected.iter()
             .map(|(rfc, sec)| (rfc.0, sec.number.clone()))
             .collect();
@@ -886,6 +895,8 @@ pub struct AnalysisReport {
 pub struct ReportMetadata {
     pub generated_at: String,
     pub model_used: String,
+    /// Tokens used in THIS invocation (0 on cache hit). Historical token
+    /// usage is stored in analysis_runs.tokens_used for the original run.
     pub total_tokens_used: u64,
     pub analysis_duration_secs: f64,
     pub run_id: Option<i64>,
@@ -896,6 +907,10 @@ pub struct ReportMetadata {
     pub temperature: f64,
     pub max_tokens_per_request: u32,
     pub schema_version: u32,
+    /// Sections dropped by summarize-to-fit. Deferred in v1: truncation
+    /// info is stored in run_work_items.error column but not loaded into
+    /// reports. Future versions may aggregate this from work items.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub sections_truncated: Vec<String>,
 }
 
