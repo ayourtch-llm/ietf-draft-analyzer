@@ -124,6 +124,34 @@ pub async fn find_completed_run(
     Ok(result)
 }
 
+/// Check for an existing resumable run (status 'running' or 'interrupted') with matching input_hash.
+pub async fn find_resumable_run(
+    conn: &Connection,
+    protocol: &str,
+    stage: &str,
+    input_hash: &str,
+) -> Result<Option<i64>> {
+    let protocol = protocol.to_string();
+    let stage = stage.to_string();
+    let input_hash = input_hash.to_string();
+    let result = conn
+        .call(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id FROM analysis_runs
+                 WHERE protocol = ?1 AND stage = ?2 AND input_hash = ?3
+                   AND status IN ('running', 'interrupted')
+                 ORDER BY id DESC LIMIT 1"
+            )?;
+            let id = stmt.query_row(
+                rusqlite::params![protocol, stage, input_hash],
+                |row| row.get::<_, i64>(0),
+            ).optional()?;
+            Ok(id)
+        })
+        .await?;
+    Ok(result)
+}
+
 /// Update a run's status and completion time.
 pub async fn complete_run(
     conn: &Connection,
@@ -185,21 +213,24 @@ pub async fn upsert_work_item(
     Ok(())
 }
 
-/// Mark a work item as completed with token usage.
+/// Mark a work item as completed (or failed) with token usage.
+/// The `notes` field stores non-error metadata (e.g., truncation info) on the error column
+/// without changing the status to 'failed'. Pass `failed: true` to mark as failed.
 pub async fn complete_work_item(
     conn: &Connection,
     run_id: i64,
     kind: &str,
     key: &str,
     tokens_used: u64,
-    error: Option<&str>,
+    failed: bool,
+    notes: Option<&str>,
 ) -> Result<()> {
     let kind = kind.to_string();
     let key = key.to_string();
     let completed_at = Utc::now().to_rfc3339();
-    let status = if error.is_some() { "failed" } else { "completed" };
+    let status = if failed { "failed" } else { "completed" };
     let status = status.to_string();
-    let error = error.map(|s| s.to_string());
+    let notes = notes.map(|s| s.to_string());
 
     conn.call(move |conn| {
         conn.execute(
@@ -207,7 +238,7 @@ pub async fn complete_work_item(
                 tokens_used = ?3, error = ?4
              WHERE run_id = ?5 AND work_item_kind = ?6 AND work_item_key = ?7",
             rusqlite::params![status, completed_at, tokens_used as i64,
-                error, run_id, kind, key],
+                notes, run_id, kind, key],
         )?;
         Ok(())
     })
@@ -267,21 +298,41 @@ pub async fn store_state_machine(
     Ok(())
 }
 
-/// Load all state machines for a protocol.
+/// Load state machines for a protocol, optionally filtered by run_id.
+/// If run_id is None, returns machines from the latest completed run.
 pub async fn get_state_machines(
     conn: &Connection,
     protocol: &str,
+    run_id: Option<i64>,
 ) -> Result<Vec<(String, String, String)>> {
     // Returns (name, mechanism, data_json) tuples
     let protocol = protocol.to_string();
     let result = conn
         .call(move |conn| {
-            let mut stmt = conn.prepare(
-                "SELECT name, mechanism, data FROM state_machines
-                 WHERE protocol = ?1 ORDER BY name"
-            )?;
+            let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = if let Some(rid) = run_id {
+                (
+                    "SELECT name, mechanism, data FROM state_machines
+                     WHERE protocol = ?1 AND run_id = ?2 ORDER BY name".to_string(),
+                    vec![Box::new(protocol), Box::new(rid)],
+                )
+            } else {
+                // Find the latest completed run for this protocol's 'model' stage
+                (
+                    "SELECT name, mechanism, data FROM state_machines
+                     WHERE protocol = ?1
+                       AND run_id = (
+                           SELECT id FROM analysis_runs
+                           WHERE protocol = ?1 AND stage = 'model' AND status = 'completed'
+                           ORDER BY id DESC LIMIT 1
+                       )
+                     ORDER BY name".to_string(),
+                    vec![Box::new(protocol)],
+                )
+            };
+            let mut stmt = conn.prepare(&query)?;
+            let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
             let machines: Vec<(String, String, String)> = stmt
-                .query_map([&protocol], |row| {
+                .query_map(params_refs.as_slice(), |row| {
                     Ok((row.get(0)?, row.get(1)?, row.get(2)?))
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -326,7 +377,7 @@ pub fn summarize_to_fit(
         .iter()
         .map(|(rfc_num, section)| {
             let score = compute_relevance_score(
-                *rfc_num, section, cluster_section_ids, rfc_numbers_in_scope
+                *rfc_num, section, cluster_section_ids, rfc_numbers_in_scope, sections
             );
             ScoredSection {
                 rfc_number: *rfc_num,
@@ -335,6 +386,9 @@ pub fn summarize_to_fit(
             }
         })
         .collect();
+
+    // Only include sections that have a non-zero score (cluster members or referenced)
+    scored.retain(|s| s.score > 0);
 
     // Sort by score descending, then by RFC number ascending, then section number
     scored.sort_by(|a, b| {
@@ -392,24 +446,38 @@ pub fn summarize_to_fit(
 }
 
 /// Compute relevance score for a section.
+/// The `all_sections` parameter provides access to all sections so we can check
+/// if any cluster section's cross_refs point to this section.
 fn compute_relevance_score(
     rfc_number: RfcNumber,
     section: &Section,
     cluster_section_ids: &[(u32, String)],
     rfc_numbers_in_scope: &[RfcNumber],
+    all_sections: &[(RfcNumber, &Section)],
 ) -> i32 {
     let mut score = 0i32;
 
-    // +3: Cross-referenced BY sections in the cluster but not itself in the cluster
+    // +10: Section is IN the cluster (always include these first)
     let is_in_cluster = cluster_section_ids.iter()
         .any(|(rfc, sec)| *rfc == rfc_number.0 && *sec == section.number);
-    if !is_in_cluster {
-        // Check if any cluster section references this section
-        // (This would require access to cross-refs, which we check via the
-        //  section's own incoming references. For simplicity, we give +3 if
-        //  this section is referenced by any section in the cluster.)
-        // The caller should pre-filter to only include relevant sections.
-        score += 3;
+    if is_in_cluster {
+        score += 10;
+    } else {
+        // +3: Cross-referenced BY sections in the cluster but not itself in the cluster.
+        // Check if any cluster section has a cross_ref targeting this section.
+        let is_referenced_by_cluster = all_sections.iter()
+            .filter(|(rfc, sec)| {
+                cluster_section_ids.iter().any(|(cr, cs)| *cr == rfc.0 && *cs == sec.number)
+            })
+            .any(|(_, cluster_sec)| {
+                cluster_sec.cross_refs.iter().any(|xref| {
+                    xref.target_rfc.map_or(false, |r| r.0 == rfc_number.0)
+                        && xref.target_section.as_deref() == Some(&section.number)
+                })
+            });
+        if is_referenced_by_cluster {
+            score += 3;
+        }
     }
 
     // +2: Contains RFC 2119 keywords
@@ -550,44 +618,56 @@ mod tests {
 The Stage 2 pipeline: mechanism clustering, state machine extraction,
 validation, and persistence.
 
+> **Phase 4 dependency**: `LlmClient` (from Phase 4) must expose a getter
+> `pub fn config(&self) -> &LlmConfig` so that `run_stage2` can pass
+> `llm_config` fields to `compute_stage2_hash`. If Phase 4's `LlmClient` does
+> not yet have this method, add it as:
+> ```rust
+> impl LlmClient {
+>     /// Returns a reference to the underlying LLM configuration.
+>     pub fn config(&self) -> &LlmConfig { &self.config }
+> }
+> ```
+
 ```rust
+use crate::config::LlmConfig;
 use crate::db::{analysis_store, rfc_store};
 use crate::error::{RfcAnalyzerError, Result};
 use crate::llm::client::{ChatMessage, LlmClient};
 use crate::llm::prompts;
 use crate::pipeline::summarize;
 use crate::rfc::model::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio_rusqlite::Connection;
 
 /// LLM response type for mechanism clustering.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ClusteringResponse {
     pub clusters: Vec<MechanismCluster>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MechanismCluster {
     pub mechanism: String,
     pub sections: Vec<SectionRef>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SectionRef {
     pub rfc: u32,
     pub section: String,
 }
 
 /// LLM response type for state machine extraction.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StateMachineResponse {
     pub name: String,
     pub states: Vec<StateResponse>,
     pub transitions: Vec<TransitionResponse>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StateResponse {
     pub name: String,
     pub description: String,
@@ -595,7 +675,7 @@ pub struct StateResponse {
     pub source_section: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TransitionResponse {
     pub from: String,
     pub to: String,
@@ -615,6 +695,7 @@ pub async fn run_stage2(
     llm: &LlmClient,
     protocol: &str,
     mechanism_filter: Option<&[String]>,
+    llm_config: &LlmConfig,
 ) -> Result<usize> {
     // Get protocol RFCs
     let rfc_numbers = rfc_store::get_protocol_rfcs(conn, protocol).await?;
@@ -624,7 +705,7 @@ pub async fn run_stage2(
 
     // Compute input hash for caching
     let input_hash = compute_stage2_hash(
-        conn, &rfc_numbers, mechanism_filter, llm.model()
+        conn, &rfc_numbers, mechanism_filter, llm.model(), llm_config
     ).await?;
 
     // Check for existing completed run
@@ -635,20 +716,28 @@ pub async fn run_stage2(
         return Ok(0);
     }
 
-    // Create analysis run
-    let run_id = analysis_store::create_run(
-        conn,
-        protocol,
-        "model",
-        Some(llm.model()),
-        &rfc_numbers,
-        None,
-        None,
-        mechanism_filter,
-        None,
-        prompts::PROMPT_VERSION,
-        &input_hash,
-    ).await?;
+    // Check for an existing resumable run (running or interrupted) with matching input_hash
+    let run_id = if let Some(existing_id) = analysis_store::find_resumable_run(
+        conn, protocol, "model", &input_hash
+    ).await? {
+        tracing::info!("Resuming existing run {}", existing_id);
+        existing_id
+    } else {
+        // Create a new analysis run
+        analysis_store::create_run(
+            conn,
+            protocol,
+            "model",
+            Some(llm.model()),
+            &rfc_numbers,
+            None,
+            None,
+            mechanism_filter,
+            None,
+            prompts::PROMPT_VERSION,
+            &input_hash,
+        ).await?
+    };
 
     let mut total_tokens: u64 = 0;
     let mut machines_count = 0;
@@ -729,17 +818,23 @@ pub async fn run_stage2(
         if cluster_sections.is_empty() {
             tracing::warn!("No sections found for mechanism '{}', skipping", mechanism);
             analysis_store::complete_work_item(
-                conn, run_id, "mechanism", mechanism, 0, Some("No matching sections")
+                conn, run_id, "mechanism", mechanism, 0, true, Some("No matching sections")
             ).await?;
             continue;
         }
 
         // Summarize to fit context budget
+        // Pass ALL sections (not just cluster sections) so that cross-referenced
+        // sections outside the cluster can be included with appropriate scoring.
         let system_prompt_tokens = llm.estimate_tokens(prompts::INJECTION_DEFENSE) + 200; // overhead
         let budget = llm.context_budget(system_prompt_tokens);
 
+        let all_sections_refs: Vec<(RfcNumber, &Section)> = all_sections.iter()
+            .map(|(rfc, sec)| (*rfc, sec))
+            .collect();
+
         let (sections_text, dropped) = summarize::summarize_to_fit(
-            &cluster_sections,
+            &all_sections_refs,
             &cluster_section_ids,
             budget,
             &rfc_numbers,
@@ -754,7 +849,7 @@ pub async fn run_stage2(
             let err = format!("Oversized cluster '{}' exceeds context budget after summarization", mechanism);
             tracing::warn!("{}", err);
             analysis_store::complete_work_item(
-                conn, run_id, "mechanism", mechanism, 0, Some(&err)
+                conn, run_id, "mechanism", mechanism, 0, true, Some(&err)
             ).await?;
             continue;
         }
@@ -791,21 +886,29 @@ pub async fn run_stage2(
                 ).await?;
 
                 machines_count += 1;
+                // Record dropped sections (if any) as notes on successful completion.
+                // The status remains 'completed'; the error/notes field is dual-purpose.
+                let truncation_notes = if dropped.is_empty() {
+                    None
+                } else {
+                    Some(format!("Truncated sections: {}", dropped.join(", ")))
+                };
                 analysis_store::complete_work_item(
-                    conn, run_id, "mechanism", mechanism, usage.total_tokens, None
+                    conn, run_id, "mechanism", mechanism, usage.total_tokens,
+                    false, truncation_notes.as_deref()
                 ).await?;
             }
             Err(RfcAnalyzerError::LlmContextOverflow) => {
                 let err = "Context overflow despite summarization";
                 tracing::warn!("Mechanism '{}': {}", mechanism, err);
                 analysis_store::complete_work_item(
-                    conn, run_id, "mechanism", mechanism, 0, Some(err)
+                    conn, run_id, "mechanism", mechanism, 0, true, Some(err)
                 ).await?;
             }
             Err(RfcAnalyzerError::LlmContentRefusal { detail }) => {
                 tracing::warn!("Mechanism '{}': LLM refused: {}", mechanism, detail);
                 analysis_store::complete_work_item(
-                    conn, run_id, "mechanism", mechanism, 0, Some(&detail)
+                    conn, run_id, "mechanism", mechanism, 0, true, Some(&detail)
                 ).await?;
             }
             Err(e) => {
@@ -861,6 +964,7 @@ async fn compute_stage2_hash(
     rfc_numbers: &[RfcNumber],
     mechanism_filter: Option<&[String]>,
     model: &str,
+    config: &LlmConfig,
 ) -> Result<String> {
     // Load all section texts for hashing
     let mut section_texts = String::new();
@@ -901,13 +1005,17 @@ async fn compute_stage2_hash(
     hasher.update(model.as_bytes());
     hasher.update(b"|");
 
-    // Items 5-7: model parameters (from config via client)
-    // These are part of the LlmClient config but we pass model name here.
-    // The full hash should include temperature, max_tokens, context_window
-    // but those are accessible via LlmClient. For simplicity, we hash model
-    // name which typically implies parameters. Full hash is a Phase 5+
-    // refinement.
-    // TODO: Pass temperature, max_tokens, model_context_window here
+    // Item 5: temperature
+    hasher.update(config.temperature.to_string().as_bytes());
+    hasher.update(b"|");
+
+    // Item 6: max_tokens_per_request
+    hasher.update(config.max_tokens_per_request.to_string().as_bytes());
+    hasher.update(b"|");
+
+    // Item 7: model_context_window
+    hasher.update(config.model_context_window.to_string().as_bytes());
+    hasher.update(b"|");
 
     // Item 8: mechanism filter
     let filter_str = mechanism_filter
@@ -950,7 +1058,7 @@ pub async fn cmd_model(
     let llm = LlmClient::new(config.llm.clone(), cancel_token)?;
 
     let mechanism_filter = mechanisms.as_deref();
-    let count = modeling::run_stage2(conn, &llm, protocol, mechanism_filter).await?;
+    let count = modeling::run_stage2(conn, &llm, protocol, mechanism_filter, &config.llm).await?;
 
     if count > 0 {
         tracing::info!("Model complete: {} state machines for '{}'", count, protocol);
@@ -963,6 +1071,14 @@ pub async fn cmd_model(
 ```
 
 ## 6. Module Wiring
+
+### src/db/mod.rs (update)
+
+Add the new analysis_store module export:
+
+```rust
+pub mod analysis_store;
+```
 
 ### src/commands/mod.rs (update)
 
@@ -1101,7 +1217,7 @@ mod tests {
         ).await.unwrap();
 
         upsert_work_item(&conn, run_id, "mechanism", "auth", "running").await.unwrap();
-        complete_work_item(&conn, run_id, "mechanism", "auth", 100, None).await.unwrap();
+        complete_work_item(&conn, run_id, "mechanism", "auth", 100, false, None).await.unwrap();
 
         let completed = get_completed_work_items(&conn, run_id, "mechanism").await.unwrap();
         assert_eq!(completed, vec!["auth".to_string()]);
@@ -1124,7 +1240,7 @@ mod tests {
             "smhash", run_id,
         ).await.unwrap();
 
-        let machines = get_state_machines(&conn, "tcp").await.unwrap();
+        let machines = get_state_machines(&conn, "tcp", Some(run_id)).await.unwrap();
         assert_eq!(machines.len(), 1);
         assert_eq!(machines[0].0, "Connection");
         assert_eq!(machines[0].1, "state_management");
