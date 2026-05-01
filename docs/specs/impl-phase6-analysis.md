@@ -1027,7 +1027,7 @@ pub async fn cmd_analyze(
         duration,
         result.run_id,
         Some(result.input_hash),
-        config.llm.temperature,
+        config.llm.temperature as f64,
         config.llm.max_tokens_per_request,
     );
 
