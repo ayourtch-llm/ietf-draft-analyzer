@@ -69,14 +69,19 @@ pub fn parse_json_array_partial<T: serde::de::DeserializeOwned>(content: &str) -
 }
 
 /// Strip markdown code fences (```json ... ```) from a string.
+/// Handles case variations: ```json, ```JSON, ``` JSON, etc.
 pub(crate) fn strip_markdown_fences(content: &str) -> String {
     let trimmed = content.trim();
 
-    // Check for ```json or ``` at the start
-    let without_start = if let Some(stripped) = trimmed.strip_prefix("```json") {
-        stripped
-    } else if let Some(stripped) = trimmed.strip_prefix("```") {
-        stripped
+    // Check for ```json (case-insensitive) or bare ``` at the start
+    let without_start = if trimmed.starts_with("```") {
+        let after_ticks = &trimmed[3..];
+        let after_ticks_trimmed = after_ticks.trim_start();
+        if after_ticks_trimmed.to_lowercase().starts_with("json") {
+            &after_ticks_trimmed[4..]
+        } else {
+            after_ticks
+        }
     } else {
         return trimmed.to_string();
     };
@@ -125,6 +130,18 @@ mod tests {
     #[test]
     fn test_strip_markdown_fences_none() {
         let input = "{\"key\": \"value\"}";
+        assert_eq!(strip_markdown_fences(input), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_uppercase_json() {
+        let input = "```JSON\n{\"key\": \"value\"}\n```";
+        assert_eq!(strip_markdown_fences(input), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_spaced_json() {
+        let input = "``` json\n{\"key\": \"value\"}\n```";
         assert_eq!(strip_markdown_fences(input), "{\"key\": \"value\"}");
     }
 

@@ -169,7 +169,13 @@ impl LlmClient {
                         attempts,
                         max_attempts
                     );
-                    tokio::time::sleep(Duration::from_secs(wait)).await;
+                    // Cancellation-aware sleep: abort wait if Ctrl+C
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(wait)) => {}
+                        _ = self.cancel_token.cancelled() => {
+                            return Err(RfcAnalyzerError::Config("Operation cancelled during retry wait".to_string()));
+                        }
+                    }
                     continue;
                 }
                 500..=599 => {
@@ -185,7 +191,13 @@ impl LlmClient {
                         attempts,
                         max_attempts
                     );
-                    tokio::time::sleep(Duration::from_secs(wait)).await;
+                    // Cancellation-aware sleep
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(wait)) => {}
+                        _ = self.cancel_token.cancelled() => {
+                            return Err(RfcAnalyzerError::Config("Operation cancelled during retry wait".to_string()));
+                        }
+                    }
                     continue;
                 }
                 400 => {
