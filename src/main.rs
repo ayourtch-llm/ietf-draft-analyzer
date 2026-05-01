@@ -76,9 +76,43 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        _ => {
-            eprintln!("Command not yet implemented.");
-            std::process::exit(1);
+        Command::Analyze {
+            protocol,
+            categories,
+            min_severity,
+            output,
+            format,
+        } => {
+            rfc_analyzer::commands::analyze::cmd_analyze(
+                &conn,
+                &config,
+                &protocol,
+                categories,
+                &min_severity,
+                output,
+                &format,
+                cancel_token,
+            )
+            .await?;
+        }
+        Command::Run {
+            protocol,
+            rfcs,
+            depth,
+            output,
+            format,
+        } => {
+            rfc_analyzer::commands::run::cmd_run(
+                &conn,
+                &config,
+                &protocol,
+                rfcs,
+                depth,
+                output,
+                &format,
+                cancel_token,
+            )
+            .await?;
         }
     }
 
