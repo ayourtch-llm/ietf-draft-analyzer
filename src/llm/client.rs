@@ -37,7 +37,7 @@ impl LlmClient {
         let api_key = config.resolve_api_key()?;
         let semaphore = Arc::new(Semaphore::new(config.max_concurrent_requests as usize));
         let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(600))
             .build()
             .map_err(|e| RfcAnalyzerError::Config(format!("HTTP client error: {}", e)))?;
 
