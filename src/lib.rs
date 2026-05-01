@@ -5,4 +5,5 @@ pub mod db;
 pub mod error;
 pub mod graph;
 pub mod llm;
+pub mod pipeline;
 pub mod rfc;

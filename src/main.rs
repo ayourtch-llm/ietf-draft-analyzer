@@ -63,6 +63,19 @@ async fn main() -> Result<()> {
         Command::Graph { target, format } => {
             rfc_analyzer::commands::graph::cmd_graph(&conn, &target, &format).await?;
         }
+        Command::Model {
+            protocol,
+            mechanisms,
+        } => {
+            rfc_analyzer::commands::model::cmd_model(
+                &conn,
+                &config,
+                &protocol,
+                mechanisms,
+                cancel_token,
+            )
+            .await?;
+        }
         _ => {
             eprintln!("Command not yet implemented.");
             std::process::exit(1);

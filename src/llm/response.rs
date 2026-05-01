@@ -74,8 +74,7 @@ pub(crate) fn strip_markdown_fences(content: &str) -> String {
     let trimmed = content.trim();
 
     // Check for ```json (case-insensitive) or bare ``` at the start
-    let without_start = if trimmed.starts_with("```") {
-        let after_ticks = &trimmed[3..];
+    let without_start = if let Some(after_ticks) = trimmed.strip_prefix("```") {
         let after_ticks_trimmed = after_ticks.trim_start();
         if after_ticks_trimmed.to_lowercase().starts_with("json") {
             &after_ticks_trimmed[4..]
