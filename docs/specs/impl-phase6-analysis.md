@@ -327,8 +327,12 @@ pub async fn run_stage3(
         return Err(RfcAnalyzerError::NoMappedRfcs(protocol.to_string()));
     }
 
-    // Resolve categories
-    let categories = section_select::resolve_categories(category_filter);
+    // Resolve and deduplicate categories (dedup before hashing for consistency)
+    let categories: Vec<&str> = {
+        let resolved = section_select::resolve_categories(category_filter);
+        let mut seen = std::collections::HashSet::new();
+        resolved.into_iter().filter(|c| seen.insert(*c)).collect()
+    };
     if categories.is_empty() {
         tracing::warn!("No valid categories after filtering");
         return Ok(Stage3Result {
@@ -339,7 +343,7 @@ pub async fn run_stage3(
         });
     }
 
-    // Compute input hash
+    // Compute input hash (categories are already deduped)
     let input_hash = compute_stage3_hash(
         conn, &rfc_numbers, &categories, llm.model(), llm_config, protocol
     ).await?;
@@ -382,11 +386,6 @@ pub async fn run_stage3(
         .unwrap_or_default();
     all_leads.extend(prior_leads);
 
-    // Deduplicate categories before processing
-    let categories: Vec<&str> = {
-        let mut seen = std::collections::HashSet::new();
-        categories.into_iter().filter(|c| seen.insert(*c)).collect()
-    };
 
     // Load all sections
     let mut all_sections: Vec<(RfcNumber, Section)> = Vec::new();
