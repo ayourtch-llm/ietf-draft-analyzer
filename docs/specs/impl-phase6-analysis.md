@@ -349,7 +349,7 @@ pub async fn run_stage3(
         conn, protocol, "analyze", &input_hash
     ).await? {
         tracing::info!("Stage 3 already completed with matching inputs, loading results");
-        let leads = load_existing_leads(conn, protocol, min_severity).await?;
+        let leads = load_existing_leads(conn, existing_run_id, min_severity).await?;
         return Ok(Stage3Result {
             leads,
             run_id: Some(existing_run_id),
@@ -511,7 +511,7 @@ pub async fn run_stage3(
 
                 // Persist leads incrementally
                 for lead in &processed {
-                    store_lead(conn, protocol, lead, run_id).await?;
+                    store_lead(conn, protocol, lead, run_id, &input_hash).await?;
                 }
                 all_leads.extend(processed);
 
@@ -623,15 +623,18 @@ fn rank_leads(leads: &mut Vec<SecurityLead>) {
 }
 
 /// Store a single security lead in the database.
-/// Deduplicates by fingerprint+protocol (skips insert if fingerprint already exists for this protocol).
+/// Deduplicates by fingerprint+run_id (skips insert if fingerprint already exists for this run).
+/// Cross-run deduplication is handled at read time by `deduplicate_leads`.
 async fn store_lead(
     conn: &Connection,
     protocol: &str,
     lead: &SecurityLead,
     run_id: i64,
+    input_hash: &str,
 ) -> Result<()> {
     let protocol = protocol.to_string();
     let lead = lead.clone();
+    let input_hash = input_hash.to_string();
 
     conn.call(move |conn| {
         conn.execute(
@@ -641,7 +644,7 @@ async fn store_lead(
                  state_machine_name, mitigation, input_hash, run_id, fingerprint)
              SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
              WHERE NOT EXISTS (
-                 SELECT 1 FROM security_leads WHERE fingerprint = ?15 AND protocol = ?2
+                 SELECT 1 FROM security_leads WHERE fingerprint = ?15 AND run_id = ?14
              )",
             rusqlite::params![
                 lead.id,
@@ -656,7 +659,7 @@ async fn store_lead(
                 serde_json::to_string(&lead.entities_involved).unwrap_or_default(),
                 Option::<String>::None, // state_machine_name
                 lead.mitigation,
-                "", // input_hash (per-lead, reserved)
+                input_hash,
                 run_id,
                 lead.fingerprint,
             ],
@@ -667,22 +670,21 @@ async fn store_lead(
     Ok(())
 }
 
-/// Load existing leads for a protocol (from latest completed run).
+/// Load existing leads for a specific run.
 /// Applies the same dedup/rank/filter pipeline as a fresh run.
-async fn load_existing_leads(conn: &Connection, protocol: &str, min_severity: &str) -> Result<Vec<SecurityLead>> {
+async fn load_existing_leads(conn: &Connection, run_id: i64, min_severity: &str) -> Result<Vec<SecurityLead>> {
     let min_severity = min_severity.to_string();
-    let protocol = protocol.to_string();
     let raw_leads = conn
         .call(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, technique_name, category, severity, confidence,
                     description, rfc_references, prerequisites, entities_involved,
                     mitigation, fingerprint
-                 FROM security_leads WHERE protocol = ?1
+                 FROM security_leads WHERE run_id = ?1
                  ORDER BY id"
             )?;
             let leads: Vec<SecurityLead> = stmt
-                .query_map([&protocol], |row| {
+                .query_map([run_id], |row| {
                     Ok(SecurityLead {
                         id: row.get(0)?,
                         technique_name: row.get(1)?,
@@ -863,7 +865,6 @@ async fn compute_stage3_hash(
 Report assembly and JSON serialization.
 
 ```rust
-use crate::graph::builder::DependencyGraph;
 use crate::graph::query::GraphSummary;
 use crate::pipeline::analysis::SecurityLead;
 use crate::rfc::model::RfcNumber;
@@ -875,6 +876,7 @@ pub struct AnalysisReport {
     pub protocol_name: String,
     pub rfcs_analyzed: Vec<u32>,
     pub dependency_graph_summary: GraphSummary,
+    // Design spec has full state machines; v1 uses count only for report size
     pub state_machines_count: usize,
     pub security_leads: Vec<SecurityLead>,
     pub metadata: ReportMetadata,
@@ -891,6 +893,10 @@ pub struct ReportMetadata {
     pub prompt_version: String,
     pub rfc_analyzer_version: String,
     pub report_format: String,
+    pub temperature: f64,
+    pub max_tokens_per_request: u32,
+    pub schema_version: u32,
+    pub sections_truncated: Vec<String>,
 }
 
 impl AnalysisReport {
@@ -905,6 +911,8 @@ impl AnalysisReport {
         duration_secs: f64,
         run_id: Option<i64>,
         input_hash: Option<String>,
+        temperature: f64,
+        max_tokens_per_request: u32,
     ) -> Self {
         AnalysisReport {
             protocol_name: protocol.to_string(),
@@ -922,6 +930,11 @@ impl AnalysisReport {
                 prompt_version: crate::llm::prompts::PROMPT_VERSION.to_string(),
                 rfc_analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
                 report_format: "json".to_string(),
+                temperature,
+                max_tokens_per_request,
+                schema_version: 2,
+                // TODO: Load truncation info from run_work_items.error column
+                sections_truncated: Vec::new(),
             },
         }
     }
@@ -1000,6 +1013,8 @@ pub async fn cmd_analyze(
         duration,
         result.run_id,
         Some(result.input_hash),
+        config.llm.temperature,
+        config.llm.max_tokens_per_request,
     );
 
     // Output
@@ -1299,7 +1314,7 @@ After implementation:
    - `cargo run -- run tcp 9293 --depth 1 -o report.json` runs full pipeline
 4. Re-running with same inputs skips (cached)
 5. Ctrl+C during analysis saves partial results, resumes on next run
-6. `cargo run -- analyze tcp --categories missing_validation,replay` filters categories
+6. `cargo run -- analyze tcp --categories missing_validation,replay_attack` filters categories
 
 ## 10. What This Phase Completes
 
