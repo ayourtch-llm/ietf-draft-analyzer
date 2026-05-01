@@ -281,9 +281,7 @@ impl LlmClient {
             let status = response.status().as_u16();
             let headers = response.headers().clone();
 
-            // ... same status handling as chat() ...
-            // (implementer: factor the status-match logic into a shared helper
-            //  or duplicate the match block here — both are acceptable)
+            // Error classification and retry logic:
             match status {
                 200 => {
                     let body: serde_json::Value = response.json().await
@@ -785,7 +783,13 @@ pub async fn cmd_clear(
     scope: &str,
     yes: bool,
 ) -> anyhow::Result<()> {
-    // ... existing confirmation logic ...
+    // Validate scope BEFORE confirmation prompt
+    match scope {
+        "all" | "rfcs" | "graphs" | "analysis" => {}
+        other => anyhow::bail!("Unknown scope: '{}'. Valid: all, rfcs, graphs, analysis", other),
+    }
+
+    // Confirmation prompt (existing logic from Phase 2)
 
     let scope_owned = scope.to_string();
     let scope_log = scope_owned.clone();
