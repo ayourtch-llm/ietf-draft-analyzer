@@ -260,12 +260,18 @@ impl RfcFetcher {
                     tracing::debug!("404 for {} format of RFC {}", format, rfc_number);
                     continue;
                 }
-                status => {
+                status if status >= 500 => {
                     tracing::warn!(
-                        "HTTP {} fetching RFC {} ({})",
+                        "HTTP {} (server error) fetching RFC {} ({}), trying next format",
                         status, rfc_number, format
                     );
                     continue;
+                }
+                status => {
+                    // Non-retryable HTTP error (403, etc.) — fail immediately
+                    return Err(RfcAnalyzerError::Config(
+                        format!("HTTP {} fetching RFC {} ({})", status, rfc_number, format)
+                    ));
                 }
             }
         }
@@ -363,9 +369,7 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
     // Parser state
     let mut element_stack: Vec<String> = Vec::new();
     let mut current_section: Option<SectionBuilder> = None;
-    let mut current_text = String::new();
     let mut in_normative_refs = false;
-    let mut in_informative_refs = false;
     let mut current_ref_anchor = String::new();
     let mut current_ref_title = String::new();
     let mut ref_rfc_value: Option<u32> = None;
@@ -377,11 +381,14 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Eof) => break,
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let (e, is_empty) = match &event {
+                    Event::Start(e) => (e, false),
+                    Event::Empty(e) => (e, true),
+                    _ => unreachable!(),
+                };
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                let attrs = extract_attrs(&e);
-                let is_empty = matches!(reader.read_event_into(&mut Vec::new()), _)
-                    && e.name().as_ref() == b""; // not used; see below
+                let attrs = extract_attrs(e);
 
                 // Handle elements by name
                 match name.as_str() {
@@ -452,7 +459,11 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                     }
                     _ => {}
                 }
-                element_stack.push(name);
+                // Only push Start events onto the stack (Empty events
+                // don't have a matching End)
+                if !is_empty {
+                    element_stack.push(name);
+                }
             }
             Ok(Event::End(e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
@@ -473,7 +484,6 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                     }
                     "references" => {
                         in_normative_refs = false;
-                        in_informative_refs = false;
                     }
                     _ => {}
                 }
@@ -501,9 +511,7 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                         let text_lower = text.to_lowercase();
                         if text_lower.contains("normative") {
                             in_normative_refs = true;
-                            in_informative_refs = false;
                         } else if text_lower.contains("informative") {
-                            in_informative_refs = true;
                             in_normative_refs = false;
                         }
                     }
@@ -637,7 +645,7 @@ fn extract_date_from_xml(xml: &str) -> Option<NaiveDate> {
 }
 
 /// Parse month name to number.
-fn parse_month(s: &str) -> Option<u32> {
+pub(crate) fn parse_month(s: &str) -> Option<u32> {
     match s.to_lowercase().as_str() {
         "january" | "jan" => Some(1),
         "february" | "feb" => Some(2),
@@ -1209,27 +1217,24 @@ fn parse_index_entry(number: u32, text: &str) -> Option<RfcIndexEntry> {
 }
 
 fn extract_rfc_list_from_parens(text: &str, prefix: &str) -> Vec<RfcNumber> {
-    let re = regex::Regex::new(&format!(r"\({}\s+([^)]+)\)", regex::escape(prefix))).ok()?
-        // Fallback for compilation failure
-        ;
-    // Actually let's just do it inline without the regex Option issue:
     let search = format!("({}", prefix);
-    if let Some(start) = text.find(&search) {
-        let rest = &text[start..];
-        if let Some(end) = rest.find(')') {
-            let inner = &rest[search.len()..end];
-            return inner
-                .split(|c: char| c == ',' || c == ' ')
-                .filter_map(|s| {
-                    let s = s.trim();
-                    s.strip_prefix("RFC")
-                        .and_then(|n| n.parse::<u32>().ok())
-                        .map(RfcNumber)
-                })
-                .collect();
-        }
-    }
-    Vec::new()
+    let Some(start) = text.find(&search) else {
+        return Vec::new();
+    };
+    let rest = &text[start..];
+    let Some(end) = rest.find(')') else {
+        return Vec::new();
+    };
+    let inner = &rest[search.len()..end];
+    inner
+        .split(|c: char| c == ',' || c == ' ')
+        .filter_map(|s| {
+            let s = s.trim();
+            s.strip_prefix("RFC")
+                .and_then(|n| n.parse::<u32>().ok())
+                .map(RfcNumber)
+        })
+        .collect()
 }
 ```
 
@@ -1263,8 +1268,8 @@ use clap::Parser;
 use rfc_analyzer::cli::{Cli, Command};
 use rfc_analyzer::config::Config;
 use rfc_analyzer::db;
+use rfc_analyzer::error::RfcAnalyzerError;
 use rfc_analyzer::rfc::fetcher::RfcFetcher;
-use rfc_analyzer::rfc::model::RfcFormat;
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -1386,7 +1391,7 @@ async fn cmd_map(
             // Fetch
             let fetch_result = match fetcher.fetch(rfc_num).await {
                 Ok(r) => r,
-                Err(crate::error::RfcAnalyzerError::RfcNotFound(_)) => {
+                Err(RfcAnalyzerError::RfcNotFound(_)) => {
                     if is_seed {
                         anyhow::bail!("Seed RFC {} not found (404)", rfc_num);
                     }
@@ -1508,7 +1513,7 @@ async fn cmd_show(conn: &tokio_rusqlite::Connection, rfc_number: u32) -> Result<
                 println!("Updated by: {:?}", rfc.updated_by.iter().map(|r| r.0).collect::<Vec<_>>());
             }
             // Show first few sections
-            for (i, section) in rfc.sections.iter().take(10).enumerate() {
+            for section in rfc.sections.iter().take(10) {
                 println!("  {} {} ({} chars, {} xrefs)",
                     section.number, section.title,
                     section.text.len(), section.cross_refs.len());
@@ -1538,9 +1543,10 @@ async fn cmd_clear(conn: &tokio_rusqlite::Connection, scope: &str, yes: bool) ->
         }
     }
 
-    let scope = scope.to_string();
+    let scope_owned = scope.to_string();
+    let scope_log = scope_owned.clone();
     conn.call(move |conn| {
-        match scope.as_str() {
+        match scope_owned.as_str() {
             "all" => {
                 conn.execute_batch(
                     "DELETE FROM security_leads;
@@ -1586,7 +1592,7 @@ async fn cmd_clear(conn: &tokio_rusqlite::Connection, scope: &str, yes: bool) ->
     })
     .await?;
 
-    tracing::info!("Cleared {} data", scope);
+    tracing::info!("Cleared {} data", scope_log);
     Ok(())
 }
 ```
@@ -1699,6 +1705,49 @@ async fn test_fetch_real_rfc_xml() {
     println!("References: {}", rfc.references.len());
     for s in rfc.sections.iter().take(5) {
         println!("  {} {} ({} xrefs)", s.number, s.title, s.cross_refs.len());
+    }
+}
+```
+
+### src/rfc/index.rs — tests
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_rfc_index_entry() {
+        let content = r#"
+0793 Transmission Control Protocol. J. Postel. September 1981.
+     (Format: TXT, HTML) (Obsoleted by RFC9293) (Updated by RFC1122,
+     RFC3168) (Also STD0007) (Status: INTERNET STANDARD)
+
+0794 Pre-emption. V.G. Cerf. September 1981. (Format: TXT) (Status:
+     UNKNOWN)
+"#;
+        let entries = parse_rfc_index(content);
+        assert!(entries.contains_key(&793));
+        let e793 = &entries[&793];
+        assert!(e793.title.contains("Transmission Control Protocol"));
+        assert_eq!(e793.obsoleted_by, vec![RfcNumber(9293)]);
+        assert!(e793.updated_by.contains(&RfcNumber(1122)));
+        assert!(e793.updated_by.contains(&RfcNumber(3168)));
+    }
+
+    #[test]
+    fn test_extract_rfc_list_from_parens() {
+        let text = "(Obsoleted by RFC9293) (Updated by RFC1122, RFC3168)";
+        let obs = extract_rfc_list_from_parens(text, "Obsoleted by");
+        assert_eq!(obs, vec![RfcNumber(9293)]);
+        let upd = extract_rfc_list_from_parens(text, "Updated by");
+        assert_eq!(upd, vec![RfcNumber(1122), RfcNumber(3168)]);
+    }
+
+    #[test]
+    fn test_missing_parens() {
+        let result = extract_rfc_list_from_parens("no parens here", "Obsoleted by");
+        assert!(result.is_empty());
     }
 }
 ```
