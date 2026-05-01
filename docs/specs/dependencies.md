@@ -23,6 +23,7 @@
 | `governor` | 0.8.x | Rate limiting for LLM API calls |
 | `zstd` | 0.13.x | Compression for cached RFC content |
 | `uuid` | 1.x | UUID v4 generation for lead IDs |
+| `tokio-rusqlite` | 0.6.x | Async bridge for rusqlite (dedicated SQLite thread) |
 
 ## Dev Dependencies
 
@@ -52,6 +53,11 @@ Directed edges naturally represent asymmetric RFC relationships.
 ### Why `governor` for rate limiting?
 Battle-tested rate limiter that integrates well with tokio. Supports both
 token bucket and sliding window algorithms.
+
+### Why `tokio-rusqlite`?
+`rusqlite` is synchronous but the pipeline runs on tokio. `tokio-rusqlite`
+runs a dedicated background thread for SQLite with a channel-based async API,
+avoiding `Mutex` contention and `spawn_blocking` boilerplate.
 
 ### Why `zstd` for compression?
 Better compression ratio than gzip/deflate for text content, with very fast
@@ -91,6 +97,7 @@ toml = "0.8"
 governor = "0.8"
 zstd = "0.13"
 uuid = { version = "1", features = ["v4"] }
+tokio-rusqlite = "0.6"
 
 [dev-dependencies]
 tempfile = "3"

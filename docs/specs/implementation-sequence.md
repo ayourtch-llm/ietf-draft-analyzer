@@ -175,3 +175,19 @@ OpenAI-compatible endpoint.
 - `rfc1035_snippet.txt` — representative plain text excerpt
 - `llm_state_machine_response.json` — sample LLM response
 - `llm_security_analysis_response.json` — sample LLM response
+
+### Regression Validation (`docs/specs/test-fixtures/`)
+
+Known-CVE fixtures derived from the DreamGroup Black Hat Asia talk.
+These are protocols where specification-level analysis has produced
+real CVEs. The tool should surface related leads when analyzing these
+protocols:
+
+- **Kerberos** (CVE-2025-59088): DNS-based KDC discovery gap in RFC 4120
+- **IPv6** (CVE-2012-4444): Overlapping fragment hardening gap in RFC 5722
+- **Telnet** (CVE-2026-32746): Unbounded SLC triplets in RFC 1184 (pre-auth RCE)
+- **TLS 1.3** (CVE-2025-12765, CVE-2026-25644, CVE-2026-31798): Certificate
+  validation requirements in RFC 8446 Appendix C.5
+
+Target: at least 4 of 6 known CVEs should produce hits or near misses.
+See `docs/specs/test-fixtures/regression-validation.md` for scoring criteria.

@@ -96,7 +96,7 @@ the `context` field.
 
 2. **Extract state machines**: For each mechanism cluster:
    - Concatenate the relevant section texts with provenance markers
-     (`--- RFC {N}, Section {X.Y} ({title}) ---`)
+     (`<<<RFC_SECTION rfc="{N}" section="{X.Y}" title="{title}">>>...<<<END_RFC_SECTION>>>`)
    - Send to the LLM with the state machine extraction prompt
    - Parse the JSON response into `ProtocolState` + `StateTransition` structs
 
@@ -112,9 +112,20 @@ the `context` field.
 ### Context Window Handling
 
 If a mechanism cluster's combined section text exceeds the context budget:
-1. Split sections into chunks that fit
-2. Process each chunk, asking the LLM to extract partial state machines
-3. Merge: union of states, union of transitions, deduplicate by name
+
+1. **Preferred: summarize to fit.** Summarize less-relevant sections (keeping
+   the most state-machine-dense sections in full) to fit within the context
+   window. This avoids the cross-chunk consistency problems of splitting.
+
+2. **Fallback: warn and skip.** If summarization still exceeds the budget,
+   log a warning identifying the oversized cluster and skip it. The user
+   can re-run with a narrower `--mechanisms` filter or a model with a
+   larger context window.
+
+Chunked extraction with merge-by-name is **not used** — it produces
+unreliable results because independent chunks generate inconsistent state
+names and miss cross-chunk references. A proper multi-pass extraction
+strategy may be added in a future version.
 
 ## Stage 3: Security Analysis (`pipeline/analysis.rs`)
 
@@ -140,16 +151,25 @@ If a mechanism cluster's combined section text exceeds the context budget:
    - Send to the LLM with the security analysis prompt
    - Parse `Vec<SecurityLead>` from the JSON response
 
-3. **Deduplicate**: Merge leads that reference the same RFC section and
-   the same attack category. Keep the higher-confidence version.
+3. **Persist incrementally**: Write leads to `security_leads` table as
+   each category completes. This ensures partial results survive
+   interruptions. Track per-category completion in the run manifest so
+   that resumed runs skip already-completed categories.
 
-4. **Score and rank**: Sort by `severity * confidence`:
-   - Critical = 5, High = 4, Medium = 3, Low = 2, Informational = 1
-   - Final score = severity_weight * confidence
+4. **Deduplicate**: Merge leads that share overlapping RFC section
+   references, similar technique names, and the same attack category.
+   Use section overlap + normalized technique name, not just
+   section + category (which is too coarse — multiple distinct
+   vulnerabilities can exist in one section).
 
-5. **Filter**: Remove leads below `min_severity`
+5. **Score and rank**: Sort primarily by severity tier, then by
+   confidence within each tier:
+   - Tier ordering: Critical > High > Medium > Low > Informational
+   - Within each tier, sort by confidence descending
+   This avoids the problem of confidence-as-linear-multiplier
+   overriding severity in the ranking.
 
-6. **Store**: Write leads to `security_leads` table
+6. **Filter**: Remove leads below `min_severity`
 
 7. **Generate report**: Assemble `AnalysisReport` with:
    - Protocol name and RFC list
@@ -165,9 +185,23 @@ prioritize:
 - Sections with "Security Considerations" in the title (always included)
 - Sections referenced by the relevant state machine
 - Sections containing keywords related to the category:
-  - `MissingValidation`: "MUST", "validate", "check", "verify", "parse"
-  - `ReplayAttack`: "nonce", "sequence", "timestamp", "freshness"
-  - `InformationLeak`: "error", "response", "metadata", "header"
-  - etc.
+
+| Category | Keywords |
+|---|---|
+| `MissingValidation` | "validate", "check", "verify", "parse", "reject", "malformed", "invalid" |
+| `ReplayAttack` | "nonce", "sequence", "timestamp", "freshness", "idempotent", "replay" |
+| `InformationLeak` | "error", "diagnostic", "metadata", "header", "reveal", "expose", "disclose" |
+| `OversizedPayload` | "length", "size", "maximum", "limit", "truncat", "overflow", "buffer" |
+| `StateConfusion` | "state", "transition", "unexpected", "simultaneous", "order", "sequence" |
+| `AuthBypass` | "authenticat", "authoriz", "credential", "identity", "trust", "verify" |
+| `DenialOfService` | "resource", "limit", "exhaust", "flood", "timeout", "retry", "amplif" |
+| `Downgrade` | "version", "negotiat", "fallback", "legacy", "backward", "compatible" |
+| `RaceCondition` | "concurrent", "simultaneous", "atomic", "lock", "order", "between" |
+| `ImplementationAmbiguity` | "undefined", "unspecified", "implementation-defined", "MAY", "OPTIONAL", "local matter" |
+
+Note: Avoid overly broad keywords. "MUST" was intentionally excluded from
+`MissingValidation` because it matches nearly every normative section.
+Keywords use substring matching, so "authenticat" matches both
+"authentication" and "authenticated".
 
 This keeps LLM context focused and reduces token usage.

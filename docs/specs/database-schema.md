@@ -179,7 +179,11 @@ CREATE TABLE analysis_runs (
 CREATE INDEX idx_runs_protocol ON analysis_runs(protocol, stage);
 ```
 
-Valid `status` values: `running`, `completed`, `failed`.
+Valid `status` values: `running`, `completed`, `failed`, `interrupted`.
+
+The `interrupted` status is set when the user cancels a run (Ctrl+C) or
+the process is otherwise interrupted. Partially completed work items
+within the run are preserved in their respective tables.
 
 The `input_hash` is a composite SHA-256 covering all factors that affect the
 stage's output (see architecture.md Incrementality section). Before running

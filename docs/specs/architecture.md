@@ -89,6 +89,24 @@ src/
 - Pipeline stages: sequential (map -> model -> analyze)
 - Within each stage: independent work items (different RFCs, different mechanism
   clusters) run concurrently
+- Graceful shutdown: `tokio::signal::ctrl_c()` handler sets a cancellation flag.
+  The current LLM call is allowed to complete, partial results are persisted,
+  and `analysis_runs.status` is set to `'interrupted'`.
+
+## Database Access Strategy
+
+`rusqlite` is synchronous but the pipeline is async. We bridge this using
+`tokio-rusqlite`, which runs a dedicated SQLite thread with a channel-based
+async API. This avoids `Mutex` contention and `spawn_blocking` boilerplate.
+
+Connection initialization enables:
+- `PRAGMA foreign_keys = ON`
+- `PRAGMA journal_mode = WAL` (concurrent readers during writes)
+- `PRAGMA busy_timeout = 5000` (5s retry on lock contention)
+
+All parsed RFCs are accessed on demand from SQLite during Stages 2 and 3,
+not held in memory. Only the `petgraph` graph (lightweight `RfcNode` structs)
+and the current work item's section text are in memory at any given time.
 
 ## Configuration
 
