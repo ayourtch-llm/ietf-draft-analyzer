@@ -263,8 +263,18 @@ pub struct AnalysisReport {
 pub struct ReportMetadata {
     pub generated_at: DateTime<Utc>,
     pub model_used: String,
+    pub provider: String,                // e.g., "openai", "ollama"
     pub total_tokens_used: u64,
     pub analysis_duration_secs: f64,
+    pub run_id: Option<i64>,
+    pub input_hash: Option<String>,
+    pub prompt_version: String,
+    pub rfc_analyzer_version: String,    // from env!("CARGO_PKG_VERSION")
+    pub temperature: f64,
+    pub max_tokens_per_request: u32,
+    pub schema_version: u32,             // current DB schema version
+    pub report_format: String,           // "json", "text", or "markdown"
+    pub sections_truncated: Vec<String>, // sections dropped by summarize-to-fit
 }
 ```
 

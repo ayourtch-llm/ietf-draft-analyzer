@@ -133,9 +133,15 @@ CREATE TABLE state_machines (
     data          TEXT NOT NULL,           -- full JSON serialization
     content_hash  TEXT NOT NULL,           -- hash of input sections used
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(protocol, name)
+    run_id        INTEGER REFERENCES analysis_runs(id),
+    UNIQUE(protocol, name, run_id)
 );
 ```
+
+> **Migration v2** adds `run_id` to this table and changes the unique
+> constraint from `(protocol, name)` to `(protocol, name, run_id)`. This
+> requires table recreation in SQLite. Legacy rows retain `run_id = NULL`;
+> new artifacts MUST set a non-null `run_id`.
 
 ### `security_leads` — Security analysis results (Stage 3 output)
 
@@ -154,13 +160,21 @@ CREATE TABLE security_leads (
     state_machine_name  TEXT,
     mitigation          TEXT,
     input_hash          TEXT NOT NULL,     -- hash of input context
-    created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+    created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    run_id              INTEGER REFERENCES analysis_runs(id),
+    fingerprint         TEXT               -- deterministic cross-run identity
 );
 
 CREATE INDEX idx_leads_protocol ON security_leads(protocol);
 CREATE INDEX idx_leads_category ON security_leads(category);
 CREATE INDEX idx_leads_severity ON security_leads(severity);
+CREATE INDEX idx_leads_fingerprint ON security_leads(fingerprint);
+CREATE INDEX idx_leads_run ON security_leads(run_id);
 ```
+
+> **Migration v2** adds `run_id` and `fingerprint` columns to this table.
+> Legacy rows retain `run_id = NULL` and `fingerprint = NULL`; new
+> artifacts MUST set a non-null `run_id`.
 
 ### `analysis_runs` — Analysis run tracking (run manifest)
 
@@ -201,10 +215,35 @@ stage's output (see architecture.md Incrementality section). Before running
 a stage, the tool checks for a completed run with a matching `input_hash`
 and skips re-processing if found.
 
+### `run_work_items` — Per-work-item progress tracking
+
+```sql
+CREATE TABLE run_work_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id          INTEGER NOT NULL REFERENCES analysis_runs(id),
+    work_item_kind  TEXT NOT NULL,      -- 'mechanism' or 'category'
+    work_item_key   TEXT NOT NULL,      -- mechanism name or category name
+    status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(status IN ('pending', 'running', 'completed', 'failed')),
+    started_at      TEXT,
+    completed_at    TEXT,
+    tokens_used     INTEGER DEFAULT 0,
+    error           TEXT,
+    input_hash      TEXT,              -- per-item input hash for resume decisions
+    UNIQUE(run_id, work_item_kind, work_item_key)
+);
+
+CREATE INDEX idx_work_items_run ON run_work_items(run_id);
+```
+
+> **Added in migration v2.** This table tracks individual work items
+> within a run, enabling fine-grained resumability.
+
 ### Additional Indexes
 
 ```sql
 CREATE INDEX idx_state_machines_protocol ON state_machines(protocol);
+CREATE INDEX idx_state_machines_run ON state_machines(run_id);
 CREATE INDEX idx_protocol_rfcs_rfc ON protocol_rfcs(rfc_number);
 ```
 

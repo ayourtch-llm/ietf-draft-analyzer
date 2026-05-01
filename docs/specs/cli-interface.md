@@ -65,6 +65,8 @@ Arguments:
 Options:
   --categories <LIST>  Attack categories to check, comma-separated [default: all]
   --min-severity <S>   Minimum severity to include [default: low]
+  -o, --output <PATH>  Output file [default: stdout]
+  --format <FMT>       Output format: json, text, markdown [default: json]
 ```
 
 ### `run` — Full pipeline: map -> model -> analyze

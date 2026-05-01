@@ -31,7 +31,7 @@ errors with a clear message.
 pub struct LlmClient {
     http: reqwest::Client,
     config: LlmConfig,
-    rate_limiter: governor::RateLimiter<...>,
+    semaphore: Arc<tokio::sync::Semaphore>,  // limits concurrent requests
 }
 
 impl LlmClient {
@@ -52,11 +52,15 @@ Key behaviors:
   up to 3 attempts
 - Tracks token usage from response headers/body for reporting
 
-### Rate Limiting (`llm/rate_limit.rs`)
+### Concurrency Control (`llm/client.rs`)
 
-Uses the `governor` crate to enforce `max_concurrent_requests`. A tokio
-semaphore limits in-flight requests. The rate limiter also respects
-`Retry-After` headers from 429 responses.
+A `tokio::sync::Semaphore` with `max_concurrent_requests` permits limits
+in-flight LLM requests. Each `chat`/`chat_json` call acquires a permit
+before sending the HTTP request and releases it when the response is
+received. This is the only concurrency-control mechanism for v1.
+Provider-specific rate limits (requests/minute, tokens/minute) can be
+layered on later if needed. The client also respects `Retry-After`
+headers from 429 responses.
 
 ## Context Window Management
 

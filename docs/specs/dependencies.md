@@ -20,7 +20,7 @@
 | `tracing` | 0.1.x | Structured logging |
 | `tracing-subscriber` | 0.3.x | Log output (feature: env-filter) |
 | `toml` | 0.8.x | Configuration file parsing |
-| `governor` | 0.8.x | Rate limiting for LLM API calls |
+| `tokio-util` | 0.7.x | CancellationToken for graceful shutdown |
 | `zstd` | 0.13.x | Compression for cached RFC content |
 | `uuid` | 1.x | UUID v4 generation for lead IDs |
 | `tokio-rusqlite` | 0.6.x | Async bridge for rusqlite (dedicated SQLite thread) |
@@ -50,9 +50,11 @@ The de-facto Rust graph library. `StableDiGraph` provides stable node indices
 that survive node removal, which is useful if we later add graph pruning.
 Directed edges naturally represent asymmetric RFC relationships.
 
-### Why `governor` for rate limiting?
-Battle-tested rate limiter that integrates well with tokio. Supports both
-token bucket and sliding window algorithms.
+### Why `tokio-util`?
+Provides `CancellationToken` for cooperative graceful shutdown. The
+semaphore-only concurrency model (using `tokio::sync::Semaphore`) is
+sufficient for v1 rate limiting, so a dedicated rate-limiter crate is not
+needed.
 
 ### Why `tokio-rusqlite`?
 `rusqlite` is synchronous but the pipeline runs on tokio. `tokio-rusqlite`
@@ -94,7 +96,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml = "0.8"
-governor = "0.8"
+tokio-util = "0.7"
 zstd = "0.13"
 uuid = { version = "1", features = ["v4"] }
 tokio-rusqlite = "0.6"
