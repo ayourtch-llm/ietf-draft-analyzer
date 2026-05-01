@@ -209,6 +209,8 @@ impl RfcFetcher {
             vec!["text", "xml"]
         };
 
+        let mut last_non_404_error: Option<String> = None;
+
         for format in &formats {
             let url = match *format {
                 "xml" => format!(
@@ -260,22 +262,22 @@ impl RfcFetcher {
                     tracing::debug!("404 for {} format of RFC {}", format, rfc_number);
                     continue;
                 }
-                status if status >= 500 => {
-                    tracing::warn!(
-                        "HTTP {} (server error) fetching RFC {} ({}), trying next format",
-                        status, rfc_number, format
-                    );
-                    continue;
-                }
                 status => {
-                    // Non-retryable HTTP error (403, etc.) — fail immediately
-                    return Err(RfcAnalyzerError::Config(
-                        format!("HTTP {} fetching RFC {} ({})", status, rfc_number, format)
-                    ));
+                    let msg = format!(
+                        "HTTP {} fetching RFC {} ({})", status, rfc_number, format
+                    );
+                    tracing::warn!("{}, trying next format", msg);
+                    last_non_404_error = Some(msg);
+                    continue;
                 }
             }
         }
 
+        // If we got a non-404 error on any attempt, report that instead
+        // of RfcNotFound (which implies the RFC doesn't exist)
+        if let Some(err_msg) = last_non_404_error {
+            return Err(RfcAnalyzerError::Config(err_msg));
+        }
         Err(RfcAnalyzerError::RfcNotFound(rfc_number))
     }
 
@@ -361,8 +363,8 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
     let mut date = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
     let mut obsoletes = Vec::new();
     let mut updates = Vec::new();
-    let mut obsoleted_by = Vec::new();
-    let mut updated_by = Vec::new();
+    let obsoleted_by = Vec::new();
+    let updated_by = Vec::new();
     let mut sections = Vec::new();
     let mut references = Vec::new();
 
@@ -749,7 +751,7 @@ References
 ```
 
 ```rust
-use crate::error::{RfcAnalyzerError, Result};
+use crate::error::Result;
 use crate::rfc::model::*;
 use chrono::NaiveDate;
 use regex::Regex;
