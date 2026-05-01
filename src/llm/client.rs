@@ -53,7 +53,7 @@ impl LlmClient {
     /// Send a chat completion request and return the raw response text.
     /// Handles retries for 429/5xx, error classification, and concurrency.
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<(String, TokenUsage)> {
-        self.chat_with_format(messages, false).await
+        self.chat_with_format(messages, false, None).await
     }
 
     /// Send a chat request with JSON response format and parse the result.
@@ -63,16 +63,41 @@ impl LlmClient {
         &self,
         messages: Vec<ChatMessage>,
     ) -> Result<(T, TokenUsage)> {
-        let (content, usage) = self.chat_with_format(messages, true).await?;
+        let (content, usage) = self.chat_with_format(messages, true, None).await?;
         let parsed = super::response::parse_json_response::<T>(&content)?;
         Ok((parsed, usage))
     }
 
-    /// Internal: send chat with optional JSON response format.
+    /// Send a chat request with a GBNF grammar constraint.
+    /// Uses structured CoT: the prompt encourages thinking, and the grammar
+    /// constrains the output to valid JSON after the thinking block.
+    /// For llama.cpp/llama-server backends that support the `grammar` parameter.
+    pub async fn chat_json_grammar<T: serde::de::DeserializeOwned>(
+        &self,
+        messages: Vec<ChatMessage>,
+        grammar: &str,
+    ) -> Result<(T, TokenUsage)> {
+        let (content, usage) = self.chat_with_format(messages, false, Some(grammar)).await?;
+        let parsed = super::response::parse_json_response::<T>(&content)?;
+        Ok((parsed, usage))
+    }
+
+    /// Send a chat request with a GBNF grammar constraint and return raw text.
+    /// For cases where the caller does its own parsing (e.g., partial arrays).
+    pub async fn chat_with_grammar(
+        &self,
+        messages: Vec<ChatMessage>,
+        grammar: &str,
+    ) -> Result<(String, TokenUsage)> {
+        self.chat_with_format(messages, false, Some(grammar)).await
+    }
+
+    /// Internal: send chat with optional JSON response format or GBNF grammar.
     async fn chat_with_format(
         &self,
         messages: Vec<ChatMessage>,
         json_mode: bool,
+        grammar: Option<&str>,
     ) -> Result<(String, TokenUsage)> {
         let _permit = self
             .semaphore
@@ -95,7 +120,10 @@ impl LlmClient {
                 "temperature": self.config.temperature,
                 "max_tokens": self.config.max_tokens_per_request,
             });
-            if json_mode {
+            if let Some(g) = grammar {
+                // GBNF grammar for llama.cpp/llama-server
+                request_body["grammar"] = serde_json::json!(g);
+            } else if json_mode {
                 request_body["response_format"] = serde_json::json!({"type": "json_object"});
             }
 

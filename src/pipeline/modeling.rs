@@ -144,7 +144,8 @@ pub async fn run_stage2(
         },
     ];
 
-    let (clustering, usage) = match llm.chat_json::<ClusteringResponse>(messages).await {
+    let grammar = prompts::clustering_grammar();
+    let (clustering, usage) = match llm.chat_json_grammar::<ClusteringResponse>(messages, &grammar).await {
         Ok(result) => result,
         Err(e) => {
             // Check if this was a cancellation — mark interrupted, not failed
@@ -302,7 +303,8 @@ pub async fn run_stage2(
             },
         ];
 
-        match llm.chat_json::<StateMachineResponse>(messages).await {
+        let grammar = prompts::state_machine_grammar();
+        match llm.chat_json_grammar::<StateMachineResponse>(messages, &grammar).await {
             Ok((sm_response, usage)) => {
                 total_tokens += usage.total_tokens;
 

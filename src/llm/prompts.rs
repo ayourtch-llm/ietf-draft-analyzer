@@ -98,6 +98,66 @@ Sections under analysis:
     (system, user)
 }
 
+// === GBNF Grammars for structured output ===
+// Uses structured CoT from https://andthattoo.dev/blog/structured_cot
+// Pattern: structured thinking fields (GOAL/APPROACH/EDGE/VERIFY) followed
+// by grammar-constrained JSON output.
+
+/// Common definitions used across grammars.
+const GRAMMAR_COMMON: &str = r#"
+ws ::= [ \t\n\r]*
+string ::= "\"" strchars "\""
+strchars ::= ([^"\\] | "\\" ["\\/bfnrt])*
+number ::= [0-9]+
+decimal ::= [0-9] "." [0-9] [0-9]?
+line ::= [^\n]+ "\n"
+"#;
+
+/// GBNF grammar for mechanism clustering response.
+/// Structured CoT: GOAL → APPROACH → EDGE → then constrained JSON.
+pub fn clustering_grammar() -> String {
+    format!(
+        r#"root ::= think json-output
+think ::= "<think>\n" "GOAL: " line "APPROACH: " line "EDGE: " line "</think>\n\n"
+json-output ::= "{{" ws "\"clusters\"" ws ":" ws "[" ws cluster (ws "," ws cluster)* ws "]" ws "}}"
+cluster ::= "{{" ws "\"mechanism\"" ws ":" ws string ws "," ws "\"sections\"" ws ":" ws "[" ws secref (ws "," ws secref)* ws "]" ws "}}"
+secref ::= "{{" ws "\"rfc\"" ws ":" ws number ws "," ws "\"section\"" ws ":" ws string ws "}}"
+{}"#,
+        GRAMMAR_COMMON
+    )
+}
+
+/// GBNF grammar for state machine extraction response.
+/// Structured CoT: GOAL → STATE → ALGO → EDGE → VERIFY → then constrained JSON.
+pub fn state_machine_grammar() -> String {
+    format!(
+        r#"root ::= think json-output
+think ::= "<think>\n" "GOAL: " line "STATE: " line "ALGO: " line "EDGE: " line "VERIFY: " line "</think>\n\n"
+json-output ::= "{{" ws "\"name\"" ws ":" ws string ws "," ws "\"states\"" ws ":" ws "[" ws (state (ws "," ws state)*)? ws "]" ws "," ws "\"transitions\"" ws ":" ws "[" ws (transition (ws "," ws transition)*)? ws "]" ws "}}"
+state ::= "{{" ws "\"name\"" ws ":" ws string ws "," ws "\"description\"" ws ":" ws string ws "," ws "\"source_rfc\"" ws ":" ws number ws "," ws "\"source_section\"" ws ":" ws string ws "}}"
+transition ::= "{{" ws "\"from\"" ws ":" ws string ws "," ws "\"to\"" ws ":" ws string ws "," ws "\"trigger\"" ws ":" ws string ws "," ws "\"conditions\"" ws ":" ws stringarray ws "," ws "\"actions\"" ws ":" ws stringarray ws "," ws "\"source_rfc\"" ws ":" ws number ws "," ws "\"source_section\"" ws ":" ws string ws "}}"
+stringarray ::= "[" ws (string (ws "," ws string)*)? ws "]"
+{}"#,
+        GRAMMAR_COMMON
+    )
+}
+
+/// GBNF grammar for security analysis lead array.
+/// Structured CoT: GOAL → APPROACH → EDGE → VERIFY → then constrained JSON.
+pub fn security_leads_grammar() -> String {
+    format!(
+        r#"root ::= think json-output
+think ::= "<think>\n" "GOAL: " line "APPROACH: " line "EDGE: " line "VERIFY: " line "</think>\n\n"
+json-output ::= "[" ws (lead (ws "," ws lead)*)? ws "]"
+lead ::= "{{" ws "\"technique_name\"" ws ":" ws string ws "," ws "\"category\"" ws ":" ws string ws "," ws "\"severity\"" ws ":" ws severity ws "," ws "\"confidence\"" ws ":" ws decimal ws "," ws "\"description\"" ws ":" ws string ws "," ws "\"rfc_references\"" ws ":" ws "[" ws (rfcref (ws "," ws rfcref)*)? ws "]" ws "," ws "\"prerequisites\"" ws ":" ws stringarray ws "," ws "\"entities_involved\"" ws ":" ws stringarray ws "," ws "\"mitigation\"" ws ":" ws (string | "null") ws "}}"
+rfcref ::= "{{" ws "\"rfc\"" ws ":" ws number ws "," ws "\"section\"" ws ":" ws string ws "," ws "\"quote\"" ws ":" ws (string | "null") ws "}}"
+severity ::= "\"critical\"" | "\"high\"" | "\"medium\"" | "\"low\"" | "\"informational\""
+stringarray ::= "[" ws (string (ws "," ws string)*)? ws "]"
+{}"#,
+        GRAMMAR_COMMON
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
