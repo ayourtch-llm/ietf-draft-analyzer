@@ -44,8 +44,11 @@ async fn main() -> Result<()> {
         Command::Clear { scope, yes } => {
             cmd_clear(&conn, &scope, yes).await?;
         }
+        Command::Graph { target, format } => {
+            cmd_graph(&conn, &target, &format).await?;
+        }
         _ => {
-            eprintln!("Command not yet implemented. Available: map, show, clear");
+            eprintln!("Command not yet implemented. Available: map, show, clear, graph");
             std::process::exit(1);
         }
     }
@@ -187,6 +190,40 @@ async fn cmd_map(
     if let Some(ref proto) = protocol {
         let assigned = rfc_store::get_protocol_rfcs(conn, proto).await?;
         tracing::info!("Protocol '{}': {} RFCs assigned", proto, assigned.len());
+    }
+
+    // Build and persist dependency graph
+    {
+        use petgraph::visit::{EdgeRef, IntoEdgeReferences};
+        use rfc_analyzer::db::graph_store;
+        use rfc_analyzer::graph::builder::DependencyGraph;
+
+        let mut all_rfcs = Vec::new();
+        for &rfc_num in &processed.iter().copied().collect::<Vec<_>>() {
+            if let Some(rfc) = rfc_store::get_rfc(conn, rfc_num).await? {
+                all_rfcs.push(rfc);
+            }
+        }
+
+        let dep_graph = DependencyGraph::build(&all_rfcs);
+        let edges: Vec<_> = dep_graph
+            .graph
+            .edge_references()
+            .map(|e| {
+                let src = &dep_graph.graph[e.source()];
+                let tgt = &dep_graph.graph[e.target()];
+                (src.rfc, tgt.rfc, e.weight().clone())
+            })
+            .collect();
+
+        graph_store::store_edges(conn, &edges).await?;
+        let summary = dep_graph.summary();
+        tracing::info!(
+            "Graph: {} nodes, {} edges, {} components",
+            summary.total_nodes,
+            summary.total_edges,
+            summary.connected_components
+        );
     }
 
     Ok(())
@@ -337,5 +374,69 @@ async fn cmd_clear(conn: &tokio_rusqlite::Connection, scope: &str, yes: bool) ->
     .await?;
 
     tracing::info!("Cleared {} data", scope_log);
+    Ok(())
+}
+
+/// The `graph` command: show dependency graph for a protocol or RFC.
+async fn cmd_graph(conn: &tokio_rusqlite::Connection, target: &str, format: &str) -> Result<()> {
+    use rfc_analyzer::db::{graph_store, rfc_store};
+    use rfc_analyzer::graph::builder::DependencyGraph;
+
+    // Determine if target is an RFC number or protocol name
+    let rfc_numbers = if let Ok(num) = target.parse::<u32>() {
+        // Single RFC — show its immediate graph
+        vec![rfc_analyzer::rfc::model::RfcNumber(num)]
+    } else {
+        // Protocol name — get all associated RFCs
+        let rfcs = rfc_store::get_protocol_rfcs(conn, target).await?;
+        if rfcs.is_empty() {
+            anyhow::bail!(
+                "No RFCs found for protocol '{}'. Run 'map --protocol {}' first.",
+                target,
+                target
+            );
+        }
+        rfcs
+    };
+
+    // Load all RFC data
+    let mut rfcs = Vec::new();
+    for rfc_num in &rfc_numbers {
+        if let Some(rfc) = rfc_store::get_rfc(conn, rfc_num.0).await? {
+            rfcs.push(rfc);
+        }
+    }
+
+    if rfcs.is_empty() {
+        anyhow::bail!("No RFC data found in database.");
+    }
+
+    // Build graph
+    let dep_graph = DependencyGraph::build(&rfcs);
+
+    // Also persist edges to database
+    use petgraph::visit::{EdgeRef, IntoEdgeReferences};
+    let edges: Vec<_> = dep_graph
+        .graph
+        .edge_references()
+        .map(|e| {
+            let src = &dep_graph.graph[e.source()];
+            let tgt = &dep_graph.graph[e.target()];
+            (src.rfc, tgt.rfc, e.weight().clone())
+        })
+        .collect();
+    graph_store::store_edges(conn, &edges).await?;
+
+    // Export
+    match format {
+        "dot" => {
+            print!("{}", dep_graph.to_dot());
+        }
+        _ => {
+            let json = dep_graph.to_json();
+            println!("{}", serde_json::to_string_pretty(&json)?);
+        }
+    }
+
     Ok(())
 }

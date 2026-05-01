@@ -1,3 +1,4 @@
+pub mod graph_store;
 pub mod rfc_store;
 pub mod schema;
 
