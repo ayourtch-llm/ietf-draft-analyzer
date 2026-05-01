@@ -442,8 +442,10 @@ use crate::graph::model::*;
 use crate::rfc::model::RfcNumber;
 use tokio_rusqlite::Connection;
 
-/// Store all edges from a DependencyGraph into the dep_edges table.
-/// Clears existing edges for the involved RFCs first.
+/// Store edges into the dep_edges table.
+/// Uses INSERT OR IGNORE to skip duplicates (same source, target, kind,
+/// sections). Does NOT clear existing edges — call clear_edges_for_protocol
+/// first if a full rebuild is needed.
 pub async fn store_edges(
     conn: &Connection,
     edges: &[(RfcNumber, RfcNumber, DepEdge)],
@@ -460,8 +462,8 @@ pub async fn store_edges(
                     source.0,
                     target.0,
                     edge.kind.to_string(),
-                    edge.source_section,
-                    edge.target_section,
+                    edge.source_section.as_deref(),
+                    edge.target_section.as_deref(),
                 ],
             )?;
         }
@@ -513,18 +515,18 @@ pub async fn load_edges_for_rfcs(
     let numbers: Vec<u32> = rfc_numbers.iter().map(|r| r.0).collect();
     let result = conn
         .call(move |conn| {
-            // Build a WHERE clause with placeholders
-            let placeholders: Vec<String> = (0..numbers.len())
-                .map(|i| format!("?{}", i + 1))
-                .collect();
+            // Build a WHERE clause with distinct placeholders for each IN clause
+            let n = numbers.len();
+            let ph1: Vec<String> = (1..=n).map(|i| format!("?{}", i)).collect();
+            let ph2: Vec<String> = (n + 1..=2 * n).map(|i| format!("?{}", i)).collect();
             let sql = format!(
                 "SELECT source_rfc, target_rfc, kind, source_section, target_section
                  FROM dep_edges
-                 WHERE source_rfc IN ({ph}) OR target_rfc IN ({ph})",
-                ph = placeholders.join(",")
+                 WHERE source_rfc IN ({}) OR target_rfc IN ({})",
+                ph1.join(","), ph2.join(",")
             );
             let mut stmt = conn.prepare(&sql)?;
-            // Bind parameters (need to double them for the two IN clauses)
+            // Bind numbers twice (once per IN clause)
             let params: Vec<Box<dyn rusqlite::types::ToSql>> = numbers
                 .iter()
                 .chain(numbers.iter())
@@ -582,10 +584,16 @@ pub mod query;
 
 ## 7. src/db/mod.rs (updated)
 
+Add `pub mod graph_store;` to the existing module. Keep all existing code
+(open_database, open_memory_database, etc.) unchanged. The file should
+now contain:
+
 ```rust
 pub mod schema;
 pub mod rfc_store;
 pub mod graph_store;
+
+// ... existing open_database() and open_memory_database() functions unchanged ...
 ```
 
 ## 8. src/lib.rs (updated)
@@ -652,6 +660,7 @@ async fn cmd_graph(
     let dep_graph = DependencyGraph::build(&rfcs);
 
     // Also persist edges to database
+    use petgraph::visit::EdgeRef;
     let edges: Vec<_> = dep_graph.graph.edge_references().map(|e| {
         let src = &dep_graph.graph[e.source()];
         let tgt = &dep_graph.graph[e.target()];
@@ -684,6 +693,7 @@ log message:
         use rfc_analyzer::graph::builder::DependencyGraph;
         use rfc_analyzer::db::graph_store;
 
+        use petgraph::visit::EdgeRef;
         let mut all_rfcs = Vec::new();
         for &rfc_num in &processed.iter().copied().collect::<Vec<_>>() {
             if let Some(rfc) = rfc_store::get_rfc(conn, rfc_num).await? {
@@ -929,14 +939,12 @@ mod tests {
             sections: vec![], references: vec![],
             raw_text: "t".to_string(), content_hash: "a".to_string(),
         };
-        let rfc2 = Rfc { number: RfcNumber(2), title: "B".to_string(),
+        let rfc2 = Rfc {
+            number: RfcNumber(2),
+            title: "B".to_string(),
+            content_hash: "b".to_string(),
             ..rfc1.clone()
         };
-        // Fix: rfc2 needs its own content_hash and number set properly
-        let mut rfc2 = rfc1.clone();
-        rfc2.number = RfcNumber(2);
-        rfc2.title = "B".to_string();
-        rfc2.content_hash = "b".to_string();
 
         rfc_store::upsert_rfc(&conn, &rfc1).await.unwrap();
         rfc_store::upsert_rfc(&conn, &rfc2).await.unwrap();
