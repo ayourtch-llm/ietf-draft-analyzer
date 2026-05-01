@@ -223,6 +223,27 @@ impl LlmClient {
     /// Send a chat completion request and return the raw response text.
     /// Handles retries for 429/5xx, error classification, and concurrency.
     pub async fn chat(&self, messages: Vec<ChatMessage>) -> Result<(String, TokenUsage)> {
+        self.chat_with_format(messages, false).await
+    }
+
+    /// Send a chat request with JSON response format and parse the result.
+    /// Adds `response_format: {"type": "json_object"}` to the request.
+    /// Handles markdown fence stripping and content refusal detection.
+    pub async fn chat_json<T: serde::de::DeserializeOwned>(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Result<(T, TokenUsage)> {
+        let (content, usage) = self.chat_with_format(messages, true).await?;
+        let parsed = super::response::parse_json_response::<T>(&content)?;
+        Ok((parsed, usage))
+    }
+
+    /// Internal: send chat with optional JSON response format.
+    async fn chat_with_format(
+        &self,
+        messages: Vec<ChatMessage>,
+        json_mode: bool,
+    ) -> Result<(String, TokenUsage)> {
         let _permit = self.semaphore.acquire().await
             .map_err(|_| RfcAnalyzerError::Config("Semaphore closed".to_string()))?;
 
@@ -231,21 +252,21 @@ impl LlmClient {
 
         loop {
             attempts += 1;
-
-            // Check cancellation before each attempt
             if self.cancel_token.is_cancelled() {
                 return Err(RfcAnalyzerError::Config("Operation cancelled".to_string()));
             }
 
-            let request_body = serde_json::json!({
+            let mut request_body = serde_json::json!({
                 "model": self.config.model,
                 "messages": messages,
                 "temperature": self.config.temperature,
                 "max_tokens": self.config.max_tokens_per_request,
             });
+            if json_mode {
+                request_body["response_format"] = serde_json::json!({"type": "json_object"});
+            }
 
             let url = format!("{}/chat/completions", self.config.api_base);
-
             let response = self.http
                 .post(&url)
                 .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
@@ -254,13 +275,15 @@ impl LlmClient {
                 .send()
                 .await
                 .map_err(|e| RfcAnalyzerError::LlmApi {
-                    status: 0,
-                    body: format!("Network error: {}", e),
+                    status: 0, body: format!("Network error: {}", e),
                 })?;
 
             let status = response.status().as_u16();
             let headers = response.headers().clone();
 
+            // ... same status handling as chat() ...
+            // (implementer: factor the status-match logic into a shared helper
+            //  or duplicate the match block here — both are acceptable)
             match status {
                 200 => {
                     let body: serde_json::Value = response.json().await
@@ -268,48 +291,39 @@ impl LlmClient {
                             detail: format!("Failed to parse response JSON: {}", e),
                         })?;
 
-                    // Extract content
                     let content = body["choices"][0]["message"]["content"]
                         .as_str()
-                        .unwrap_or("")
-                        .to_string();
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
 
-                    // Extract finish_reason for refusal detection
+                    if content.is_empty() {
+                        return Err(RfcAnalyzerError::LlmParse {
+                            detail: "Empty response content from LLM".to_string(),
+                        });
+                    }
+
                     let finish_reason = body["choices"][0]["finish_reason"]
-                        .as_str()
-                        .unwrap_or("stop");
-
-                    // Check for content filter refusal
+                        .as_str().unwrap_or("stop");
                     if finish_reason == "content_filter" {
                         return Err(RfcAnalyzerError::LlmContentRefusal {
                             detail: "Model refused due to content filter".to_string(),
                         });
                     }
 
-                    // Extract token usage
                     let usage = TokenUsage {
-                        prompt_tokens: body["usage"]["prompt_tokens"]
-                            .as_u64().unwrap_or(0),
-                        completion_tokens: body["usage"]["completion_tokens"]
-                            .as_u64().unwrap_or(0),
-                        total_tokens: body["usage"]["total_tokens"]
-                            .as_u64().unwrap_or(0),
+                        prompt_tokens: body["usage"]["prompt_tokens"].as_u64().unwrap_or(0),
+                        completion_tokens: body["usage"]["completion_tokens"].as_u64().unwrap_or(0),
+                        total_tokens: body["usage"]["total_tokens"].as_u64().unwrap_or(0),
                     };
-
                     return Ok((content, usage));
                 }
                 429 => {
                     let retry_after = parse_retry_after(&headers);
                     if attempts >= max_attempts {
-                        return Err(RfcAnalyzerError::LlmRateLimit {
-                            retry_after_secs: retry_after,
-                        });
+                        return Err(RfcAnalyzerError::LlmRateLimit { retry_after_secs: retry_after });
                     }
                     let wait = retry_after.unwrap_or(2u64.pow(attempts as u32));
-                    tracing::warn!(
-                        "Rate limited (429), waiting {}s before retry {}/{}",
-                        wait, attempts, max_attempts
-                    );
+                    tracing::warn!("Rate limited (429), waiting {}s before retry {}/{}", wait, attempts, max_attempts);
                     tokio::time::sleep(Duration::from_secs(wait)).await;
                     continue;
                 }
@@ -319,10 +333,7 @@ impl LlmClient {
                         return Err(RfcAnalyzerError::LlmApi { status, body });
                     }
                     let wait = 2u64.pow(attempts as u32);
-                    tracing::warn!(
-                        "Server error ({}), waiting {}s before retry {}/{}",
-                        status, wait, attempts, max_attempts
-                    );
+                    tracing::warn!("Server error ({}), waiting {}s before retry {}/{}", status, wait, attempts, max_attempts);
                     tokio::time::sleep(Duration::from_secs(wait)).await;
                     continue;
                 }
@@ -337,27 +348,12 @@ impl LlmClient {
                     }
                     return Err(RfcAnalyzerError::LlmApi { status: 400, body });
                 }
-                401 | 403 | 404 => {
-                    let body = response.text().await.unwrap_or_default();
-                    return Err(RfcAnalyzerError::LlmApi { status, body });
-                }
                 _ => {
                     let body = response.text().await.unwrap_or_default();
                     return Err(RfcAnalyzerError::LlmApi { status, body });
                 }
             }
         }
-    }
-
-    /// Send a chat request and parse the response as JSON.
-    /// Handles markdown fence stripping and content refusal detection.
-    pub async fn chat_json<T: serde::de::DeserializeOwned>(
-        &self,
-        messages: Vec<ChatMessage>,
-    ) -> Result<(T, TokenUsage)> {
-        let (content, usage) = self.chat(messages).await?;
-        let parsed = super::response::parse_json_response::<T>(&content)?;
-        Ok((parsed, usage))
     }
 
     /// Estimate the token count for a string.
@@ -415,7 +411,7 @@ pub fn parse_json_response<T: serde::de::DeserializeOwned>(content: &str) -> Res
             // but content is not valid JSON)
             if looks_like_refusal(content) {
                 return Err(RfcAnalyzerError::LlmContentRefusal {
-                    detail: content.chars().take(200).collect::<String>(),
+                    detail: content.chars().take(200).collect(),
                 });
             }
 
@@ -423,11 +419,11 @@ pub fn parse_json_response<T: serde::de::DeserializeOwned>(content: &str) -> Res
             let detail = format!(
                 "JSON parse error: {}. Response starts with: {}",
                 parse_err,
-                &cleaned[..cleaned.len().min(200)]
+                cleaned.chars().take(200).collect::<String>()
             );
             tracing::warn!(
                 "LLM response parse failure: {}",
-                &detail[..detail.len().min(200)]
+                detail.chars().take(200).collect::<String>()
             );
             tracing::trace!("Full LLM response: {}", content);
             Err(RfcAnalyzerError::LlmParse { detail })
@@ -452,7 +448,7 @@ pub fn parse_json_array_partial<T: serde::de::DeserializeOwned>(
         .map_err(|e| {
             if looks_like_refusal(content) {
                 RfcAnalyzerError::LlmContentRefusal {
-                    detail: content.chars().take(200).collect::<String>(),
+                    detail: content.chars().take(200).collect(),
                 }
             } else {
                 RfcAnalyzerError::LlmParse {
@@ -973,7 +969,8 @@ mod tests {
 
     fn test_config(base_url: &str) -> LlmConfig {
         // Set env var for test
-        std::env::set_var("TEST_API_KEY", "test-key-123");
+        // SAFETY: Test-only env var mutation, no concurrent access in this test
+        unsafe { std::env::set_var("TEST_API_KEY", "test-key-123"); }
         LlmConfig {
             api_base: base_url.to_string(),
             api_key_env: "TEST_API_KEY".to_string(),
@@ -1087,7 +1084,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_context_budget() {
-        std::env::set_var("TEST_API_KEY", "key");
+        // SAFETY: Test-only env var mutation
+        unsafe { std::env::set_var("TEST_API_KEY", "key"); }
         let config = LlmConfig {
             model_context_window: 128000,
             max_tokens_per_request: 4096,
@@ -1101,6 +1099,12 @@ mod tests {
     }
 }
 ```
+
+### Update existing schema tests
+
+The existing Phase 1 tests need updating:
+- `test_run_migrations_from_empty`: change `assert_eq!(version, 1)` to `assert_eq!(version, 2)`
+- `test_all_tables_created`: add `"run_work_items"` to the expected tables list
 
 ### Migration v2 tests (add to src/db/schema.rs)
 
@@ -1121,6 +1125,42 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn test_migration_v2_preserves_existing_data() {
+        // Simulate a v1 database with data, then upgrade to v2
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+
+        // Manually apply only migration 1
+        conn.execute_batch(MIGRATIONS[0].1).unwrap();
+        conn.execute("INSERT INTO schema_version (version) VALUES (1)", []).unwrap();
+
+        // Insert v1 state_machines row
+        conn.execute(
+            "INSERT INTO state_machines (protocol, name, mechanism, data, content_hash)
+             VALUES ('tcp', 'connection', 'state', '{}', 'h1')",
+            [],
+        ).unwrap();
+
+        // Now run full migrations — should upgrade to v2 preserving data
+        let version = run_migrations(&conn).unwrap();
+        assert_eq!(version, 2);
+
+        // Verify existing data survived
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM state_machines WHERE name = 'connection'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(count, 1);
+
+        // Verify run_id column exists (nullable, so existing row has NULL)
+        let run_id: Option<i64> = conn.query_row(
+            "SELECT run_id FROM state_machines WHERE name = 'connection'",
+            [], |row| row.get(0),
+        ).unwrap();
+        assert!(run_id.is_none());
     }
 
     #[test]
