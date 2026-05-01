@@ -26,9 +26,15 @@ Arguments:
   <RFCS>...          Seed RFC numbers (e.g., 9293 1035 2136)
 
 Options:
+  --protocol <NAME>  Associate these RFCs with a protocol name (e.g., "tcp")
   --depth <N>        Max depth for transitive dependency crawling [default: 2]
   --normative-only   Only follow normative references (skip informational)
 ```
+
+When `--protocol` is provided, the seed RFCs (and all transitively discovered
+RFCs) are recorded in the `protocol_rfcs` table. This is required before
+running `model` or `analyze`. The `run` command passes its protocol argument
+through to `map` automatically.
 
 ### `model` — Build protocol state machines from mapped RFCs
 
@@ -91,14 +97,22 @@ Arguments:
   <RFC>              RFC number
 ```
 
-### `clear` — Clear cached data
+### `clear` — Clear stored data
 
 ```
-rfc-analyzer clear [SCOPE]
+rfc-analyzer clear [OPTIONS] [SCOPE]
 
 Arguments:
   [SCOPE]            What to clear: all, rfcs, graphs, analysis [default: all]
+
+Options:
+  --yes              Skip confirmation prompt
 ```
+
+Since the database stores expensive LLM analysis results, `clear` requires
+interactive confirmation unless `--yes` is passed. Clearing `rfcs` cascades
+to dependent graphs and analysis; clearing `analysis` only removes leads
+and state machines.
 
 ## Usage Examples
 
@@ -107,7 +121,7 @@ Arguments:
 rfc-analyzer run dns 1035 2136 6895 8490 --depth 2 -o dns-report.json
 
 # Just build the dependency map for TCP
-rfc-analyzer map 9293 --depth 3
+rfc-analyzer map 9293 --depth 3 --protocol tcp
 
 # Model TCP then analyze separately
 rfc-analyzer model tcp

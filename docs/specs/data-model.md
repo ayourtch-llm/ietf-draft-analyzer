@@ -109,11 +109,15 @@ pub struct RfcNode {
 
 ### DepEdge
 
+Edge direction convention: source → target, where the source document
+contains the reference and the target is the document being referenced.
+See `pipeline-stages.md` for the full direction table.
+
 ```rust
 pub struct DepEdge {
     pub kind: EdgeKind,
-    pub source_section: Option<String>,
-    pub target_section: Option<String>,
+    pub source_section: Option<String>,  // section in source RFC (for cross-refs)
+    pub target_section: Option<String>,  // section in target RFC (for cross-refs)
 }
 ```
 
@@ -121,16 +125,22 @@ pub struct DepEdge {
 
 ```rust
 pub enum EdgeKind {
+    /// RFC A obsoletes RFC B (A is newer, replaces B)
     Obsoletes,
+    /// RFC A updates RFC B (A modifies/extends B)
     Updates,
+    /// RFC A normatively references RFC B
     NormativeReference,
+    /// RFC A informatively references RFC B
     InformativeReference,
-    CrossReference {
-        source_section: String,
-        target_section: Option<String>,
-    },
+    /// Section in RFC A references section in RFC B
+    CrossReference,
 }
 ```
+
+Note: section-level detail for `CrossReference` edges is carried in
+`DepEdge.source_section` and `DepEdge.target_section`, not in the enum
+variant, to avoid duplicating section fields.
 
 ## Protocol Modeling Types (`pipeline/modeling.rs`)
 

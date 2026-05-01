@@ -3,6 +3,29 @@
 All persistence goes through a single SQLite file (default: `rfc-analyzer.db`).
 Uses `rusqlite` with the `bundled` feature (no system SQLite dependency).
 
+The database is a **project artifact** that stores expensive LLM analysis
+results. It should not be treated as a disposable cache.
+
+## Connection Setup
+
+Every connection must enable foreign keys:
+
+```sql
+PRAGMA foreign_keys = ON;
+```
+
+## Schema Versioning
+
+```sql
+CREATE TABLE schema_version (
+    version       INTEGER NOT NULL,
+    applied_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+On startup, the application checks the current version and applies pending
+migrations sequentially. Migrations are defined as SQL in `db/schema.rs`.
+
 ## Tables
 
 ### `rfcs` — Cached raw RFC documents
@@ -129,7 +152,7 @@ CREATE INDEX idx_leads_category ON security_leads(category);
 CREATE INDEX idx_leads_severity ON security_leads(severity);
 ```
 
-### `analysis_runs` — Analysis run tracking
+### `analysis_runs` — Analysis run tracking (run manifest)
 
 ```sql
 CREATE TABLE analysis_runs (
@@ -141,18 +164,49 @@ CREATE TABLE analysis_runs (
     model_used      TEXT NOT NULL,
     tokens_used     INTEGER DEFAULT 0,
     status          TEXT NOT NULL DEFAULT 'running',
-    error           TEXT
+    error           TEXT,
+    -- Run manifest: captures all inputs that affect output
+    seed_rfcs       TEXT,                -- JSON array of seed RFC numbers
+    effective_rfcs  TEXT,                -- JSON array of all RFCs in scope
+    depth           INTEGER,
+    normative_only  INTEGER,             -- 0 or 1
+    mechanism_filter TEXT,               -- JSON array or NULL for all
+    category_filter  TEXT,               -- JSON array or NULL for all
+    prompt_version  TEXT,                -- version tag for prompt templates used
+    input_hash      TEXT                 -- composite hash of all inputs
 );
+
+CREATE INDEX idx_runs_protocol ON analysis_runs(protocol, stage);
 ```
 
 Valid `status` values: `running`, `completed`, `failed`.
 
+The `input_hash` is a composite SHA-256 covering all factors that affect the
+stage's output (see architecture.md Incrementality section). Before running
+a stage, the tool checks for a completed run with a matching `input_hash`
+and skips re-processing if found.
+
+### Additional Indexes
+
+```sql
+CREATE INDEX idx_state_machines_protocol ON state_machines(protocol);
+CREATE INDEX idx_protocol_rfcs_rfc ON protocol_rfcs(rfc_number);
+```
+
 ## Incrementality
 
-Before processing, each stage computes a `content_hash` (SHA-256) of its
-inputs. If an entry with the same hash already exists in the relevant table,
-the stage skips that work item. This makes re-runs fast when only a subset
-of RFCs have changed.
+Before processing, each stage computes a composite `input_hash` (SHA-256)
+covering all factors that affect its output:
+
+- **Stage 1**: RFC content hashes of seed RFCs + depth + normative_only flag
+- **Stage 2**: hash of input section texts + prompt version + model name +
+  mechanism filter
+- **Stage 3**: hash of state machines + input sections + prompt version +
+  model name + category filter
+
+If a completed `analysis_runs` entry with a matching `input_hash` exists,
+the stage skips re-processing. This ensures that changing prompts, switching
+models, or adding RFCs correctly triggers re-analysis.
 
 ## Compression
 

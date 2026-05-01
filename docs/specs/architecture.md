@@ -28,8 +28,8 @@ leads.
                 └──────────────┘
 ```
 
-Each stage reads from and writes to the SQLite cache, enabling incremental
-re-runs. Content hashing ensures unchanged data is not re-processed.
+Each stage reads from and writes to the SQLite database, enabling incremental
+re-runs and preserving expensive analysis results across sessions.
 
 ## Module Structure
 
@@ -96,8 +96,32 @@ All settings are in `rfc-analyzer.toml` with CLI overrides. See
 `cli-interface.md` for details. The LLM endpoint, API key, and model are all
 configurable -- see `llm-integration.md`.
 
+## Database as Project Artifact
+
+The SQLite database is a **project artifact**, not a disposable cache. It
+stores fetched RFCs, parsed structures, dependency graphs, LLM-derived state
+machines, and security analysis leads — all of which may represent significant
+computation time and API cost. The `clear` command requires confirmation
+before deleting data.
+
 ## Incrementality
 
-Each stage checks `content_hash` of its inputs against stored results. If the
-hash matches, the stage skips re-processing. The `analysis_store` tracks
-`(rfc_number, content_hash, analysis_version)` tuples.
+Each stage computes a composite input hash covering all factors that affect
+its output:
+
+- **Stage 1 (Map)**: RFC `content_hash` (SHA-256 of raw content)
+- **Stage 2 (Model)**: hash of input section texts + prompt version + model name
+- **Stage 3 (Analyze)**: hash of state machines + input sections + prompt version
+  + model name + category list
+
+These composite hashes are stored in `analysis_runs` as the run manifest.
+If a matching hash exists, the stage skips re-processing. This ensures that
+changing a prompt template, switching models, or adding new RFCs correctly
+triggers re-analysis.
+
+## Schema Migrations
+
+The database uses a `schema_version` table to track the current schema version.
+On startup, the application checks the version and applies any pending
+migrations sequentially. Migrations are defined as SQL in `db/schema.rs` and
+are never destructive to user data without explicit confirmation.

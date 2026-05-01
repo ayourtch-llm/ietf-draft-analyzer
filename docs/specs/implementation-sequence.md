@@ -12,9 +12,12 @@
 - Pure data structures, no logic yet
 
 ### 1.3 Database layer
-- `src/db/schema.rs` — table creation SQL, `initialize_db()` function
+- `src/db/schema.rs` — table creation SQL, schema versioning, migration
+  framework, `initialize_db()` function with `PRAGMA foreign_keys = ON`
 - `src/db/rfc_store.rs` — insert/get/exists for `rfcs`, `sections`, `cross_refs`
 - Write tests using in-memory SQLite (`:memory:`)
+- Design composite input hash functions for each stage's incrementality
+  checks (these affect table design, so must be decided early)
 
 **Milestone**: Can create DB, store and retrieve RFC structs.
 
@@ -42,8 +45,10 @@
 ### 2.5 Wire up CLI `map` command
 - `src/cli.rs` — clap definitions (start with `map` and `show` commands)
 - `src/main.rs` — dispatch to fetcher + parser + DB store
+- `map` accepts `--protocol` to associate RFCs with a protocol name
 
-**Milestone**: `rfc-analyzer map 9293 --depth 1` fetches and parses TCP RFCs.
+**Milestone**: `rfc-analyzer map 9293 --depth 1 --protocol tcp` fetches, parses,
+and associates TCP RFCs.
 
 ## Phase 3: Dependency Graph
 
@@ -139,13 +144,9 @@ OpenAI-compatible endpoint.
 
 ### 7.2 Utility commands
 - `show` command (display cached RFC info)
-- `clear` command (selective cache clearing)
+- `clear` command (selective clearing with confirmation, `--yes` to skip)
 
-### 7.3 Incremental caching
-- Content hash checks in all three stages
-- Skip re-processing when inputs haven't changed
-
-### 7.4 Integration tests
+### 7.3 Integration tests
 - End-to-end test with mocked HTTP (both RFC fetcher and LLM)
 - Test with a small set of fake RFCs through the full pipeline
 

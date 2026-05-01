@@ -57,6 +57,12 @@ token bucket and sliding window algorithms.
 Better compression ratio than gzip/deflate for text content, with very fast
 decompression. RFC text compresses 3-4x with zstd.
 
+## Build and Toolchain
+
+- `Cargo.lock` must be committed to the repository (standard practice for
+  binary crates, ensures reproducible builds).
+- Minimum supported Rust version: 1.85+ (required for edition 2024).
+
 ## Cargo.toml
 
 ```toml

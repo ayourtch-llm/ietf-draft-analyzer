@@ -29,17 +29,31 @@
 3. **Store**: Write parsed `Rfc` to SQLite (sections, cross_refs tables)
 
 4. **Expand**: Collect all referenced RFC numbers from:
-   - `obsoletes` / `updates` metadata
+   - `obsoletes` / `updates` metadata (always followed regardless of `normative_only`)
    - Normative references (always)
    - Informative references (if `!normative_only`)
    - Inline cross-references
-   Recursively fetch & parse up to `depth` levels
+   All discovered RFCs are fetched and parsed immediately. The `depth`
+   parameter controls how many levels of transitive references are followed
+   (depth=0 means seed RFCs only, depth=1 means seeds + their direct
+   references, etc.). There are no unfetched "boundary" nodes — every RFC
+   in the graph has been fully ingested.
 
 5. **Build graph**: Create `petgraph` directed graph:
    - One node per RFC
    - Edges for: obsoletes, updates, normative ref, informative ref, cross-ref
    - Cross-ref edges include source/target section numbers
    - Persist edges to `dep_edges` table
+
+   **Edge direction convention** (source → target):
+   - `Obsoletes`: A → B means "RFC A obsoletes RFC B" (A is newer)
+   - `Updates`: A → B means "RFC A updates RFC B" (A modifies B)
+   - `NormativeReference`: A → B means "RFC A normatively references RFC B"
+   - `InformativeReference`: A → B means "RFC A informatively references RFC B"
+   - `CrossReference`: A → B means "section in RFC A references section in RFC B"
+
+   In all cases, the arrow points from the document containing the reference
+   to the document being referenced.
 
 6. **LLM pass** (optional): For ambiguous plain-text references (e.g.,
    "as described above", "the mechanism in the previous document"), ask
