@@ -63,8 +63,16 @@ pub async fn create_run(
     let seed_rfcs_json = serde_json::to_string(
         &seed_rfcs.iter().map(|r| r.0).collect::<Vec<_>>()
     ).unwrap_or_else(|_| "[]".to_string());
-    let mechanism_json = mechanism_filter.map(|f| serde_json::to_string(f).unwrap_or_default());
-    let category_json = category_filter.map(|f| serde_json::to_string(f).unwrap_or_default());
+    let mechanism_json = mechanism_filter.map(|f| {
+        let mut sorted = f.to_vec();
+        sorted.sort();
+        serde_json::to_string(&sorted).unwrap_or_default()
+    });
+    let category_json = category_filter.map(|f| {
+        let mut sorted = f.to_vec();
+        sorted.sort();
+        serde_json::to_string(&sorted).unwrap_or_default()
+    });
     let prompt_version = prompt_version.to_string();
     let input_hash = input_hash.to_string();
     let started_at = Utc::now().to_rfc3339();
@@ -286,9 +294,13 @@ pub async fn store_state_machine(
 
     conn.call(move |conn| {
         conn.execute(
-            "INSERT OR REPLACE INTO state_machines
+            "INSERT INTO state_machines
                 (protocol, name, mechanism, data, content_hash, run_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(protocol, name, run_id) DO UPDATE SET
+                mechanism = excluded.mechanism,
+                data = excluded.data,
+                content_hash = excluded.content_hash",
             rusqlite::params![protocol, name, mechanism, data_json,
                 content_hash, run_id],
         )?;
@@ -305,19 +317,19 @@ pub async fn get_state_machines(
     protocol: &str,
     run_id: Option<i64>,
 ) -> Result<Vec<(String, String, String)>> {
-    // Returns (name, mechanism, data_json) tuples
     let protocol = protocol.to_string();
     let result = conn
         .call(move |conn| {
-            let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = if let Some(rid) = run_id {
-                (
+            let machines: Vec<(String, String, String)> = if let Some(rid) = run_id {
+                let mut stmt = conn.prepare(
                     "SELECT name, mechanism, data FROM state_machines
-                     WHERE protocol = ?1 AND run_id = ?2 ORDER BY name".to_string(),
-                    vec![Box::new(protocol), Box::new(rid)],
-                )
+                     WHERE protocol = ?1 AND run_id = ?2 ORDER BY name"
+                )?;
+                stmt.query_map(rusqlite::params![protocol, rid], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })?.collect::<std::result::Result<Vec<_>, _>>()?
             } else {
-                // Find the latest completed run for this protocol's 'model' stage
-                (
+                let mut stmt = conn.prepare(
                     "SELECT name, mechanism, data FROM state_machines
                      WHERE protocol = ?1
                        AND run_id = (
@@ -325,17 +337,12 @@ pub async fn get_state_machines(
                            WHERE protocol = ?1 AND stage = 'model' AND status = 'completed'
                            ORDER BY id DESC LIMIT 1
                        )
-                     ORDER BY name".to_string(),
-                    vec![Box::new(protocol)],
-                )
-            };
-            let mut stmt = conn.prepare(&query)?;
-            let params_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-            let machines: Vec<(String, String, String)> = stmt
-                .query_map(params_refs.as_slice(), |row| {
+                     ORDER BY name"
+                )?;
+                stmt.query_map(rusqlite::params![protocol], |row| {
                     Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-                })?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
+                })?.collect::<std::result::Result<Vec<_>, _>>()?
+            };
             Ok(machines)
         })
         .await?;
@@ -783,6 +790,12 @@ pub async fn run_stage2(
     }
 
     // Step 1: Mechanism clustering via LLM
+    // NOTE: On resume, clustering is re-run (one LLM call). This is accepted
+    // for v1 because: (a) clustering is a single cheap call, (b) at low
+    // temperature (0.2) results are typically stable, (c) completed work items
+    // are skipped by key regardless of clustering differences. If clustering
+    // produces new mechanism names not in the work items table, they are
+    // processed as new items.
     tracing::info!("Clustering mechanisms for protocol '{}'", protocol);
     let section_list: Vec<(u32, &str, &str)> = all_sections.iter()
         .map(|(rfc, sec)| (rfc.0, sec.number.as_str(), sec.title.as_str()))
@@ -1338,6 +1351,26 @@ mod tests {
             &conn, &[RfcNumber(9293)], Some(&["auth".to_string()]), "gpt-4o", &config1
         ).await.unwrap();
         assert_ne!(hash1, hash3);
+
+        // Different model → different hash
+        let hash_model = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], None, "gpt-3.5-turbo", &config1
+        ).await.unwrap();
+        assert_ne!(hash1, hash_model);
+
+        // Different max_tokens → different hash
+        let config_tokens = LlmConfig { max_tokens_per_request: 8192, ..config1.clone() };
+        let hash_tokens = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], None, "gpt-4o", &config_tokens
+        ).await.unwrap();
+        assert_ne!(hash1, hash_tokens);
+
+        // Different context_window → different hash
+        let config_window = LlmConfig { model_context_window: 32000, ..config1.clone() };
+        let hash_window = compute_stage2_hash(
+            &conn, &[RfcNumber(9293)], None, "gpt-4o", &config_window
+        ).await.unwrap();
+        assert_ne!(hash1, hash_window);
 
         // Same inputs → same hash (deterministic)
         let hash4 = compute_stage2_hash(
