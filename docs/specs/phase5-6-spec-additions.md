@@ -300,9 +300,12 @@ for `clear analysis` and `clear all` is:
 3. `run_work_items`
 4. `analysis_runs`
 
-`run_work_items` must be deleted before `analysis_runs` unless relying
-on `ON DELETE CASCADE` (which is now set on all foreign keys). The
-explicit delete order is kept as a safety measure and for clarity.
+`run_work_items` must be deleted before `analysis_runs`. The v2
+`run_id` foreign keys use `ON DELETE CASCADE`, so deleting `analysis_runs`
+cascades to `run_work_items`, `state_machines.run_id`, and
+`security_leads.run_id`. However, v1 tables (sections, cross_refs,
+dep_edges, protocol_rfcs) do NOT have cascade and require explicit
+delete order — see `database-schema.md` "Delete Order" section.
 
 ## 8. Concurrency and Rate Limiting
 
