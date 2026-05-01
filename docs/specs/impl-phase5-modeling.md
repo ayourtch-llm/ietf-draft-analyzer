@@ -496,7 +496,7 @@ fn compute_relevance_score(
 
     // +10: Section is IN the cluster (always include these first)
     let is_in_cluster = cluster_section_ids.iter()
-        .any(|(rfc, sec)| *rfc == rfc_number.0 && *sec == section.number);
+        .any(|(rfc, sec)| *rfc == rfc_number.0 && sec == &section.number);
     if is_in_cluster {
         score += 10;
     } else {
