@@ -71,12 +71,19 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                         let anchor = attrs.get("anchor").cloned();
                         let pn = attrs.get("pn").cloned();
                         section_counter += 1;
+                        let has_pn = pn.is_some();
                         let section_num = pn
                             .as_deref()
                             .and_then(|p| p.strip_prefix("section-"))
                             .map(|s| s.to_string())
                             .or_else(|| anchor.clone())
                             .unwrap_or_else(|| format!("s-{}", section_counter));
+                        if !has_pn && section_counter == 1 {
+                            tracing::warn!(
+                                "Sections lack 'pn' attributes (Internet-Draft?). \
+                                 Using anchor/auto-generated section numbers."
+                            );
+                        }
                         let depth = section_num.matches('.').count() as u8 + 1;
                         current_section = Some(SectionBuilder {
                             number: section_num,

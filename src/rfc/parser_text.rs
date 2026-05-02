@@ -172,6 +172,22 @@ fn extract_sections(content: &str) -> Vec<Section> {
     }
     matches.sort_by_key(|(pos, _, _)| *pos);
 
+    // Deduplicate section numbers (some RFCs have duplicate numbering)
+    {
+        let mut seen = std::collections::HashMap::new();
+        for (_pos, num, _title) in matches.iter_mut() {
+            let count = seen.entry(num.clone()).or_insert(0u32);
+            *count += 1;
+            if *count > 1 {
+                tracing::warn!(
+                    "Duplicate section number '{}' in plain-text RFC — renaming to '{}-{}'",
+                    num, num, count
+                );
+                *num = format!("{}-{}", num, count);
+            }
+        }
+    }
+
     // Extract text between section headers
     let xref_re = Regex::new(r"\[RFC\s*(\d+)\]").unwrap();
     let xref_section_re = Regex::new(r"Section\s+(\d+(?:\.\d+)*)\s+of\s+\[RFC\s*(\d+)\]").unwrap();
