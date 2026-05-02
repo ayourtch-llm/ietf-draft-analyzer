@@ -7,6 +7,27 @@ ranked vulnerability leads.
 
 Inspired by the [DreamGroup Black Hat Asia talk](https://dreamgroup.com/our-latest-black-hat-asia-talk-introducing-the-rfc-analyzer/).
 
+## Disclaimer
+
+This is an **experimental project**. Its goal was to explore the
+feasibility of building a non-trivial piece of software in a
+near-autonomous fashion, starting from nothing more than a decently
+good blog post describing the original tool's function. The entire
+codebase -- design specs, implementation, and reviews -- was produced
+by a multi-agent AI pipeline (Claude Opus, Codex/GPT-5.5, Qwen3-Coder)
+with human oversight.
+
+As a result, **this project bears no resemblance to the original
+DreamGroup RFC Analyzer** beyond the high-level concept of analyzing
+RFC specifications for security issues. It is an independent,
+clean-room reimplementation built from a public description.
+
+The **proof-of-concept (PoC) generation feature is even more
+experimental**. The generated scripts demonstrate protocol interactions
+at a conceptual level but frequently contain errors in protocol framing,
+state machine handling, or API usage. They should be treated as
+starting points for manual development, not as working exploit code.
+
 ## How It Works
 
 The tool runs a three-stage pipeline:
