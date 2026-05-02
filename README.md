@@ -64,11 +64,16 @@ The tool supports two output modes:
   constraints for structured output. Requires
   [llama.cpp](https://github.com/ggerganov/llama.cpp) (llama-server)
   or any backend that accepts `"grammar"` in the request body.
+  **Recommended for local models** — the grammar constrains output
+  length and structure, preventing the model from generating verbose
+  preamble that can exceed HTTP timeouts.
 
 - **JSON mode** (`use_grammar = false`): Uses standard
   `response_format: {"type": "json_object"}` for structured output.
   Compatible with OpenAI, vLLM, Ollama, and any OpenAI-compatible API.
-  Does not require llama.cpp.
+  Does not require llama.cpp. **Recommended for cloud APIs** where
+  generation is fast and GBNF is not supported. Local models may
+  time out in this mode due to verbose output before the JSON.
 
 ## Installation
 
