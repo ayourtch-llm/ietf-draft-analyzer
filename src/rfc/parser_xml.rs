@@ -27,6 +27,7 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
     let mut element_stack: Vec<String> = Vec::new();
     let mut current_section: Option<SectionBuilder> = None;
     let mut in_normative_refs = false;
+    let mut section_counter: u32 = 0;
     let mut current_ref_anchor = String::new();
     let mut current_ref_title = String::new();
     let mut ref_rfc_value: Option<u32> = None;
@@ -69,11 +70,13 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                         }
                         let anchor = attrs.get("anchor").cloned();
                         let pn = attrs.get("pn").cloned();
+                        section_counter += 1;
                         let section_num = pn
                             .as_deref()
                             .and_then(|p| p.strip_prefix("section-"))
-                            .unwrap_or("")
-                            .to_string();
+                            .map(|s| s.to_string())
+                            .or_else(|| anchor.clone())
+                            .unwrap_or_else(|| format!("s-{}", section_counter));
                         let depth = section_num.matches('.').count() as u8 + 1;
                         current_section = Some(SectionBuilder {
                             number: section_num,

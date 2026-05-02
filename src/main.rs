@@ -114,6 +114,14 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
+        Command::Import {
+            file,
+            number,
+            protocol,
+        } => {
+            rfc_analyzer::commands::import::cmd_import(&conn, &config, &file, number, protocol)
+                .await?;
+        }
         Command::Reproduce {
             protocol,
             output_dir,

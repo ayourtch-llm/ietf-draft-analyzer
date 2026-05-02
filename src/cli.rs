@@ -126,6 +126,20 @@ pub enum Command {
         yes: bool,
     },
 
+    /// Import a local RFC or Internet-Draft file (XML or text)
+    Import {
+        /// Path to local XML or text file
+        file: PathBuf,
+
+        /// Document number (used as RFC number internally)
+        #[arg(long, short = 'n')]
+        number: u32,
+
+        /// Associate with a protocol name
+        #[arg(long)]
+        protocol: Option<String>,
+    },
+
     /// Generate proof-of-concept reproduction scripts for security leads
     Reproduce {
         /// Protocol name (must have completed analysis)

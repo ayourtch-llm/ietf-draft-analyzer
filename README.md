@@ -122,6 +122,37 @@ rfc-analyzer analyze tcp --min-severity medium -o tcp-leads.json
 rfc-analyzer analyze tcp --categories missing_validation,replay_attack
 ```
 
+### Analyzing Internet-Drafts
+
+Import a local Internet-Draft (XML or plain text) for security analysis.
+This is useful for reviewing work-in-progress specifications before
+they become RFCs.
+
+```bash
+# Download a draft
+curl -O https://www.ietf.org/archive/id/draft-ietf-tls-esni-22.xml
+
+# Import it (use a high number like 99001 to avoid clashing with real RFCs)
+rfc-analyzer import draft-ietf-tls-esni-22.xml -n 99001 --protocol ech
+
+# Run the analysis pipeline
+rfc-analyzer model ech
+rfc-analyzer analyze ech -o ech-report.json
+
+# Or generate PoC scripts
+rfc-analyzer reproduce ech --output-dir ech-pocs
+```
+
+The `import` command accepts RFC 7991+ XML (preferred) or plain text.
+The `--number` (`-n`) flag assigns an internal document number. The
+`--protocol` flag associates the document with a protocol name used by
+subsequent commands.
+
+Internet-Drafts without the `pn` attribute on `<section>` elements
+(common before RFC Editor processing) are handled automatically by
+falling back to the `anchor` attribute or a sequential counter for
+section numbering.
+
 ### Other Commands
 
 ```bash
