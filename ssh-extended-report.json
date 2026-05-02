@@ -1,0 +1,636 @@
+{
+  "protocol_name": "ssh-extended",
+  "rfcs_analyzed": [
+    4256,
+    4344,
+    5656,
+    6668
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 4,
+    "total_edges": 0,
+    "connected_components": 4,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 8,
+  "security_leads": [
+    {
+      "id": "b874f7c6-349d-4dee-8528-e666ea53a326",
+      "technique_name": "Missing Elliptic Curve Point Validation",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: The protocol specifies that elliptic curve public keys (points) are transmitted as octet strings during ECDH and ECMQV key exchanges. Step 2: While the specification states 'All elliptic curve public keys MUST be validated after they are received', it references an example validation algorithm in [SEC1] but does not mandate strict validation of point coordinates against the curve equation, subgroup membership, or infinity points within the SSH message parsing logic itself. Step 3: An attacker on-path can send a maliciously crafted elliptic curve point (e.g., a point not on the curve, an invalid compressed format, or a small subgroup element) that bypasses basic octet string decoding. If the implementation relies solely on the referenced example rather than enforcing strict validation before computing the shared secret, it may lead to key leakage via invalid curve attacks or small subgroup confinement.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "4",
+          "quote": "All elliptic curve public keys MUST be validated after they are received. An example of a validation algorithm can be found in Section 3.2.2 of [SEC1]. If a key fails validation, the key exchange MUST fail."
+        },
+        {
+          "rfc": 5656,
+          "section": "5",
+          "quote": "All elliptic curve public keys MUST be validated after they are received. An example of a validation algorithm can be found in Section 3.2.2 of [SEC1]. If a key fails validation, the key exchange MUST fail."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client or server accepts custom elliptic curve points"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict point validation including checking that the point lies on the specified curve, verifying subgroup membership (checking n*Q = 0), and rejecting invalid encoding formats before any scalar multiplication or shared secret computation occurs.",
+      "fingerprint": "6fbc64a82248fe79c45d833fd3f11a328aecc99dbb84ed3f9542cda017e4f849"
+    },
+    {
+      "id": "70c99b86-1588-4b0f-8292-5bb1867d8bc7",
+      "technique_name": "Sequence Number Exhaustion Leading to Replay",
+      "category": "ReplayAttack",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: The SSH Transport Protocol uses a 32-bit sequence number for each direction of communication to ensure packet ordering and integrity (RFC 4253). Step 2: If an implementation fails to rekey before transmitting or receiving more than 2^32 packets, the sequence numbers will wrap around. Step 3: Upon wrapping, previously seen sequence numbers become valid again, allowing an on-path attacker to capture legitimate packets and replay them after the counter resets, bypassing integrity checks and potentially injecting or duplicating commands/data.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If more than 2**32 packets are encrypted and MACed by the SSH Transport Protocol between rekeyings, then the SSH Transport Protocol may become vulnerable to replay and re-ordering attacks."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "implementation fails to enforce rekeying limits"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST strictly adhere to the rekeying recommendations in RFC 4344 Section 3.1, forcing a key exchange after every 2^32 packets sent or received. Additionally, monitoring packet counts and logging near-threshold events can help detect misconfigured implementations.",
+      "fingerprint": "b15b81c60bb952986a6565ebb6f9a845d695ac0b456bf575a94c41246b5ac254"
+    },
+    {
+      "id": "700a4d68-8248-4500-994f-f6c0e5c85100",
+      "technique_name": "Missing Rekeying Limit Enforcement",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: RFC 4344 recommends rekeying after 2^32 packets or a specific number of encrypted blocks to prevent MAC sequence number collisions and keystream reuse in counter modes. Step 2: The specification uses 'SHOULD' rather than 'MUST' for these limits, providing no mandatory validation mechanism within the protocol state machine to automatically trigger rekeying when thresholds are exceeded. Step 3: An attacker can exploit this by forcing long-lived sessions without rekeying (e.g., via traffic shaping or delaying acknowledgments), eventually causing MAC collisions or keystream reuse, which leaks plaintext and allows message forgery or replay attacks.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        },
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If more than 2**32 packets are encrypted and MACed by the SSH Transport Protocol between rekeyings, then the SSH Transport Protocol may become vulnerable to replay and re-ordering attacks."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "long-lived session maintained"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Change 'SHOULD' to 'MUST' for packet/block limits, implement automatic rekeying triggers in the state machine upon reaching thresholds, and enforce strict validation of sequence numbers and block counts before encryption/decryption operations.",
+      "fingerprint": "bdde1ddbf6981adcf2049ca0edd1203f9b04e643eb2da48548943f459f8d3c56"
+    },
+    {
+      "id": "330e1f71-0dc2-4c6c-b781-bd76d1d5918a",
+      "technique_name": "MAC Sequence Number Collision Payload Leakage",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The SSH Transport Protocol uses a 32-bit sequence number for MAC computation (RFC 4344 Section 6.1). Step 2: If an implementation fails to rekey after every 2^32 packets as recommended, the sequence numbers will wrap around and repeat under the same encryption key. Step 3: An adversary can detect collisions between MACs associated with two packets sharing the same 32-bit sequence number. A collision indicates that the payload data of those ciphertexts is likely identical, leaking information about the plaintext content regardless of the underlying encryption strength.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If a collision is found, then the payload data associated with those two ciphertexts is probably identical."
+        },
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "Because of possible information leakage through the MAC tag, SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "implementation fails to enforce rekeying limits"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce mandatory rekeying after 2^32 packets or gigabytes of data as specified in RFC 4344. Implement sequence number tracking and automatic key renegotiation.",
+      "fingerprint": "fc33fa866a0b8dcc374c6077162e0dfc6aa20154414a48a770a37267e5fe8453"
+    },
+    {
+      "id": "d6e62d45-ec3c-4c07-b09c-1f008059b8eb",
+      "technique_name": "Unbounded Information Request Loop in Keyboard-Interactive",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: RFC 4256 Section 3.2 states the server may send as many requests as necessary, but MUST NOT have more than one outstanding at a time. Step 2: However, it does not specify a maximum number of rounds or enforce strict termination conditions beyond explicit success/failure messages. Step 3: Implementations may allow unbounded authentication rounds, enabling denial-of-service (resource exhaustion) or timing-based side-channel attacks where an attacker measures round counts to infer password expiration policies or multi-factor steps.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "The server may send as many requests as are necessary to authenticate the client; the client MUST be prepared to handle multiple exchanges."
+        },
+        {
+          "rfc": 4256,
+          "section": "6",
+          "quote": "It is possible that an observer may gain valuable information simply by counting that number. For example, an observer may guess that a user's password has expired..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST enforce a strict maximum limit on authentication rounds (e.g., 3-5) and implement constant-time delays to mitigate timing side-channels. Servers SHOULD abort the session after exceeding the limit.",
+      "fingerprint": "75911e0f2f862e191d1f3019d17c30702df633a4be0133754b8cff784d67c2a8"
+    },
+    {
+      "id": "0c04d680-fac4-4e93-9f96-fd2fcdb58274",
+      "technique_name": "Race Condition in Interactive Authentication State Machine",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The SSH keyboard-interactive authentication protocol (RFC 4256) relies on a strict request-response state machine where the server MUST NOT send another SSH_MSG_USERAUTH_INFO_REQUEST before receiving the client's answer to the previous one. Step 2: However, the specification allows for variable numbers of exchanges and does not strictly enforce atomicity or sequence number validation across multiple prompts/responses in all implementations. An attacker on-path can exploit a race condition by injecting or delaying packets during multi-factor authentication flows (e.g., password + OTP). Step 3: If the client processes a delayed response while simultaneously handling a new prompt, or if the server's state machine fails to properly validate that the incoming SSH_MSG_USERAUTH_INFO_RESPONSE corresponds exactly to the outstanding request before advancing state, an attacker can desynchronize the exchange. This can lead to authentication bypass (if responses are replayed/misaligned) or denial of service by exhausting the server's authentication attempt limits.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3",
+          "quote": "The server MUST NOT send another SSH_MSG_USERAUTH_INFO_REQUEST before it has received the answer from the client."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "However, the server MUST NOT ever have more than one SSH_MSG_USERAUTH_INFO_REQUEST message outstanding. That is, it may not send another request before the client has answered."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client/server implementation does not strictly validate sequence/state for multi-prompt exchanges"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict state machine validation ensuring each SSH_MSG_USERAUTH_INFO_RESPONSE is matched to its corresponding request ID/sequence before processing. Enforce atomic handling of multi-prompt exchanges and implement timeouts to reset state if responses are delayed or out-of-order.",
+      "fingerprint": "f229f4807ac2dee84fc48f92f3874f7671c42af3985c9365fe6275e7255b6504"
+    },
+    {
+      "id": "2fc20d7f-beef-4dea-a6de-3276f8725dad",
+      "technique_name": "Ambiguous Elliptic Curve Validation and Parameter Selection",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: RFC 5656 Section 9 states that 'Certain types of curves can be more susceptible to known attacks than others' and advises administrators to investigate the security of non-standard curves. Step 2: However, Section 10 allows implementations to support any ASN.1 OID defining elliptic curve domain parameters without mandating strict validation against a safe-curve list or requiring explicit cryptographic strength verification beyond basic point validation. Step 3: Implementations may accept weak or anomalous curves (e.g., cofactor > 1, small subgroup, or curves with known backdoors) because the spec leaves curve selection and security assessment largely to implementation discretion, leading to potential downgrade attacks or private key recovery if an attacker can influence curve negotiation.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "9",
+          "quote": "System administrators should be cautious when enabling curves other than the ones specified in Section 10 and should make a more detailed investigation into the security of the curve in question."
+        },
+        {
+          "rfc": 5656,
+          "section": "10",
+          "quote": "Implementations MAY support any ASN.1 object identifier (OID) in the ASN.1 object tree that defines a set of elliptic curve domain parameters [ASN1]."
+        }
+      ],
+      "prerequisites": [
+        "attacker can influence algorithm negotiation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST restrict supported curves to a strict, vetted list (e.g., REQUIRED/RECOMMENDED from Section 10) and enforce explicit validation of curve parameters against known weak classes before accepting them during negotiation.",
+      "fingerprint": "29a4b832ed5e11147a8a97c50c125fb167f00478cb0f255f2aab61b546782290"
+    },
+    {
+      "id": "24f0b074-ca09-4571-bafb-f9130eb620c4",
+      "technique_name": "Elliptic Curve Domain Parameter Downgrade via Arbitrary Curve Acceptance",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: During the ECDH or ECMQV key exchange (RFC 5656 Sections 4 & 5), the client and server negotiate elliptic curve domain parameters. Step 2: The RFC states that implementations SHOULD allow system administrators to disable curves, including REQUIRED ones, but also notes that ECDH/ECMQV allow for curves of arbitrary sizes. Step 3: If an implementation fails to strictly enforce the use of RECOMMENDED/REQUIRED curves (e.g., nistp256) or allows negotiation with weak/custom curves without proper validation against a whitelist, an attacker can force the selection of a curve susceptible to known attacks (e.g., Weil descent on GF(2^m) with composite m, as noted in RFC 5656 Section 9). This effectively downgrades the cryptographic strength of the key exchange.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "9",
+          "quote": "Certain types of curves can be more susceptible to known attacks than others. For example, curves over finite fields GF(2^m), where m is composite, may be susceptible to an attack based on the Weil descent."
+        },
+        {
+          "rfc": 5656,
+          "section": "8.1",
+          "quote": "Implementers SHOULD allow system administrators to disable some curves, including REQUIRED or RECOMMENDED curves, to meet local security policy."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "implementation allows custom/weak curve negotiation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST strictly enforce a whitelist of REQUIRED and RECOMMENDED curves. Custom or non-standard curves should be rejected unless explicitly validated against known secure parameters. Administrators should disable weak curves by default.",
+      "fingerprint": "2273a2ea401e50dc953d19eca7744c4c92dbc2155f333a575535e12d6b166207"
+    },
+    {
+      "id": "8e86219c-74c7-42d9-add2-cfaa289ad958",
+      "technique_name": "Elliptic Curve Parameter Validation Bypass",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 5656 Section 4 mandates that 'All elliptic curve public keys MUST be validated after they are received' and 'If a key fails validation, the key exchange MUST fail.'\nStep 2: However, the specification references external documents (SEC1) for validation algorithms without mandating specific computational bounds or handling for malformed/invalid points in the SSH message parsing layer.\nStep 3: An attacker can send specially crafted elliptic curve public keys that are computationally expensive to validate (e.g., points on invalid curves or small subgroup attacks). If the implementation lacks strict checks against point compression anomalies or cofactor multiplication edge cases, the validation process can consume excessive CPU cycles, causing a server-side DoS.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "4",
+          "quote": "All elliptic curve public keys MUST be validated after they are received. An example of a validation algorithm can be found in Section 3.2.2 of [SEC1]. If a key fails validation, the key exchange MUST fail."
+        },
+        {
+          "rfc": 5656,
+          "section": "9",
+          "quote": "System administrators should be cautious when enabling curves other than the ones specified in Section 10 and should make a more detailed investigation into the security of the curve in question."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or has network access to initiate SSH connection",
+        "server allows custom/unsupported curves or lacks strict point validation bounds"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce strict validation of elliptic curve points against the REQUIRED/RECOMMENDED curves only. Implement computational timeouts for key validation and reject malformed octet strings immediately during parsing.",
+      "fingerprint": "93ea41a4d8430afa1b36bd6643deea89262edd7168c203f61575ecdfd44f9cec"
+    },
+    {
+      "id": "12f6f8d0-e1a9-4689-97bb-4725c2ed1c0c",
+      "technique_name": "Missing Validation of Authentication Response Count",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: During keyboard-interactive authentication, the server sends an SSH_MSG_USERAUTH_INFO_REQUEST containing a num-prompts field and corresponding prompts. Step 2: The client responds with an SSH_MSG_USERAUTH_INFO_RESPONSE containing a num-responses field. While RFC 4256 Section 3.4 states 'If the num-responses field does not match the num-prompts field in the request message, the server MUST send a failure message', it lacks explicit validation on how the client should handle mismatched counts before transmission or how the server validates the ordering and length of response strings against the expected prompts beyond the count check. Step 3: An attacker controlling the client can craft responses with mismatched lengths or inject malformed UTF-8 sequences into the response array, potentially causing buffer overflows or authentication bypass if the underlying PAM/backend does not strictly validate the string array bounds and encoding before processing.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.4",
+          "quote": "If the num-responses field does not match the num-prompts field in the request message, the server MUST send a failure message."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls client implementation or injects malformed packets"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce strict bounds checking on both client and server sides: validate that num-responses exactly equals num-prompts, verify each response string's length does not exceed expected limits, and ensure proper UTF-8 normalization before passing to the authentication backend.",
+      "fingerprint": "8c111261965501eff2a0b51b3f6b454ecf75bb4066e2ea56ce9bc1eb3a57069c"
+    },
+    {
+      "id": "eccabbf3-54c1-4236-9db2-60a97442af41",
+      "technique_name": "Interactive Authentication Prompt Replay",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The keyboard-interactive authentication method (RFC 4256) allows servers to send arbitrary prompts and receive responses from clients without cryptographic binding of the challenge-response exchange to a specific session nonce in the message itself. Step 2: An on-path attacker can capture an `SSH_MSG_USERAUTH_INFO_REQUEST` containing a prompt (e.g., for a password or TOTP). Step 3: The attacker replays this exact request later. If the client is configured to automatically respond or if the user blindly enters the same credentials, the server may accept the replayed response, especially if the underlying mechanism lacks time-based or session-bound challenges.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.1",
+          "quote": "The authentication starts with the client sending the following packet: byte SSH_MSG_USERAUTH_REQUEST string user name..."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "Requests are generated from the server using the SSH_MSG_USERAUTH_INFO_REQUEST message... The server may send as many requests as are necessary to authenticate the client"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client or user reuses credentials automatically"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers should bind authentication challenges to session-specific nonces or use time-based one-time passwords (TOTP) that expire quickly. Clients should require explicit user interaction for each prompt and avoid auto-filling sensitive credentials in interactive modes.",
+      "fingerprint": "a8979ea9333c2c5757c452e4906d3e8795805ff1a0236eb4081c7f6cecb86e12"
+    },
+    {
+      "id": "1d875455-dead-4848-8514-a08602eae849",
+      "technique_name": "Unbounded Interactive Authentication Loop",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The SSH keyboard-interactive authentication method (RFC 4256) allows the server to send multiple SSH_MSG_USERAUTH_INFO_REQUEST messages to request additional information from the client.\nStep 2: Section 3.2 states 'The server may send as many requests as are necessary to authenticate the client; the client MUST be prepared to handle multiple exchanges.' However, there is no explicit upper bound or limit defined on the number of rounds or total data size exchanged during this authentication phase.\nStep 3: An attacker acting as a malicious server can exploit this by continuously sending SSH_MSG_USERAUTH_INFO_REQUEST messages without ever completing authentication. Since the client must respond (even with empty responses if num-prompts is 0, per Section 3.4), this creates an unbounded loop that consumes client CPU, memory, and network resources, leading to a Denial of Service.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "The server may send as many requests as are necessary to authenticate the client; the client MUST be prepared to handle multiple exchanges."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.4",
+          "quote": "In the case that the server sends a `0' num-prompts field in the request message, the client MUST send a response message with a `0' num-responses field to complete the exchange."
+        }
+      ],
+      "prerequisites": [
+        "attacker has valid SSH credentials or exploits an unauthenticated loop before auth completes",
+        "client implementation strictly follows RFC 4256 without local rate-limiting"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should enforce a strict maximum limit on the number of interactive authentication rounds (e.g., max 3-5 exchanges) and cap the total payload size of prompts/responses. Clients should also implement local timeouts or connection limits for unauthenticated sessions.",
+      "fingerprint": "38b58bc96eb3bfaaa067365665ff1948f4d62074d010498a9a767a9cec734c8e"
+    },
+    {
+      "id": "c54f55b8-87da-4d07-a1e6-1180e176a1f2",
+      "technique_name": "Authentication Timing Side-Channel via Password Expiration",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The client initiates authentication using SSH_MSG_USERAUTH_REQUEST with the 'keyboard-interactive' method (RFC 4256 Section 3). Step 2: If the user's password has expired or other policy conditions are met, the server responds with an additional SSH_MSG_USERAUTH_INFO_REQUEST prompting for a new password or displaying specific messages like 'Password Expired' (RFC 4256 Section 4). Step 3: An on-path observer can count the number of client-server exchanges required to complete authentication. As noted in RFC 4256 Section 6, an observer may guess that a user's password has expired and determine password lifetime policies based on this variable exchange count.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3",
+          "quote": "The authentication starts with the client sending the following packet: SSH_MSG_USERAUTH_REQUEST"
+        },
+        {
+          "rfc": 4256,
+          "section": "4",
+          "quote": "S: byte SSH_MSG_USERAUTH_INFO_REQUEST S: string 'Password Expired' S: string 'Your password has expired.'"
+        },
+        {
+          "rfc": 4256,
+          "section": "6",
+          "quote": "The number of client-server exchanges required to complete an authentication using this method may be variable. It is possible that an observer may gain valuable information simply by counting that number."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "observer can count protocol messages"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement constant-time authentication flows by always requesting the same number of prompts regardless of password status, or introduce artificial delays and uniform message exchanges to prevent exchange counting.",
+      "fingerprint": "5dc77cefc91376e382091831185f5528ad1fe084b75d58b9583fa985d06871a9"
+    },
+    {
+      "id": "9ef33040-ed77-4a25-b9da-ca76050b0c30",
+      "technique_name": "Ambiguous Rekeying Threshold Enforcement",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 4344 Section 3.1 and 3.2 provide 'SHOULD' recommendations for rekeying based on packet counts (2^32) and block cipher limits (2^(L/4)). Step 2: The document notes that these are recommendations, not strict MUSTs, and allows implementations to deviate if they understand the risks. Step 3: This ambiguity permits implementations to skip or delay rekeying beyond safe thresholds, increasing vulnerability to birthday attacks on encryption keys and MAC sequence number collisions, especially with smaller block ciphers.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        },
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "Implementors who decide not to rekey at least once every 2**32 packets should understand these issues."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST enforce mandatory rekeying thresholds as hard limits rather than soft recommendations. Servers SHOULD initiate rekeying proactively upon approaching 2^31 packets to ensure both sides comply.",
+      "fingerprint": "6bb99cb25890a81762f9149cb41c44e7b3c519ef2486a2d8407568ffb35d68b6"
+    },
+    {
+      "id": "16988817-c99a-479b-84d4-5a29cee4ba45",
+      "technique_name": "Race Condition in ECDH/ECMQV Key Exchange Shared Secret Computation",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The SSH ECC key exchange methods (ECDH and ECMQV) require both parties to generate ephemeral keys, validate received public keys, compute a shared secret, and then sign/verify an exchange hash before transitioning to the SecureTransportActive state. Step 2: The specification mandates that 'All elliptic curve public keys MUST be validated after they are received' but does not explicitly define atomicity constraints for concurrent key exchange attempts or rekeying triggers during active sessions. Step 3: In implementations handling multiple parallel connections or rapid rekeying (triggered by packet/block counts per RFC 4344), a race condition can occur if the shared secret computation and state transition are not properly serialized. An attacker could potentially trigger concurrent key exchanges to manipulate ephemeral key generation timing, increasing the risk of weak random number generator reuse or side-channel leakage during the critical validation/computation phase.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "4",
+          "quote": "All elliptic curve public keys MUST be validated after they are received. An example of a validation algorithm can be found in Section 3.2.2 of [SEC1]. If a key fails validation, the key exchange MUST fail."
+        },
+        {
+          "rfc": 4344,
+          "section": "3",
+          "quote": "Section 9 of [RFC4253] suggests that SSH implementations rekey after every gigabyte of transmitted data. This section serves to strengthen the suggestion in [RFC4253] by giving firm upper bounds on the tolerable number of encryptions between rekeying operations."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server handles concurrent key exchanges or rapid rekeying without proper synchronization"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure cryptographic operations for ephemeral key generation, validation, and shared secret computation are performed atomically. Implement strict locking mechanisms during the Key Exchange state machine transitions to prevent concurrent manipulation of session keys.",
+      "fingerprint": "3cd502702a0cd7edcd460e81fc324b2459734d1720b4454bb82fb87ca9d4ea53"
+    },
+    {
+      "id": "69a52c10-1245-4e7e-9eaf-019c9030d7e4",
+      "technique_name": "Inconsistent Language Tag Handling in Keyboard-Interactive Auth",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 4256 Section 3.1 and 3.2 state that the language tag is deprecated and SHOULD be an empty string, but if present, the server SHOULD use it for messages sent to the client. Step 2: It also states 'If the server does not support the requested language, the language to be used is implementation-dependent.' Step 3: This ambiguity allows implementations to silently fall back to different languages or ignore the tag inconsistently, potentially enabling phishing attacks where an attacker intercepts and modifies prompts to display in a misleading language, or causes client UI desynchronization that confuses users into entering credentials incorrectly.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.1",
+          "quote": "If the server does not support the requested language, the language to be used is implementation-dependent."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "If the server does not support the requested language, the language to be used is implementation-dependent."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST default to a safe, consistent fallback language (e.g., English) and explicitly log or reject unsupported language tags rather than relying on implementation-dependent behavior. Clients SHOULD validate that prompt text matches expected patterns.",
+      "fingerprint": "e63dba40571a871842c98f5cfc5e4dba1355f2e5c0e9f6a7a1353c7779b3fe79"
+    },
+    {
+      "id": "d826f0de-c768-49e1-b896-c0774212b401",
+      "technique_name": "Packet Padding Length Information Leakage",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: SSH packets include padding to align with block cipher boundaries (RFC 4344 Section 6.2). Step 2: The specification requires padding to be a multiple of the block cipher's block length specifically to prevent leaking precise information about the length of the packet's payload data. Step 3: If an implementation deviates from this requirement or uses non-standard padding schemes, an on-path observer can infer exact application-layer message sizes and potentially reconstruct sensitive command structures or data payloads based on traffic patterns.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.2",
+          "quote": "this document requires that padding be a multiple of the block cipher's block length in order to ... not leak precise information about the length of the packet's payload data."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "implementation uses non-standard or insufficient padding"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure all SSH implementations strictly pad packets to multiples of the block cipher's block length and consider implementing constant-length packet padding or traffic shaping to obscure payload size variations.",
+      "fingerprint": "7fcc1425b4b3b168d8d158c83c1c6b65aec4dba1d07d61a72977f9a068b8956c"
+    },
+    {
+      "id": "ce27a161-7575-4f62-a543-81e245f813b1",
+      "technique_name": "Ambiguous Submethod Interpretation in Keyboard-Interactive",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: RFC 4256 Section 3.1 describes the 'submethods' field as a hint for preferred authentication methods. Step 2: It explicitly states 'Server interpretation of the submethods field is implementation-dependent.' and suggests servers may ignore it entirely unless multiple submethods are allowed. Step 3: This lack of constraint allows implementations to process, ignore, or misinterpret hints arbitrarily, potentially leading to unexpected authentication flows or bypassing intended multi-factor constraints if a server incorrectly assumes a specific submethod was selected.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.1",
+          "quote": "Server interpretation of the submethods field is implementation-dependent."
+        }
+      ],
+      "prerequisites": [
+        "attacker can manipulate client authentication request"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST clearly document how submethod hints are processed. Servers SHOULD explicitly validate that the chosen authentication mechanism matches any requested submethods, or ignore them safely without altering security policies.",
+      "fingerprint": "0a3694e528178101180a85760092a361e6325e6259a9b0698fc97a85315acf5f"
+    },
+    {
+      "id": "f27c30c7-ea42-467b-9ef3-b84de527e67c",
+      "technique_name": "Algorithm Negotiation Downgrade via Submethod Hint Manipulation",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: The attacker intercepts the SSH_MSG_USERAUTH_REQUEST message during keyboard-interactive authentication (RFC 4256 Section 3.1). Step 2: The client includes a 'submethods' field containing a comma-separated list of preferred authentication submethods as a hint to the server. Step 3: An on-path attacker modifies or strips this submethods field, causing the server to fall back to weaker or less secure underlying authentication mechanisms (e.g., downgrading from hardware token-based auth to standard password auth). The RFC explicitly states that server interpretation of the submethods field is implementation-dependent and may be ignored entirely if multiple submethods are not supported, providing no cryptographic binding between the client's preference and the actual mechanism used.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.1",
+          "quote": "The submethods field is included so the user can give a hint of which actual methods he wants to use... Server interpretation of the submethods field is implementation-dependent."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client supports multiple authentication submethods"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations SHOULD cryptographically bind the selected authentication mechanism to the key exchange hash, or ignore client hints for security-critical mechanisms. Servers should validate that the negotiated method meets local policy regardless of client hints.",
+      "fingerprint": "04463d7a66c4b9334d0d1b9932407581ad6457447ae6953a60003ca94db2bcda"
+    },
+    {
+      "id": "1b08dfe6-7d82-45b3-be8a-bb85ea33b639",
+      "technique_name": "MAC/Encryption Rekeying Downgrade via Packet Count Manipulation",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: RFC 4344 recommends rekeying every 2^32 packets to prevent MAC sequence number collisions and information leakage (Section 6.1). Step 2: The recommendation is advisory ('SHOULD'), not mandatory ('MUST'). Step 3: An attacker can delay or manipulate traffic flow, or exploit implementations that ignore the rekeying threshold, effectively forcing the session to continue using older, potentially weaker cryptographic keys for extended periods. While not a direct algorithm downgrade, this degrades the security posture by increasing the attack surface for birthday attacks on MACs and block ciphers (Sections 3.1 & 3.2 of RFC 4344).",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "Recommendation (1) states that SSH implementations should rekey at least once every 2**32 packets."
+        },
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "implementation ignores or delays rekeying"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST enforce strict packet and block count limits for rekeying. Use of 'SHOULD' in security contexts should be elevated to 'MUST' where cryptographic boundaries are concerned.",
+      "fingerprint": "6daadfe413889e330b29cd01103e4a322c4a92afae454991a1745580ee327ba9"
+    },
+    {
+      "id": "73425bf5-e6a3-469c-a573-65c1d73dcdec",
+      "technique_name": "Rekeying Resource Exhaustion via Packet Count Manipulation",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: RFC 4344 Section 3.1 recommends rekeying at least once every 2^32 outgoing packets to prevent MAC sequence number collisions and information leakage.\nStep 2: The protocol relies on implementations voluntarily adhering to these recommendations for cryptographic hygiene, but does not enforce hard limits or automatic forced rekeying mechanisms in the base transport layer specification provided here.\nStep 3: A malicious client can deliberately slow down packet transmission or manipulate sequence counters (if implementation flaws exist) to delay rekeying indefinitely. While primarily a crypto-strength issue, prolonged use of a single key pair without rekeying increases the attack surface for side-channel and statistical analysis attacks that could eventually compromise session integrity, indirectly leading to DoS if keys are compromised.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "Because of possible information leakage through the MAC tag, SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        },
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If more than 2**32 packets are encrypted and MACed by the SSH Transport Protocol between rekeyings, then the SSH Transport Protocol may become vulnerable to replay and re-ordering attacks."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls client traffic patterns",
+        "server implementation lacks automatic rekey enforcement"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST enforce hard limits on packet counts and block counts for rekeying, regardless of traffic volume. Automatic periodic rekeying should be enforced at the transport layer.",
+      "fingerprint": "7d1052c86b44fecee832e1b76ad1a3de3af9d1cc872c22ee03db73df3c8a0743"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T00:30:23.504722+00:00",
+    "model_used": "bad-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "total_tokens_used": 154383,
+    "analysis_duration_secs": 138.972542,
+    "run_id": 22,
+    "input_hash": "0609d81905ae829a76c35855ec29e4d9e77009b41e1aa104c02864b2da9968b7",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}
