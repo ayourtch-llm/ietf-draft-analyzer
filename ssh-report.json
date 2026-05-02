@@ -1,0 +1,779 @@
+{
+  "protocol_name": "ssh",
+  "rfcs_analyzed": [
+    4251,
+    4252,
+    4253,
+    4254
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 4,
+    "total_edges": 0,
+    "connected_components": 4,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 8,
+  "security_leads": [
+    {
+      "id": "31c2c5e3-328e-4055-958a-5971cdcf134a",
+      "technique_name": "Missing Host Key Verification",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: The protocol allows the client to connect without verifying the server's host key association (Section 4.1). Step 2: If verification is skipped, an on-path attacker can perform a man-in-the-middle attack by presenting their own public key during the initial connection (Section 9.3.4). Step 3: The attacker can decrypt and manipulate all subsequent traffic because the client blindly accepts the unverified host key, completely bypassing transport layer authentication.",
+      "rfc_references": [
+        {
+          "rfc": 4251,
+          "section": "4.1",
+          "quote": "The protocol provides the option that the server name - host key association is not checked when connecting to the host for the first time."
+        },
+        {
+          "rfc": 4251,
+          "section": "9.3.4",
+          "quote": "This protocol makes no assumptions or provisions for an infrastructure or means for distributing the public keys of hosts. It is expected that this protocol will sometimes be used without first verifying the association between the server host key and the server host name."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client configured to skip host key verification"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Implementations MUST enforce strict host key verification by default. Administrators should distribute trusted host keys via secure out-of-band channels or a PKI.",
+      "fingerprint": "8701f19a496c06aedee2731a51fce5674f1ce116eeef08adfbbef303305890e2"
+    },
+    {
+      "id": "e58c13d8-56e3-4953-a3f3-66b81f130791",
+      "technique_name": "Authentication State Reset Failure",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: The SSH Authentication Protocol allows the 'user name' and 'service name' fields to change between authentication requests (RFC 4252 Section 5). Step 2: The specification mandates that if these fields change, the server MUST flush any accumulated authentication state. If it cannot flush the state, it MUST disconnect. Step 3: In implementations where flushing complex internal states (e.g., multi-factor or public key challenge-response buffers) is non-trivial or buggy, a server may retain partial authentication progress from a previous user/service context while processing a new one. This leads to StateConfusion where the server incorrectly evaluates credentials against stale state, potentially bypassing authentication checks or granting unauthorized access.",
+      "rfc_references": [
+        {
+          "rfc": 4252,
+          "section": "5",
+          "quote": "The 'user name' and 'service name' are repeated in every new authentication attempt, and MAY change. The server implementation MUST carefully check them in every message, and MUST flush any accumulated authentication states if they change."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server implementation has flawed state management"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must rigorously clear all authentication-related buffers and flags whenever 'user name' or 'service name' changes. If a clean flush is impossible, the connection must be immediately terminated as mandated by the spec.",
+      "fingerprint": "fcfb6fb4903e02ef7826c9168ab736ad37df4f088de43787d670bbd965ec13b9"
+    },
+    {
+      "id": "e9c9ea29-749a-4c20-bad2-fb847fd36a0f",
+      "technique_name": "SSH Version Downgrade via Compatibility Flag Manipulation",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: The attacker performs a Man-in-the-Middle (MitM) attack on the TCP connection between the client and server during the initial handshake.\nStep 2: The SSH protocol allows servers to enter a compatibility mode for older versions by setting their 'protoversion' to \"1.99\" or \"1.x\" (RFC 4253, Section 5.1 & 5.2). An on-path attacker can intercept the identification strings sent by both parties.\nStep 3: The attacker strips the Carriage Return (CR) and Line Feed (LF) characters from the server's identification string or modifies the version string to \"1.x\"/\"1.99\". This forces the client into compatibility mode, causing it to reconnect using the older, cryptographically weak SSH-1 protocol instead of the secure SSH-2 protocol.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "4.2",
+          "quote": "Since the protocol being defined in this set of documents is version 2.0, the 'protoversion' MUST be \"2.0\"."
+        },
+        {
+          "rfc": 4253,
+          "section": "5.1",
+          "quote": "Server implementations MAY support a configurable compatibility flag that enables compatibility with old versions. When this flag is on, the server SHOULD identify its 'protoversion' as \"1.99\"."
+        },
+        {
+          "rfc": 4253,
+          "section": "5.2",
+          "quote": "Since the new client MAY immediately send additional data after its identification string (before receiving the server's identification string), the old protocol may already be corrupt when the client learns that the server is old."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server or client has legacy SSH-1 compatibility enabled"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Disable all support for legacy SSH-1.x protocol versions in both client and server configurations. Ensure strict validation of the version string format (including mandatory CR/LF termination) to prevent manipulation.",
+      "fingerprint": "95f4d14226030f3dfd150444dac2e0636266dbc774cef16b98744c81092010d7"
+    },
+    {
+      "id": "0ab2ad2e-13b8-4182-98fd-7ffbedd58a4e",
+      "technique_name": "Debug Message Information Disclosure",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The protocol defines SSH_MSG_DEBUG messages that can be sent by either party to transmit debugging information. Step 2: Section 4.5 and 9.3.7 of RFC 4251 explicitly warn that 'These messages may reveal surprising amounts of information about the host if not properly designed.' Step 3: If enabled, an attacker can trigger or observe these debug messages during authentication or session setup to extract sensitive internal state, file paths, algorithm details, or other host-specific data.",
+      "rfc_references": [
+        {
+          "rfc": 4251,
+          "section": "9.4.2",
+          "quote": "Special care should be taken when designing debug messages. These messages may reveal surprising amounts of information about the host if not properly designed."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or authenticated enough to trigger debug responses",
+        "debug mode enabled on server/client"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Debug messages MUST be disabled by default. Administrators should explicitly enable them only when necessary and ensure they do not contain sensitive host or user data.",
+      "fingerprint": "c1bf811f6abdc88754ca8b1d8097518272907555b5c29bd0782ceb4c2d2b8301"
+    },
+    {
+      "id": "92b4be24-4b6a-408d-9dea-2ab0e07d4ea2",
+      "technique_name": "Cipher Downgrade via 'none' Algorithm Injection",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: During the SSH transport layer key exchange and algorithm negotiation phase, the client and server exchange lists of supported encryption algorithms.\nStep 2: An on-path attacker intercepts the SSH_MSG_KEXINIT messages and modifies the 'encryption_algorithms_client_to_server' or 'encryption_algorithms_server_to_client' name-lists to inject the 'none' cipher at a higher priority position (or ensures it is the only common algorithm if the other party also allows it).\nStep 3: The protocol specification states that \"none\" must be explicitly listed to be acceptable. If successfully injected and accepted, the connection proceeds without any encryption, exposing all subsequent traffic including authentication credentials to passive eavesdropping.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "6.3",
+          "quote": "The \"none\" algorithm specifies that no encryption is to be done. Note that this method provides no confidentiality protection, and it is NOT RECOMMENDED."
+        },
+        {
+          "rfc": 4253,
+          "section": "7.1",
+          "quote": "Note that \"none\" must be explicitly listed if it is to be acceptable."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce local security policies that explicitly forbid the 'none' cipher in algorithm negotiation lists. Validate received KEXINIT packets to ensure no unexpected algorithms are present.",
+      "fingerprint": "3776f783825867d4708056444ca88a18afaa81ed36769e7ca836e77a7b200815"
+    },
+    {
+      "id": "e52a17bf-e1d4-4c82-9c07-d55893188f96",
+      "technique_name": "MAC Sequence Number Wraparound Replay",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The SSH transport layer uses a monotonically increasing 32-bit sequence number as input to the MAC algorithm for data integrity.\nStep 2: If an active session remains open long enough without rekeying, the sequence number will eventually wrap around from 2^32 - 1 back to 0.\nStep 3: An attacker who recorded a packet sent early in the session (when the sequence number was X) can replay it after the receiver's sequence counter has also wrapped around and reached X again. If rekeying has not occurred, the MAC check will succeed because the expected sequence number matches the replayed packet's implicit sequence number.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "6.4",
+          "quote": "It wraps around to zero after every 2^32 packets... If the peers have rekeyed, then the replay will be detected since the MAC check will fail."
+        },
+        {
+          "rfc": 4251,
+          "section": "9.3.3",
+          "quote": "If the session stays active long enough, however, this sequence number will wrap. This event may provide an attacker an opportunity to replay a previously recorded packet with an identical sequence number but only if the peers have not rekeyed since the transmission of the first packet with that sequence number."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "session remains active without rekeying past 2^32 packets"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict rekeying policies. The transport protocol recommends rekeying after one gigabyte of data or one hour of connection time to ensure sequence numbers do not wrap around before keys are refreshed.",
+      "fingerprint": "520ecbc0e1d97d63674d8b61fb68d1de2dfeb70ae3fb2d669c31305ca623f744"
+    },
+    {
+      "id": "1b1731d4-9ebb-46b8-bc3e-79846a822fb0",
+      "technique_name": "Missing Validation of Direct TCP/IP Forwarding Originator",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The protocol allows clients to request direct-tcpip channel openings by specifying a target host and port (Section 7.2). Step 2: The 'originator IP address' is included in the packet but is merely informational; the server does not cryptographically validate that the connection actually originated from the stated IP or that the client is authorized to forward to that specific destination. Step 3: An authenticated attacker can spoof the originator fields and request tunnels to internal network services that should be restricted, bypassing network-level access controls if the server blindly trusts the forwarded-tcpip/direct-tcpip requests without local policy enforcement.",
+      "rfc_references": [
+        {
+          "rfc": 4254,
+          "section": "7.2",
+          "quote": "The 'originator IP address' is the numeric IP address of the machine from where the connection request originates... Client implementations SHOULD reject direct TCP/IP open requests for security reasons."
+        }
+      ],
+      "prerequisites": [
+        "attacker has valid SSH credentials"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers MUST implement strict local policies to validate and restrict direct-tcpip forwarding destinations. Administrators should disable port forwarding where unnecessary.",
+      "fingerprint": "27bf2d4cf1f65fce8bedce3fd02b05b71b5b70386a8777191f10eac51a6c994e"
+    },
+    {
+      "id": "02b5821f-6220-426b-9496-492a3ff12264",
+      "technique_name": "Unauthenticated Key Exchange Resource Exhaustion",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker initiates a connection to the SSH server without authenticating.\nStep 2: The server is forced to perform CPU and memory intensive tasks associated with connection setup and key exchange (e.g., Diffie-Hellman computations, MAC calculations).\nStep 3: By rapidly opening multiple connections or sending malformed/continuous KEXINIT packets, an attacker can exhaust the server's computational resources, preventing legitimate users from establishing sessions.\nThe protocol explicitly acknowledges this vulnerability in Section 9.3.5.",
+      "rfc_references": [
+        {
+          "rfc": 4251,
+          "section": "9.3.5",
+          "quote": "In addition, this protocol is vulnerable to denial of service attacks because an attacker can force the server to go through the CPU and memory intensive tasks of connection setup and key exchange without authenticating."
+        }
+      ],
+      "prerequisites": [
+        "attacker has network connectivity to the SSH server",
+        "server does not implement strict rate limiting or proof-of-work mechanisms pre-authentication"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementers SHOULD provide features that make this more difficult, for example, only allowing connections from a subset of clients known to have valid users. Additionally, servers should enforce strict connection rate limiting, implement proof-of-work challenges during key exchange, and limit the number of concurrent unauthenticated sessions.",
+      "fingerprint": "127a398c6cb785728fc8a6cd306b95bea39aaa89d11db96a3a753d4aa1b4d933"
+    },
+    {
+      "id": "2505af31-74ca-4bff-a23a-0a57b41f6794",
+      "technique_name": "Missing Validation of Channel Type in X11 Forwarding",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The protocol allows opening X11 channels via SSH_MSG_CHANNEL_OPEN with type 'x11' (Section 6.3.2). Step 2: While the spec recommends rejecting unrequested X11 channels, it relies on server-side policy enforcement rather than strict cryptographic binding to a specific session request in the channel open message itself. Step 3: An attacker who has compromised the client or bypassed authentication could potentially inject X11 channel requests if the server fails to validate that the forwarding was explicitly requested and authorized for that specific user/session, leading to unauthorized display access.",
+      "rfc_references": [
+        {
+          "rfc": 4254,
+          "section": "6.3.2",
+          "quote": "Implementations MUST reject any X11 channel open requests if they have not requested X11 forwarding."
+        },
+        {
+          "rfc": 4251,
+          "section": "9.5.3",
+          "quote": "If end-point security has been compromised, X11 forwarding may allow attacks against the X11 server."
+        }
+      ],
+      "prerequisites": [
+        "attacker has access to authenticated session or client compromise"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers MUST strictly validate that an X11 channel open request corresponds to a previously authorized and requested X11 forwarding setup for the specific user. Implement magic cookie verification.",
+      "fingerprint": "e3d0d960a120c3c578bc7f0296e2258ddcb3bf1d2cd4b0f8d327bab62e45c950"
+    },
+    {
+      "id": "522ad574-3710-408b-9a21-2ec56c8c4cf5",
+      "technique_name": "Authentication State Flush Race",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The SSH authentication protocol allows a client to send multiple authentication requests without waiting for responses from previous requests (RFC 4252 Section 5.1). Step 2: The server MUST process each request completely and acknowledge failures before processing the next one, but it also states that if 'user name' or 'service name' changes in a new message, the server MUST flush any accumulated authentication states. Step 3: An attacker can exploit this by rapidly sending multiple authentication requests with changing usernames or service names concurrently. If the server's state flushing logic is not atomic relative to request processing, an attacker might bypass partial success checks or force the server into an inconsistent state where a previous successful authentication step is discarded before the next method is evaluated, potentially leading to unauthorized access or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 4252,
+          "section": "5.1",
+          "quote": "The client MAY send several authentication requests without waiting for responses from previous requests. The server MUST process each request completely and acknowledge any failed requests with a SSH_MSG_USERAUTH_FAILURE message before processing the next request."
+        },
+        {
+          "rfc": 4252,
+          "section": "5",
+          "quote": "The 'user name' and 'service name' are repeated in every new authentication attempt, and MAY change. The server implementation MUST carefully check them in every message, and MUST flush any accumulated authentication states if they change."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can send rapid concurrent requests"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict serialization of authentication request processing. Ensure that state flushing and new request validation are performed atomically within a single-threaded or properly mutex-protected context to prevent interleaving.",
+      "fingerprint": "0ba79fddf1650840ca5d9bcb994ff7e1977dd145621b5e2d1670962936842594"
+    },
+    {
+      "id": "17216385-78e5-4d97-9882-e324956943b8",
+      "technique_name": "Algorithm Negotiation Ambiguity in Key Exchange",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The protocol allows both client and server to send initial key exchange packets optimistically based on guessed preferred algorithms (RFC 4253, Section 7). Step 2: If guesses mismatch or algorithm negotiation fails later, the spec states that such optimistically sent packets 'MUST be ignored' and the correct side must resend. However, it does not strictly define how implementations should handle out-of-order packet processing during this transition phase, nor does it mandate strict buffering rules for in-flight packets when a guess is wrong. Step 3: Implementations may differ in whether they process or discard these misaligned packets, potentially leading to connection drops, state desynchronization, or unexpected behavior that an attacker could exploit to trigger denial of service or bypass certain checks.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "7",
+          "quote": "However, if the guess was wrong, and a packet was optimistically sent by one or both parties, such packets MUST be ignored (even if the error in the guess would not affect the contents of the initial packet(s)), and the appropriate side MUST send the correct initial packet."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "network latency or packet reordering occurs"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should strictly buffer and discard any packets received during the optimistic key exchange phase that do not match the negotiated algorithm, ensuring deterministic state transitions regardless of packet arrival order.",
+      "fingerprint": "77c223a65673b0c805a9f66d87d0200bb54dc8138eec7ebdb99d7846b5e31d8f"
+    },
+    {
+      "id": "fb9a9873-1e97-447e-9faa-268d0a8df79b",
+      "technique_name": "Version String Information Disclosure",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.95,
+      "description": "Step 1: During the initial connection setup (Protocol Version Exchange), both client and server MUST send an identification string in the format 'SSH-protoversion-softwareversion SP comments CR LF'. Step 2: The 'softwareversion' field explicitly indicates the implementation name and version number (e.g., 'billsSSH_3.6.3q3'). Step 3: An attacker on the network can intercept this unencrypted plaintext string before any key exchange or encryption begins, revealing specific software versions that may be targeted for known vulnerabilities.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "4.2",
+          "quote": "When the connection has been established, both sides MUST send an identification string. This identification string MUST be SSH-protoversion-softwareversion SP comments CR LF"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or can observe initial handshake traffic",
+        "no pre-existing encrypted tunnel"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementers should minimize the 'softwareversion' and 'comments' fields to generic identifiers (e.g., 'SSH-2.0') rather than disclosing exact version numbers or software names.",
+      "fingerprint": "0d270eb3bb2927939cb6f8ba6726c74fb5f01997f3d58a1b5996ca284495886f"
+    },
+    {
+      "id": "bc1cd133-89f4-4bb9-a526-8e826e9b4710",
+      "technique_name": "User Enumeration via Authentication Failure Responses",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: During authentication, if a requested username does not exist, the server MAY send a bogus list of acceptable methods or disconnect immediately (RFC 4252 Section 5). Step 2: However, implementations often differ in how they handle non-existent users versus invalid credentials. If an attacker sends a 'none' authentication request or attempts login with various usernames, timing differences or distinct error responses can reveal whether a username exists on the system. Step 3: This allows an attacker to enumerate valid user accounts before attempting credential attacks.",
+      "rfc_references": [
+        {
+          "rfc": 4252,
+          "section": "5",
+          "quote": "If the requested 'user name' does not exist, the server MAY disconnect, or MAY send a bogus list of acceptable authentication 'method name' values, but never accept any. This makes it possible for the server to avoid disclosing information on which accounts exist."
+        }
+      ],
+      "prerequisites": [
+        "attacker has network access to the SSH service",
+        "server implementation does not strictly uniformize error responses/timing"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers should always respond with identical timing and generic failure messages (SSH_MSG_USERAUTH_FAILURE) regardless of whether the username exists or the credentials are wrong. Limiting authentication attempts also mitigates this.",
+      "fingerprint": "c0275f18cbee71b909e866636db6bf01c7beb9f14a8e6947f2b589389f46ebbf"
+    },
+    {
+      "id": "2f7232e9-56da-4f5e-8fb7-6309c51ed728",
+      "technique_name": "Session ID Collision Replay",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker observes two SSH sessions where the key exchange processes result in an identical session identifier (session_id) due to a cryptographic collision or implementation flaw.\nStep 2: The attacker captures packets from one of these sessions.\nStep 3: Because the session IDs are identical, the attacker can replay captured authentication signatures or data packets against the other session. Since higher-level protocols bind their operations to this session ID, the receiver will accept the replayed packets as valid for that session.",
+      "rfc_references": [
+        {
+          "rfc": 4251,
+          "section": "9.3.3",
+          "quote": "If two sessions have the same session id (hash of key exchanges), then packets from one can be replayed against the other."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "cryptographic collision in session ID generation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use larger hash function outputs and stronger Diffie-Hellman parameters to minimize the probability of session ID collisions. Ensure implementations use cryptographically secure random number generators for key exchange.",
+      "fingerprint": "4d04436811428a9df436b367dacf6d3925f6daae97dcbd10e8f68ed3716f2a59"
+    },
+    {
+      "id": "dc2a2642-70bf-40db-99fa-26d24a7893a4",
+      "technique_name": "Transport Layer Disruption (Wire Cutter)",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The SSH protocol relies on a reliable transport layer for operation.\nStep 2: An attacker manipulates the network or causes transmission errors (e.g., packet drops, TCP RST injection).\nStep 3: The SSH connection terminates immediately upon detecting these errors. While this is inherent to reliable transports, an attacker can continuously disrupt the link, causing repeated re-establishment overhead and effectively denying service.",
+      "rfc_references": [
+        {
+          "rfc": 4251,
+          "section": "9.3.5",
+          "quote": "This protocol is designed to be used over a reliable transport. If transmission errors or message manipulation occur, the connection is closed. The connection SHOULD be re-established if this occurs. Denial of service attacks of this type (wire cutter) are almost impossible to avoid."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can manipulate network packets"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use application-level keep-alive mechanisms and implement graceful reconnection logic with exponential backoff. Deploy network-level DDoS mitigation to filter malicious traffic before it reaches the SSH service.",
+      "fingerprint": "1657e50eaf24adc2665b48a67b4ec7697c55316721fe7e7f18d21237d7051338"
+    },
+    {
+      "id": "e62507fa-7a35-411d-b824-972422d84ae3",
+      "technique_name": "Out-of-Order Authentication Request Processing",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: RFC 4252 Section 5.1 allows a client to send several authentication requests without waiting for responses from previous ones. Step 2: The server MUST process each request completely and acknowledge any failed requests with SSH_MSG_USERAUTH_FAILURE before processing the next request. Step 3: If an implementation fails to strictly serialize these out-of-order requests or incorrectly interleaves their state machines, it can lead to a StateConfusion vulnerability where responses are matched to wrong requests, or subsequent requests operate on corrupted/abandoned intermediate states, potentially bypassing authentication steps.",
+      "rfc_references": [
+        {
+          "rfc": 4252,
+          "section": "5.1",
+          "quote": "The client MAY send several authentication requests without waiting for responses from previous requests. The server MUST process each request completely and acknowledge any failed requests with a SSH_MSG_USERAUTH_FAILURE message before processing the next request."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "server implementation does not strictly serialize out-of-order auth requests"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers must implement a strict queue or state machine that serializes the processing of authentication requests, ensuring responses are correctly ordered and intermediate states are properly abandoned before moving to the next request.",
+      "fingerprint": "3cbc4ef1c2739151f06ddc58ba9724b62c46c4b252514a938fbeb5f2ce74284b"
+    },
+    {
+      "id": "17414508-0037-4a35-b712-0f4e4ee2b7af",
+      "technique_name": "Missing Validation of Packet Length and Buffer Bounds",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The binary packet protocol uses a 'packet_length' field to determine payload size (Section 6). Step 2: While the spec recommends checking that packet length is reasonable to avoid DoS/overflow, it does not mandate strict upper bounds enforcement in all parsing paths. Step 3: An attacker can send maliciously crafted packets with extremely large or malformed lengths. If the implementation fails to validate these against allocated buffers before processing, it may lead to buffer overflows or memory exhaustion attacks.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "6",
+          "quote": "packet_length: The length of the packet in bytes, not including 'mac' or the 'packet_length' field itself."
+        },
+        {
+          "rfc": 4253,
+          "section": "6.1",
+          "quote": "implementations SHOULD check that the packet length is reasonable in order for the implementation to avoid denial of service and/or buffer overflow attacks."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST enforce strict maximum packet length limits and validate all length fields against allocated buffer sizes before copying data.",
+      "fingerprint": "f6bdeb6045fbabd5b2a0af2e643deae74dbbcad6ba56ba0cc3a6b0d06bedac5e"
+    },
+    {
+      "id": "9987c469-8bdb-45e8-8c70-f9cd440280b7",
+      "technique_name": "Algorithm Negotiation Downgrade via List Manipulation",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: During the Key Exchange (KEX) initiation phase, both client and server send their preferred algorithm lists in SSH_MSG_KEXINIT packets.\nStep 2: An on-path attacker intercepts these packets and manipulates the 'name-list' fields for encryption, MAC, or key exchange algorithms. The attacker reorders the lists to place weaker algorithms (e.g., 'arcfour', '3des-cbc', 'hmac-md5') at the front of the list.\nStep 3: Because the SSH protocol negotiates algorithms by selecting the first common algorithm in each party's preference list, the manipulated lists force both parties to agree on cryptographically weak or broken algorithms for encryption and integrity protection.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "7.1",
+          "quote": "Each of the algorithm name-lists MUST be a comma-separated list of algorithm names... Each supported (allowed) algorithm MUST be listed in order of preference, from most to least."
+        },
+        {
+          "rfc": 4253,
+          "section": "7.1",
+          "quote": "The chosen encryption algorithm to each direction MUST be the first algorithm on the client's name-list that is also on the server's name-list."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict local security policies that enforce a whitelist of strong algorithms. Use cryptographic binding (e.g., signing the KEXINIT payloads with host keys) to prevent on-path modification of algorithm negotiation lists.",
+      "fingerprint": "ff35b5b307aec7943feeddcb17bcd1881bcc2e018cf572dc49c97b76b0fd6f22"
+    },
+    {
+      "id": "639c05a2-e707-4823-80bc-c16e27c4254a",
+      "technique_name": "Key Exchange Optimistic Packet State Confusion",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: During key exchange initiation (RFC 4253 Section 7), implementations may optimistically send the first key exchange packet based on a guessed algorithm before receiving the peer's SSH_MSG_KEXINIT. Step 2: If the guess is wrong, such packets MUST be silently ignored, and the correct side must resend the appropriate initial packet. Step 3: Failure to properly discard or ignore these out-of-sequence optimistic packets can cause the key exchange state machine to become confused, potentially leading to the use of mismatched cryptographic parameters or a deadlock in the negotiation phase.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "7",
+          "quote": "However, if the guess was wrong, and a packet was optimistically sent by one or both parties, such packets MUST be ignored (even if the error in the guess would not affect the contents of the initial packet(s)), and the appropriate side MUST send the correct initial packet."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "implementation allows optimistic key exchange without robust state cleanup"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must strictly enforce the rule that incorrectly guessed/optimistic packets are silently discarded and do not alter the ongoing key exchange state machine. State should only advance upon receipt of correctly sequenced messages.",
+      "fingerprint": "15a4b00be1dad659b0311b159aacb7402c41f23b5627b9bed66fd5cd0864a42c"
+    },
+    {
+      "id": "ef5fdc0a-d9f2-4c99-977c-2769d227dff4",
+      "technique_name": "Authentication State Flooding",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker sends a high volume of SSH_MSG_USERAUTH_REQUEST messages with rapidly changing 'user name' or 'service name' fields.\nStep 2: Per Section 5 of RFC 4252, the server MUST flush any accumulated authentication states if these fields change. If it cannot flush state efficiently, it MUST disconnect.\nStep 3: This forces the server to repeatedly allocate and deallocate memory for authentication contexts, leading to resource exhaustion or forced disconnections of legitimate sessions.",
+      "rfc_references": [
+        {
+          "rfc": 4252,
+          "section": "5",
+          "quote": "The 'user name' and 'service name' are repeated in every new authentication attempt, and MAY change. The server implementation MUST carefully check them in every message, and MUST flush any accumulated authentication states if they change."
+        }
+      ],
+      "prerequisites": [
+        "attacker has network connectivity to the SSH server",
+        "server maintains mutable state per authentication attempt"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict limits on the rate of authentication requests. Enforce timeouts and maximum failed attempts (RFC 4252 Section 4 recommends a limit of 20 attempts). Ensure state flushing is implemented efficiently without excessive memory allocation.",
+      "fingerprint": "de35b717009d7da2138dbf01c37ce01348d4e7ac733c96a04ff66953c25e79ee"
+    },
+    {
+      "id": "8fa49acc-be4e-4746-939a-8b349bfbaca0",
+      "technique_name": "Ambiguous Handling of Unrecognized Messages",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The protocol specifies that implementations MUST respond to unrecognized messages with SSH_MSG_UNIMPLEMENTED (RFC 4253, Section 11.4). Step 2: However, it also states that 'Such messages MUST be otherwise ignored' and that 'Later protocol versions may define other meanings for these message types.' It does not clearly specify whether the sequence number tracking or state machine progression should continue normally while ignoring the payload, or if certain unrecognized messages in specific contexts (e.g., during authentication) should trigger immediate disconnection. Step 3: Inconsistent handling can lead to security bypasses where an attacker sends a malformed or future-defined message that one implementation ignores safely while another mishandles it, potentially corrupting state or leaking information.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "11.4",
+          "quote": "An implementation MUST respond to all unrecognized messages with an SSH_MSG_UNIMPLEMENTED message in the order in which the messages were received. Such messages MUST be otherwise ignored."
+        }
+      ],
+      "prerequisites": [
+        "attacker can inject arbitrary packets"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should consistently ignore unrecognized messages by discarding their payload and advancing the sequence number, while maintaining strict state machine boundaries that prevent message injection from altering critical authentication or channel states.",
+      "fingerprint": "c14ae15e0cd1c1f8b5af113697ea84519d35cdb9c5c8fe46a304e2bffceb6e89"
+    },
+    {
+      "id": "54041efc-751b-4f4b-810b-23a37c2e9d19",
+      "technique_name": "Key Exchange Optimistic Packet Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: During the SSH key exchange, implementations MAY guess the algorithm the other side is using and optimistically send an initial key exchange packet before receiving the peer's SSH_MSG_KEXINIT (RFC 4253 Section 7). Step 2: If both sides make a guess, or if one guesses correctly while the other sends KEXINIT, packets may arrive out of order. The specification states that if a guess was wrong, such packets MUST be ignored, and the correct side MUST send the appropriate initial packet. Step 3: An attacker on-path can manipulate timing to cause both sides to optimistically send packets simultaneously or drop them incorrectly. This creates a race window where valid key exchange material is discarded, forcing a re-negotiation that consumes CPU resources (DoS) or potentially allows an attacker to inject malformed KEXINIT messages if the implementation fails to strictly validate packet ordering against the negotiated state.",
+      "rfc_references": [
+        {
+          "rfc": 4253,
+          "section": "7",
+          "quote": "Each side MAY guess which algorithm the other side is using, and MAY send an initial key exchange packet according to the algorithm, if appropriate for the preferred method."
+        },
+        {
+          "rfc": 4253,
+          "section": "7.1",
+          "quote": "If the guess was wrong, and a packet was optimistically sent by one or both parties, such packets MUST be ignored (even if the error in the guess would not affect the contents of the initial packet(s)), and the appropriate side MUST send the correct initial packet."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "network latency manipulation capability"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should strictly sequence key exchange messages based on received KEXINIT packets rather than relying heavily on optimistic sends. Use strict state machines that reject out-of-order packets and log attempts for security monitoring.",
+      "fingerprint": "448c5ead5547eb3eeed60f1016c4cea666ba80d846019675569238b2c3c94aab"
+    },
+    {
+      "id": "63bc7829-38c3-4fe0-ae5d-1b41cddba39a",
+      "technique_name": "Missing Validation of Authentication State on User/Service Change",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: During authentication, the client sends SSH_MSG_USERAUTH_REQUEST with user and service names (Section 5). Step 2: The spec states the server MUST flush accumulated authentication states if these change, but relies on implementation correctness. Step 3: If an implementation fails to properly invalidate partial authentication progress when a user or service name changes mid-exchange, an attacker might be able to exploit state confusion to bypass multi-factor requirements or escalate privileges by switching contexts without re-authenticating.",
+      "rfc_references": [
+        {
+          "rfc": 4252,
+          "section": "5",
+          "quote": "The server implementation MUST carefully check them in every message, and MUST flush any accumulated authentication states if they change."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or has compromised client"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations MUST rigorously reset all authentication state variables upon any change in username or service name during the exchange.",
+      "fingerprint": "60d908aa4237a1418c574a4bc097516b7b2c3af4ec6118e63ce0d128b31f216e"
+    },
+    {
+      "id": "99708873-0b2f-4021-955b-f5cc0219e912",
+      "technique_name": "Global Request Reply Ordering Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: The SSH connection protocol allows both client and server to send global requests at any time (RFC 4254 Section 4). Step 2: Replies to SSH_MSG_GLOBAL_REQUESTS MUST be sent in the same order as the corresponding request messages. Step 3: If an attacker can inject or reorder packets during a high-throughput session, they might cause replies to become desynchronized from requests if the implementation does not strictly enforce FIFO ordering for global request handling. This race condition could allow an attacker to associate a success response with a malicious request (e.g., port forwarding) by manipulating packet arrival times, potentially bypassing access controls or enabling unauthorized tunnel creation.",
+      "rfc_references": [
+        {
+          "rfc": 4254,
+          "section": "4",
+          "quote": "Note that both the client and server MAY send global requests at any time, and the receiver MUST respond appropriately."
+        },
+        {
+          "rfc": 4254,
+          "section": "4",
+          "quote": "To make it possible for the originator of a request to identify to which request each reply refers, it is REQUIRED that replies to SSH_MSG_GLOBAL_REQUESTS MUST be sent in the same order as the corresponding request messages."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "ability to reorder or delay packets"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce strict FIFO processing for global requests using sequence tracking. Implementations should reject out-of-order replies and maintain a dedicated request-response state table that validates ordering before applying any side effects.",
+      "fingerprint": "75fae84ed4672a8402f95bb7ced5ed0785db0162f98453c338ebda918a1bc9f6"
+    },
+    {
+      "id": "0ac90f5c-1ed6-4c7e-876f-b9f76c066a51",
+      "technique_name": "Inconsistent Password Encoding Normalization",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: The authentication protocol requires passwords to be transmitted in ISO-10646 UTF-8 encoding (RFC 4252, Section 8). Step 2: It recommends that systems supporting non-ASCII passwords SHOULD normalize them using [RFC4013], but explicitly states this is not a strict requirement for all implementations. Step 3: If a client and server use different normalization rules or character set interpretations (e.g., one normalizes while the other does not), identical user inputs may result in different byte sequences being validated, leading to authentication bypasses or account lockouts depending on implementation choices.",
+      "rfc_references": [
+        {
+          "rfc": 4252,
+          "section": "8",
+          "quote": "SSH implementations that both store the passwords and compare them SHOULD use [RFC4013] for normalization."
+        }
+      ],
+      "prerequisites": [
+        "attacker knows or can guess password characters outside ASCII range"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should strictly enforce UTF-8 normalization using RFC4013 for both storage and comparison of passwords to ensure consistent authentication behavior across different client and server software.",
+      "fingerprint": "bec5ccea333f64004b655b2cf78854c0f5926304033bc8eae343cd8a4789a0c7"
+    },
+    {
+      "id": "762448c3-95a7-417b-8acd-b1b61bd0eeb0",
+      "technique_name": "Terminal Type Information Disclosure",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.8,
+      "description": "Step 1: When establishing an interactive session or PTY, the client transmits its terminal emulation type (e.g., 'vt100', 'xterm') to the server as part of the channel request/pty setup. Step 2: This information is sent in plaintext during the channel configuration phase. Step 3: An attacker monitoring the connection can infer the client's operating system, desktop environment, or terminal emulator software based on the reported terminal type string.",
+      "rfc_references": [
+        {
+          "rfc": 4251,
+          "section": "4.5",
+          "quote": "Thus, no place is provided for directly specifying the character set or encoding for terminal session data. However, the terminal emulation type (e.g., \"vt100\") is transmitted to the remote site, and it implicitly specifies the character set and encoding."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client requests an interactive shell or PTY"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should send generic terminal type strings (e.g., 'dumb' or a standardized placeholder) if privacy is a concern, though this may break application compatibility.",
+      "fingerprint": "d223cabdfe945af69b41dda4d70ea9fbf4b5dc0ae322169ccf86dd675724ee2f"
+    },
+    {
+      "id": "36acbbda-6d17-4b25-810a-6fe1aa8c3759",
+      "technique_name": "Authentication Signature Replay via Weak Session Binding",
+      "category": "ReplayAttack",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: During public key authentication, the client signs a packet containing the session identifier to prove possession of the private key.\nStep 2: If an implementation fails to correctly bind the signature to the unique session ID generated during the specific key exchange, or if the session ID is predictable/static across sessions.\nStep 3: An attacker can capture a valid authentication signature from one session and replay it in another session. Because the signature does not cryptographically depend on the new session's unique parameters, the server may accept the replayed proof of possession.",
+      "rfc_references": [
+        {
+          "rfc": 4251,
+          "section": "9.3.3",
+          "quote": "For example, the authentication protocol ([SSH-USERAUTH]) uses this to prevent replay of signatures from previous sessions. Because public key authentication exchanges are cryptographically bound to the session (i.e., to the initial key exchange), they cannot be successfully replayed in other sessions."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "vulnerable implementation fails to bind signature to unique session ID"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure all authentication signatures are strictly bound to the unique session identifier derived from the key exchange. Implementations must verify that the signed data includes the current session's specific hash.",
+      "fingerprint": "2d0e29c4d77ea14e35a177469e0e09ee2541250b70091aac5ba04659eaf15ee2"
+    },
+    {
+      "id": "d2c3177b-0691-4373-b703-7efae56bb662",
+      "technique_name": "Ambiguous Window Size Overflow Handling",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: The connection protocol specifies that window sizes MUST be handled up to 2^32 - 1 bytes and MUST NOT exceed this limit (RFC 4254, Section 5.2). Step 2: It states that 'Both parties MAY ignore all extra data sent after the allowed window is empty.' However, it does not define whether implementations should drop packets silently, send a disconnect message, or attempt to recover by adjusting the window. Step 3: Divergent handling of window overflow conditions can lead to deadlocks, data loss, or resource exhaustion attacks where an attacker floods channels with data exceeding advertised windows, causing different implementations to behave unpredictably.",
+      "rfc_references": [
+        {
+          "rfc": 4254,
+          "section": "5.2",
+          "quote": "Both parties MAY ignore all extra data sent after the allowed window is empty."
+        }
+      ],
+      "prerequisites": [
+        "attacker has established a connection"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should consistently drop or reject data that exceeds the current window size and optionally send a disconnect message with SSH_DISCONNECT_PROTOCOL_ERROR to maintain predictable flow control behavior.",
+      "fingerprint": "d4400cb8c9cae2e31c6922b15f251423bba037946aee2e705407deccfd1f70f6"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T00:23:34.534207+00:00",
+    "model_used": "bad-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+    "total_tokens_used": 330299,
+    "analysis_duration_secs": 136.836740125,
+    "run_id": 20,
+    "input_hash": "13cabc663176064a7c6b35f2f3d7ebd626733010a6d9efffe76a8f8d2d5634d6",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}
