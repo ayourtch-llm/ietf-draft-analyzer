@@ -35,7 +35,15 @@ the next invocation picks up where it left off.
 ## Requirements
 
 - Rust 1.85+ (edition 2024)
-- An OpenAI-compatible LLM endpoint (OpenAI, Ollama, vLLM, llama.cpp, etc.)
+- A **llama.cpp** (llama-server) endpoint with an OpenAI-compatible API
+
+**Important:** The tool uses GBNF grammar constraints to enforce
+structured chain-of-thought reasoning and valid JSON output from the
+LLM. This is a llama.cpp-specific extension to the OpenAI chat
+completions API. Other backends (OpenAI, vLLM, Ollama) do not support
+the `grammar` parameter and will not work correctly. Specifically,
+llama-server (from [llama.cpp](https://github.com/ggerganov/llama.cpp))
+or any backend that accepts `"grammar"` in the request body is required.
 
 ## Installation
 
@@ -54,11 +62,12 @@ optional -- defaults are shown):
 
 ```toml
 [llm]
-api_base = "http://ayourtch-desktop:8000/v1"
+# Must point to a llama-server instance (GBNF grammar support required)
+api_base = "http://localhost:8000/v1"
 api_key_env = "OPENAI_API_KEY"
-model = "Qwen3.5-27B-512K"
+model = "Qwen3.6-27B-Q4_K_M.gguf"
 max_tokens_per_request = 4096
-max_concurrent_requests = 3
+max_concurrent_requests = 1
 temperature = 0.2
 model_context_window = 128000
 
@@ -177,10 +186,11 @@ $ export OPENAI_API_KEY="local"
 
 $ cat ietf-draft-analyzer.toml
 [llm]
-api_base = "http://ayourtch-desktop:8000/v1"
-model = "Qwen3.5-27B-512K"
+# llama-server endpoint (GBNF grammar support required)
+api_base = "http://localhost:8000/v1"
+model = "Qwen3.6-27B-Q4_K_M.gguf"
 temperature = 0.2
-model_context_window = 512000
+model_context_window = 128000
 
 $ ietf-draft-analyzer run telnet 854 855 857 858 1184 --depth 1 -o telnet-report.json
 2026-05-01T22:00:00Z  INFO === Stage 1: Map ===
