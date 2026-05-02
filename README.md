@@ -56,15 +56,19 @@ the next invocation picks up where it left off.
 ## Requirements
 
 - Rust 1.85+ (edition 2024)
-- A **llama.cpp** (llama-server) endpoint with an OpenAI-compatible API
+- An OpenAI-compatible LLM endpoint
 
-**Important:** The tool uses GBNF grammar constraints to enforce
-structured chain-of-thought reasoning and valid JSON output from the
-LLM. This is a llama.cpp-specific extension to the OpenAI chat
-completions API. Other backends (OpenAI, vLLM, Ollama) do not support
-the `grammar` parameter and will not work correctly. Specifically,
-llama-server (from [llama.cpp](https://github.com/ggerganov/llama.cpp))
-or any backend that accepts `"grammar"` in the request body is required.
+The tool supports two output modes:
+
+- **Grammar mode** (default, `use_grammar = true`): Uses GBNF grammar
+  constraints for structured output. Requires
+  [llama.cpp](https://github.com/ggerganov/llama.cpp) (llama-server)
+  or any backend that accepts `"grammar"` in the request body.
+
+- **JSON mode** (`use_grammar = false`): Uses standard
+  `response_format: {"type": "json_object"}` for structured output.
+  Compatible with OpenAI, vLLM, Ollama, and any OpenAI-compatible API.
+  Does not require llama.cpp.
 
 ## Installation
 
@@ -83,7 +87,6 @@ optional -- defaults are shown):
 
 ```toml
 [llm]
-# Must point to a llama-server instance (GBNF grammar support required)
 api_base = "http://localhost:8000/v1"
 api_key_env = "OPENAI_API_KEY"
 model = "Qwen3.6-27B-Q4_K_M.gguf"
@@ -91,6 +94,8 @@ max_tokens_per_request = 4096
 max_concurrent_requests = 1
 temperature = 0.2
 model_context_window = 128000
+# Set to false for OpenAI/vLLM/Ollama compatibility (no GBNF grammar)
+# use_grammar = false
 
 [fetcher]
 base_url = "https://www.rfc-editor.org"
@@ -207,7 +212,6 @@ $ export OPENAI_API_KEY="local"
 
 $ cat ietf-draft-analyzer.toml
 [llm]
-# llama-server endpoint (GBNF grammar support required)
 api_base = "http://localhost:8000/v1"
 model = "Qwen3.6-27B-Q4_K_M.gguf"
 temperature = 0.2

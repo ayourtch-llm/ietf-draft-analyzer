@@ -78,7 +78,7 @@ pub async fn generate_pocs(
         // Call LLM with grammar constraint
         let grammar = prompts::reproduce_grammar();
         match llm
-            .chat_json_grammar::<PocResponse>(messages, &grammar)
+            .chat_json_auto::<PocResponse>(messages, &grammar)
             .await
         {
             Ok((poc, usage)) => {

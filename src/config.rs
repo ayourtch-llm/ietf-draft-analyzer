@@ -28,6 +28,11 @@ pub struct LlmConfig {
     pub temperature: f32,
     #[serde(default = "default_context_window")]
     pub model_context_window: u64,
+    /// Use GBNF grammar constraints (requires llama.cpp).
+    /// When false, uses JSON mode (`response_format`) instead,
+    /// which is compatible with OpenAI, vLLM, Ollama, etc.
+    #[serde(default = "default_use_grammar")]
+    pub use_grammar: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -79,6 +84,9 @@ fn default_prefer_xml() -> bool {
 fn default_request_delay() -> u64 {
     500
 }
+fn default_use_grammar() -> bool {
+    true
+}
 fn default_max_depth() -> u32 {
     2
 }
@@ -93,6 +101,7 @@ impl Default for LlmConfig {
             max_concurrent_requests: default_max_concurrent(),
             temperature: default_temperature(),
             model_context_window: default_context_window(),
+            use_grammar: default_use_grammar(),
         }
     }
 }

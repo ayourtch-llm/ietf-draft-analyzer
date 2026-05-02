@@ -291,7 +291,7 @@ pub async fn run_stage3(
         let category_tokens: u64;
         let grammar = crate::llm::prompts::security_leads_grammar();
         match crate::llm::response::parse_json_array_partial::<LeadResponse>(&match llm
-            .chat_with_grammar(messages, &grammar)
+            .chat_text_auto(messages, &grammar)
             .await
         {
             Ok((content, usage)) => {

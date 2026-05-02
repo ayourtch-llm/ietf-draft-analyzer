@@ -146,7 +146,7 @@ pub async fn run_stage2(
 
     let grammar = prompts::clustering_grammar();
     let (clustering, usage) = match llm
-        .chat_json_grammar::<ClusteringResponse>(messages, &grammar)
+        .chat_json_auto::<ClusteringResponse>(messages, &grammar)
         .await
     {
         Ok(result) => result,
@@ -308,7 +308,7 @@ pub async fn run_stage2(
 
         let grammar = prompts::state_machine_grammar();
         match llm
-            .chat_json_grammar::<StateMachineResponse>(messages, &grammar)
+            .chat_json_auto::<StateMachineResponse>(messages, &grammar)
             .await
         {
             Ok((sm_response, usage)) => {

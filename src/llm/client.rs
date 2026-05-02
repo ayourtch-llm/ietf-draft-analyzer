@@ -94,6 +94,39 @@ impl LlmClient {
         self.chat_with_format(messages, false, Some(grammar)).await
     }
 
+    /// Whether GBNF grammar mode is enabled (from config).
+    pub fn use_grammar(&self) -> bool {
+        self.config.use_grammar
+    }
+
+    /// Send a chat request producing typed JSON, using grammar if configured
+    /// or JSON mode otherwise. This is the preferred method for pipeline code.
+    pub async fn chat_json_auto<T: serde::de::DeserializeOwned>(
+        &self,
+        messages: Vec<ChatMessage>,
+        grammar: &str,
+    ) -> Result<(T, TokenUsage)> {
+        if self.config.use_grammar {
+            self.chat_json_grammar(messages, grammar).await
+        } else {
+            self.chat_json(messages).await
+        }
+    }
+
+    /// Send a chat request returning raw text, using grammar if configured
+    /// or plain chat otherwise. For cases needing partial array parsing.
+    pub async fn chat_text_auto(
+        &self,
+        messages: Vec<ChatMessage>,
+        grammar: &str,
+    ) -> Result<(String, TokenUsage)> {
+        if self.config.use_grammar {
+            self.chat_with_grammar(messages, grammar).await
+        } else {
+            self.chat_with_format(messages, true, None).await
+        }
+    }
+
     /// Internal: send chat with optional JSON response format or GBNF grammar.
     async fn chat_with_format(
         &self,
@@ -407,6 +440,7 @@ mod tests {
             max_concurrent_requests: 2,
             temperature: 0.1,
             model_context_window: 4096,
+            use_grammar: true,
         }
     }
 
