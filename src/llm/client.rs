@@ -101,30 +101,119 @@ impl LlmClient {
 
     /// Send a chat request producing typed JSON, using grammar if configured
     /// or JSON mode otherwise. This is the preferred method for pipeline code.
+    /// In no-grammar mode, if JSON parsing fails, retries with a reformat prompt.
     pub async fn chat_json_auto<T: serde::de::DeserializeOwned>(
         &self,
         messages: Vec<ChatMessage>,
         grammar: &str,
     ) -> Result<(T, TokenUsage)> {
         if self.config.use_grammar {
-            self.chat_json_grammar(messages, grammar).await
-        } else {
-            self.chat_json(messages).await
+            return self.chat_json_grammar(messages, grammar).await;
+        }
+        // No-grammar mode: try JSON mode, retry with reformat on parse failure
+        let (content, usage) = self.chat_with_format(messages, true, None).await?;
+        match super::response::parse_json_response::<T>(&content) {
+            Ok(parsed) => Ok((parsed, usage)),
+            Err(parse_err) => {
+                tracing::warn!(
+                    "JSON parse failed, requesting reformat: {}",
+                    parse_err
+                );
+                self.reformat_json::<T>(&content, usage).await
+            }
         }
     }
 
     /// Send a chat request returning raw text, using grammar if configured
     /// or plain chat otherwise. For cases needing partial array parsing.
+    /// In no-grammar mode, if the result isn't valid JSON, retries with reformat.
     pub async fn chat_text_auto(
         &self,
         messages: Vec<ChatMessage>,
         grammar: &str,
     ) -> Result<(String, TokenUsage)> {
         if self.config.use_grammar {
-            self.chat_with_grammar(messages, grammar).await
-        } else {
-            self.chat_with_format(messages, true, None).await
+            return self.chat_with_grammar(messages, grammar).await;
         }
+        let (content, usage) = self.chat_with_format(messages, true, None).await?;
+        // Check if we got valid JSON — if not, try reformat
+        let trimmed = super::response::strip_markdown_fences(&content);
+        if serde_json::from_str::<serde_json::Value>(&trimmed).is_ok() {
+            return Ok((content, usage));
+        }
+        tracing::warn!(
+            "Response is not valid JSON ({} chars), requesting reformat",
+            content.len()
+        );
+        let (reformatted, reformat_usage) = self.reformat_json_raw(&content).await?;
+        Ok((
+            reformatted,
+            TokenUsage {
+                prompt_tokens: usage.prompt_tokens + reformat_usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens + reformat_usage.completion_tokens,
+                total_tokens: usage.total_tokens + reformat_usage.total_tokens,
+            },
+        ))
+    }
+
+    /// Ask the LLM to reformat a malformed response as valid JSON.
+    async fn reformat_json<T: serde::de::DeserializeOwned>(
+        &self,
+        malformed: &str,
+        original_usage: TokenUsage,
+    ) -> Result<(T, TokenUsage)> {
+        // Truncate to last 3000 chars if very long (the end usually has the issue)
+        let snippet = if malformed.len() > 4000 {
+            &malformed[..4000]
+        } else {
+            malformed
+        };
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "You are a JSON formatting assistant. Fix and complete the malformed JSON below. Return ONLY valid JSON, no explanation.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "The following response is malformed or truncated JSON. Please reformat it as valid, complete JSON. If it's a truncated array, close any open strings/objects and close the array. Return ONLY the JSON:\n\n{}",
+                    snippet
+                ),
+            },
+        ];
+        let (content, reformat_usage) = self.chat_with_format(messages, true, None).await?;
+        let parsed = super::response::parse_json_response::<T>(&content)?;
+        Ok((
+            parsed,
+            TokenUsage {
+                prompt_tokens: original_usage.prompt_tokens + reformat_usage.prompt_tokens,
+                completion_tokens: original_usage.completion_tokens + reformat_usage.completion_tokens,
+                total_tokens: original_usage.total_tokens + reformat_usage.total_tokens,
+            },
+        ))
+    }
+
+    /// Ask the LLM to reformat malformed text as valid JSON, returning raw text.
+    async fn reformat_json_raw(&self, malformed: &str) -> Result<(String, TokenUsage)> {
+        let snippet = if malformed.len() > 4000 {
+            &malformed[..4000]
+        } else {
+            malformed
+        };
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: "You are a JSON formatting assistant. Fix and complete the malformed JSON below. Return ONLY valid JSON, no explanation.".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "The following response is malformed or truncated JSON. Please reformat it as valid, complete JSON. If it's a truncated array, close any open strings/objects and close the array. Return ONLY the JSON:\n\n{}",
+                    snippet
+                ),
+            },
+        ];
+        self.chat_with_format(messages, true, None).await
     }
 
     /// Internal: send chat with optional JSON response format or GBNF grammar.
