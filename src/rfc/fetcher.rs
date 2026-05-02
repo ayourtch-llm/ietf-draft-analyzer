@@ -24,7 +24,7 @@ pub struct FetchResult {
 impl RfcFetcher {
     pub fn new(config: FetcherConfig) -> Self {
         let client = reqwest::Client::builder()
-            .user_agent("rfc-analyzer/0.1.0")
+            .user_agent("ietf-draft-analyzer/0.1.0")
             .build()
             .expect("Failed to build HTTP client");
         Self {

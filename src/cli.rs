@@ -3,17 +3,17 @@ use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(
-    name = "rfc-analyzer",
+    name = "ietf-draft-analyzer",
     version,
     about = "RFC specification security analyzer"
 )]
 pub struct Cli {
     /// Path to config file
-    #[arg(long, default_value = "rfc-analyzer.toml")]
+    #[arg(long, default_value = "ietf-draft-analyzer.toml")]
     pub config: PathBuf,
 
     /// SQLite database path
-    #[arg(long, default_value = "rfc-analyzer.db")]
+    #[arg(long, default_value = "ietf-draft-analyzer.db")]
     pub db: PathBuf,
 
     /// Verbosity (-v, -vv, -vvv)

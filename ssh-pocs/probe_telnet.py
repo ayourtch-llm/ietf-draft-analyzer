@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Telnet security probe — tests findings from rfc-analyzer reports.
+Telnet security probe — tests findings from ietf-draft-analyzer reports.
 Focuses on novel (no-CVE) findings:
   1. FORWARDMASK buffer overrun (RFC 1184 §5.6)
   2. Premature FORWARDMASK state bypass (RFC 1184 §5.7)
@@ -503,7 +503,7 @@ def main():
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 23
 
     print(f"\nTelnet Security Probe — {host}:{port}")
-    print(f"Testing novel findings from rfc-analyzer\n")
+    print(f"Testing novel findings from ietf-draft-analyzer\n")
 
     linemode = test_linemode_support(host, port)
     test_forwardmask_without_linemode(host, port)

@@ -1,0 +1,1371 @@
+{
+  "protocol_name": "http2",
+  "rfcs_analyzed": [
+    9113
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 9,
+  "security_leads": [
+    {
+      "id": "7e18e663-9fc0-4c32-8e7c-5dabba7ad9fb",
+      "technique_name": "HPACK Compression Side-Channel (CRIME/BREACH-like)",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker controls part of the HTTP/2 request or response headers (e.g., via a reflected parameter or CSRF token). Step 2: The attacker induces the victim to send multiple requests with varying secret data (e.g., session cookies) concatenated with the attacker-controlled data. Step 3: Because HTTP/2 uses HPACK compression which maintains a shared dynamic table, the compressed size of the headers changes based on whether the secret data matches previously seen data. Step 4: The attacker observes the length of the encrypted HTTP/2 frames or TLS records. Step 5: By correlating the compressed size with their guesses, the attacker can recover the secret data byte-by-byte.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.6",
+          "quote": "Compression can allow an attacker to recover secret data when it is compressed in the same context as data under attacker control. HTTP/2 enables compression of field lines (HPACK); the following concerns also apply to the use of HTTP compressed content-codings. There are demonstrable attacks on compression that exploit the characteristics of the Web (e.g., CRIME, BREACH). The attacker induces multiple requests containing varying plaintext, observing the length of the resulting ciphertext in each, which reveals a shorter length when a guess about the secret is correct."
+        },
+        {
+          "rfc": 9113,
+          "section": "4.3",
+          "quote": "Field section compression is the process of compressing a set of field lines (HPACK) to form a field block. ... Each endpoint has an HPACK encoder context and an HPACK decoder context that are used for encoding and decoding all field blocks on a connection."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can control some header content (e.g., reflected in response or via crafted request)",
+        "Attacker can observe the length of encrypted network traffic (on-path or via timing/oracle)",
+        "Shared HPACK compression context between attacker-controlled and secret data"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Disable HPACK compression for sensitive data, use separate compression contexts for user-controlled and secret data, or rely on TLS 1.3 which mitigates some compression attacks. RFC 9113 Section 10.6 recommends: 'Implementations communicating on a secure channel MUST NOT compress content that includes both confidential and attacker-controlled data unless separate compression dictionaries are used for each source of data.'",
+      "fingerprint": "29d59ed2235f6c545d1a855013fb37507c78bf25a011082f2118c5571285a0cc"
+    },
+    {
+      "id": "51d86c69-5f50-415a-a6e0-2548d21483e1",
+      "technique_name": "HTTP/2 TLS 1.3 Post-Handshake CertificateRequest Handling",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: RFC 9113 explicitly states that HTTP/2 clients MUST treat a TLS post-handshake CertificateRequest message as a connection error of type ENHANCE_YOUR_GRACE. Step 2: However, TLS 1.3 allows servers to send CertificateRequest messages post-handshake. Step 3: Ambiguity arises if a server sends a CertificateRequest for a different protocol multiplexed over the same connection, or if the client implementation incorrectly parses the TLS record layer, leading to premature connection termination or security bypass if the client ignores the TLS alert and continues HTTP/2 processing.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "9.2.3",
+          "quote": "HTTP/2 clients MUST treat a TLS post-handshake CertificateRequest message as a connection error of type ENHANCE_YOUR_GRACE."
+        }
+      ],
+      "prerequisites": [
+        "TLS 1.3 connection",
+        "Server sends post-handshake CertificateRequest",
+        "Client implementation mishandles TLS alerts"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients must strictly enforce the prohibition on post-handshake CertificateRequest messages in TLS 1.3 when using HTTP/2. Implementations should terminate the connection immediately upon receiving such a message.",
+      "fingerprint": "43cd8c407915fbb8b8a53e5c496ebde08059401df669de6bf796be329ddf0d92"
+    },
+    {
+      "id": "f0e3dbb8-8873-41e0-a118-e86b7583ab66",
+      "technique_name": "HTTP/2 Request Smuggling via Unvalidated Header Fields",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker sends an HTTP/2 request containing header fields with invalid characters (e.g., CR, LF, NUL, or uppercase letters) that are prohibited by HTTP semantics but might be accepted by HPACK. Step 2: If the HTTP/2 intermediary or server fails to validate these fields according to RFC 9113 Section 8.2.1 before translating them to HTTP/1.1 or processing them, the invalid characters can act as delimiters. Step 3: This allows the attacker to inject additional HTTP requests or manipulate the message framing, leading to request smuggling, cache poisoning, or bypassing security controls.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "8.2.1",
+          "quote": "Failure to validate fields can be exploited for request smuggling attacks. In particular, unvalidated fields might enable attacks when messages are forwarded using HTTP/1.1, where characters such as carriage return (CR), line feed (LF), and COLON are used as delimiters."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.3",
+          "quote": "An intermediary that translates an HTTP/2 request or response MUST validate fields according to the rules in Section 8.2.1 before translating a message to another HTTP version. Translating a field that includes invalid delimiters could be used to cause recipients to incorrectly interpret a message, which could be exploited by an attacker."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send HTTP/2 requests to an intermediary or server",
+        "Intermediary or server translates HTTP/2 to HTTP/1.1 or processes headers without strict validation"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "intermediary"
+      ],
+      "mitigation": "Implement strict validation of all HTTP/2 header field names and values according to RFC 9113 Section 8.2.1. Reject any fields containing prohibited characters (NUL, CR, LF, uppercase letters, leading/trailing whitespace) before processing or translation. Treat violations as PROTOCOL_ERROR.",
+      "fingerprint": "2e7f7cbe755f17fb2a3212f3b06c6fd73747cdadc03aa5306ea48d4063544fea"
+    },
+    {
+      "id": "bb6aed64-128a-44fc-be5b-56c865fabd13",
+      "technique_name": "HPACK Bomb / Header Table Exhaustion",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: Attacker sends a series of HEADERS or PUSH_PROMISE frames containing a large number of unique, large header fields. Step 2: The receiver's HPACK compression context (dynamic table) is forced to store these entries, consuming significant memory. Step 3: The attacker can continuously update the table with new large entries, causing the receiver to exhaust its memory allocation for the header compression context, leading to a crash or service degradation. The RFC explicitly notes that field section compression provides opportunities for an attacker to waste processing resources and memory.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.5",
+          "quote": "Field section compression also provides opportunities for an attacker to waste processing resources; see for more details on potential abuses."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.5.1",
+          "quote": "A large field block can cause an implementation to commit a large amount of state... Since there is no hard limit to the size of a field block, some endpoints could be forced to commit a large amount of available memory for field blocks."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.5.2",
+          "quote": "SETTINGS_HEADER_TABLE_SIZE (0x01): This setting allows the sender to inform the remote endpoint of the maximum size of the compression table used to decode field blocks, in units of octets."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an HTTP/2 connection",
+        "Receiver implements HPACK compression with a dynamic table"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict limits on the SETTINGS_HEADER_TABLE_SIZE. Monitor and limit the size of incoming field blocks. Use SETTINGS_MAX_HEADER_LIST_SIZE to cap the uncompressed size of header fields. Terminate connections with ENHANCE_YOUR_CALM if suspicious header sizes are detected.",
+      "fingerprint": "30eb070217b0243b3baef09b7e8e4546a43532ea9f8a3b35192fa7a5af58932b"
+    },
+    {
+      "id": "e409c073-89eb-4236-8a57-5e8acdf5585d",
+      "technique_name": "HPACK Decompression Bomb via Missing Size Limits",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker sends a small HTTP/2 HEADERS or PUSH_PROMISE frame containing a highly compressed field block using HPACK. Step 2: The field block references large values stored in the dynamic table or uses literal representation with high frequency, causing the decompressed size to be orders of magnitude larger than the compressed size. Step 3: If the receiver does not enforce a maximum limit on the uncompressed field block size (as advised in Section 10.5.1), it will allocate excessive memory to decompress the block, leading to a Denial of Service (DoS) via resource exhaustion.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.5.1",
+          "quote": "A large field block can cause an implementation to commit a large amount of state... Since there is no hard limit to the size of a field block, some endpoints could be forced to commit a large amount of available memory for field blocks."
+        },
+        {
+          "rfc": 9113,
+          "section": "4.3",
+          "quote": "A receiver MUST terminate the connection with a connection error of type COMPRESSION_ERROR if it does not decompress a field block."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send HTTP/2 frames to the target",
+        "Target implementation does not enforce a maximum uncompressed field block size"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce a maximum limit on the uncompressed size of field blocks. Use the SETTINGS_HEADER_TABLE_SIZE setting to limit the dynamic table size, but also implement a hard cap on the total decompressed header size per request/response. Terminate the connection with COMPRESSION_ERROR or PROTOCOL_ERROR if limits are exceeded.",
+      "fingerprint": "d6d00e73245600d0ee26b109c2bd6a92e4227eccc36ea737ddbfcd8fac62b2ce"
+    },
+    {
+      "id": "8e53bfb3-a7a2-4728-b605-ee3e280e2820",
+      "technique_name": "TLS 1.3 Early Data Replay",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker captures a valid HTTP/2 request sent in TLS 1.3 early data (0-RTT) during a previous session. Step 2: The attacker replays the captured TLS ClientHello containing the early data to the server. Step 3: The server processes the replayed request before completing the TLS handshake, potentially executing a non-idempotent action (e.g., a POST request) multiple times, leading to duplicate transactions or unauthorized state changes.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "9.2.3",
+          "quote": "TLS early data MAY be used to send requests, provided that the guidance in [RFC8446] is observed. Clients send requests in early data assuming initial values for all server settings."
+        }
+      ],
+      "prerequisites": [
+        "Server supports TLS 1.3 with 0-RTT (Early Data)",
+        "Attacker can capture and replay network traffic (on-path or offline replay)",
+        "Client sends non-idempotent requests in early data"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Servers must validate that early data requests are idempotent (e.g., GET, HEAD) or implement application-level idempotency keys. RFC 8446 guidance should be strictly followed to prevent replay of non-idempotent operations.",
+      "fingerprint": "cf1d60fc18f15cd0a20975a2cb20c5c4f823c9c67f30b2aef94f1888a77bad76"
+    },
+    {
+      "id": "568ad8ef-85c1-4514-aca0-ac98a1d73de2",
+      "technique_name": "TLS Cipher Suite Downgrade",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An on-path attacker intercepts the initial TLS ClientHello. Step 2: The attacker modifies the ClientHello to remove or reorder supported cipher suites, forcing the server to select a weaker, non-AEAD cipher suite (e.g., CBC-based) that is technically allowed by TLS 1.2 but prohibited by HTTP/2. Step 3: If the client implementation fails to strictly enforce the HTTP/2 prohibited cipher suite list after TLS negotiation, the connection proceeds with a weak cipher suite, enabling attacks like BEAST or Lucky13. Alternatively, if the server supports HTTP/1.1, the attacker can force a fallback to HTTP/1.1 with a weak cipher suite by stripping the 'h2' ALPN token.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "9.2.2",
+          "quote": "A deployment of HTTP/2 over TLS 1.2 use any of the prohibited cipher suites listed in . Endpoints choose to generate a of type if one of the prohibited cipher suites is negotiated."
+        },
+        {
+          "rfc": 9113,
+          "section": "appendix.a",
+          "quote": "An HTTP/2 implementation treat the negotiation of any of the following cipher suites with TLS 1.2 as a of type : TLS_RSA_WITH_AES_128_CBC_SHA ..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path during TLS handshake",
+        "client/server supports TLS 1.2",
+        "implementation fails to strictly enforce prohibited cipher suite list"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Strictly enforce the list of prohibited TLS 1.2 cipher suites defined in Appendix A. Terminate the connection with a NO_ERROR code if a prohibited suite is negotiated. Prefer TLS 1.3 which removes weak cipher suites entirely.",
+      "fingerprint": "7e32748f12c786b8fff46ec382547c2f4e5f6b0808c959dde510bad79a4c8941"
+    },
+    {
+      "id": "1e50473e-b854-4655-aa1c-79420239624f",
+      "technique_name": "Stream ID Exhaustion / Rapid Stream Creation",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker opens a large number of HTTP/2 streams rapidly by sending HEADERS frames with incrementing stream identifiers. Step 2: Each stream consumes server resources (memory for state, flow control windows, etc.). Step 3: The server exhausts its available stream identifiers (31-bit space) or its configured maximum concurrent streams limit, preventing legitimate users from establishing new streams or causing the server to crash due to resource exhaustion. The RFC notes that stream identifiers cannot be reused and long-lived connections can exhaust the range.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "5.1.1",
+          "quote": "Stream identifiers cannot be reused. Long-lived connections can result in an endpoint exhausting the available range of stream identifiers."
+        },
+        {
+          "rfc": 9113,
+          "section": "5.1.2",
+          "quote": "A peer can limit the number of concurrently active streams using the SETTINGS_MAX_CONCURRENT_STREAMS parameter... Endpoints MUST NOT exceed the limit set by their peer."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.5",
+          "quote": "A client that accepts server push MUST limit the number of streams it allows to be in the 'reserved (remote)' state. An excessive number of server push streams can be treated as a connection error of type ENHANCE_YOUR_CALM."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an HTTP/2 connection",
+        "Server has a high or unlimited SETTINGS_MAX_CONCURRENT_STREAMS setting"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce a reasonable SETTINGS_MAX_CONCURRENT_STREAMS limit. Monitor the rate of new stream creation. Implement rate limiting for stream openings. Use GOAWAY to terminate connections exhibiting excessive stream creation.",
+      "fingerprint": "403caffc7e8d7eaa61fd5a785f7d4fe38e3f58c8a42dff2c9025e53dfbd7d628"
+    },
+    {
+      "id": "226bcad7-da33-4454-ac92-18a8be16ca45",
+      "technique_name": "Oversized SETTINGS_MAX_FRAME_SIZE",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker establishes an HTTP/2 connection with the target server. Step 2: Attacker sends a SETTINGS frame with SETTINGS_MAX_FRAME_SIZE set to the maximum allowed value (2^24 - 1 = 16,777,215 octets). Step 3: Attacker sends DATA or HEADERS frames with payloads approaching this maximum size. Step 4: The server allocates large contiguous memory buffers to process these frames, potentially leading to memory exhaustion or performance degradation, especially if combined with high concurrency.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "4.2",
+          "quote": "The size of a frame payload is limited by the maximum size that a receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting. This setting can have any value between 2^14 (16,384) and 2^24 - 1 (16,777,215) octets, inclusive."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.5.2",
+          "quote": "SETTINGS_MAX_FRAME_SIZE (0x05): This setting indicates the size of the largest frame payload that the sender is willing to receive, in units of octets. The initial value is 2^14 (16,384) octets."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate HTTP/2 connections",
+        "Server respects SETTINGS_MAX_FRAME_SIZE up to the protocol maximum"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement internal limits on SETTINGS_MAX_FRAME_SIZE that are lower than the protocol maximum. Use streaming processing for frame payloads instead of buffering entire frames in memory. Monitor memory usage and enforce connection-level resource limits.",
+      "fingerprint": "e81666ad69b6ebc36ecd32513cafad80073c8aa82b09b73460964d20a15a6994"
+    },
+    {
+      "id": "a6194255-c837-403a-ae1c-f205b0d1b93b",
+      "technique_name": "Oversized HPACK Dynamic Table",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker establishes an HTTP/2 connection. Step 2: Attacker sends a SETTINGS frame with SETTINGS_HEADER_TABLE_SIZE set to a very large value (up to 2^32 - 1). Step 3: Attacker sends HEADERS frames containing many unique, large header fields. Step 4: The server's HPACK decoder allocates memory for the dynamic table to store these headers, potentially exhausting memory resources. Step 5: Even if the server limits the table size, the attacker can force the server to process and decompress large header blocks before rejecting them, causing CPU and memory pressure.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "4.3.1",
+          "quote": "An endpoint communicates the size chosen by its HPACK decoder context using the SETTINGS_HEADER_TABLE_SIZE setting... When a connection is established, the dynamic table size for the HPACK decoder and encoder at both endpoints starts at 4,096 bytes."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.5.2",
+          "quote": "SETTINGS_HEADER_TABLE_SIZE (0x01): This setting allows the sender to inform the remote endpoint of the maximum size of the compression table used to decode field blocks, in units of octets."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.5.1",
+          "quote": "A large field block can cause an implementation to commit a large amount of state... Since there is no hard limit to the size of a field block, some endpoints could be forced to commit a large amount of available memory for field blocks."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate HTTP/2 connections",
+        "Server supports HPACK compression",
+        "Server does not enforce strict internal limits on header table size or total header block size"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce strict internal limits on SETTINGS_HEADER_TABLE_SIZE and total uncompressed header block size. Use SETTINGS_MAX_HEADER_LIST_SIZE to advertise limits. Implement rate limiting for header processing. Ensure HPACK implementation handles table size updates securely.",
+      "fingerprint": "9917719838fe2537cf5958579b509b0c2e0182e3b60cee6902ff9f3752910dad"
+    },
+    {
+      "id": "ad0ca196-884f-4f28-aaa2-91acdffaa928",
+      "technique_name": "TLS Post-Handshake Authentication Bypass via HTTP/2 Protocol Error",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker initiates an HTTP/2 connection over TLS 1.3 with a server that supports post-handshake authentication (PHA). Step 2: The server sends a TLS CertificateRequest message after the handshake completes to request client authentication. Step 3: The HTTP/2 client implementation, adhering to RFC 9113 Section 9.2.3, treats the post-handshake CertificateRequest as a PROTOCOL_ERROR and terminates the connection. Step 4: If the server relies on HTTP/2 stream-level authentication or application-layer credentials instead of TLS client certificates, the connection termination might be handled gracefully by the server, allowing the attacker to re-establish the connection without providing the requested client certificate, effectively bypassing the intended TLS-level authentication.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "9.2.3",
+          "quote": "HTTP/2 servers send post-handshake TLS 1.3 CertificateRequest messages. HTTP/2 clients treat a TLS post-handshake CertificateRequest message as a PROTOCOL_ERROR."
+        }
+      ],
+      "prerequisites": [
+        "Server supports TLS 1.3 post-handshake authentication",
+        "Client implementation strictly follows RFC 9113 Section 9.2.3",
+        "Server has fallback authentication mechanisms or handles connection resets gracefully"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should ensure that authentication requirements are enforced at the application layer if TLS post-handshake authentication is not supported or is rejected by the client. Servers should not rely solely on TLS PHA for critical authentication without fallback checks.",
+      "fingerprint": "2439f3d5a36b23cb6297f4f165f5bf29a1bbbeb0687ba8f8aaad20b64406f2c0"
+    },
+    {
+      "id": "60606f55-cb88-40bf-8bd7-e0d82bc8aa11",
+      "technique_name": "Server Push Abuse / Reserved Stream Exhaustion",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker (acting as a malicious server or exploiting a vulnerable server) sends a large number of PUSH_PROMISE frames. Step 2: Each PUSH_PROMISE reserves a stream identifier on the client, putting it in the 'reserved (remote)' state. Step 3: Reserved streams consume client resources (state, memory) even if no data is sent. The attacker can exhaust the client's stream identifier space or memory, preventing it from processing legitimate requests. The RFC notes that reserved streams do not count toward the concurrent stream limit, making this attack particularly effective.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.5",
+          "quote": "A client that accepts server push MUST limit the number of streams it allows to be in the 'reserved (remote)' state. An excessive number of server push streams can be treated as a connection error of type ENHANCE_YOUR_CALM."
+        },
+        {
+          "rfc": 9113,
+          "section": "5.1.2",
+          "quote": "Streams in either of the 'reserved' states do not count toward the stream limit."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.6",
+          "quote": "PUSH_PROMISE frames MUST only be sent on a peer-initiated stream that is in either the 'open' or 'half-closed (remote)' state."
+        }
+      ],
+      "prerequisites": [
+        "Server supports HTTP/2 Server Push",
+        "Client accepts PUSH_PROMISE frames"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should strictly limit the number of reserved streams. Disable server push by setting SETTINGS_ENABLE_PUSH to 0. Reset unwanted pushed streams immediately with RST_STREAM.",
+      "fingerprint": "46a563fa935ef763663022911ba4064bfc40e3310e46bae23f6f46b5d319f3cc"
+    },
+    {
+      "id": "324d765b-3cbd-420f-af1c-5f49bcbd37b8",
+      "technique_name": "HTTP/2 Connection Preface Race Condition",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The RFC states clients are permitted to send additional frames immediately after the connection preface without waiting for the server preface. Step 2: It also states the server preface might include settings that alter how the client is expected to communicate. Step 3: An attacker or misbehaving server can delay sending the SETTINGS frame, causing the client to send frames (e.g., large DATA frames) based on default settings, potentially overwhelming the server's flow control window or causing resource exhaustion before the server can enforce its limits.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "3.4",
+          "quote": "To avoid unnecessary latency, clients are permitted to send additional frames to the server immediately after sending the client connection preface, without waiting to receive the server connection preface. It is important to note, however, that the server connection preface frame might include settings that necessarily alter how a client is expected to communicate with the server."
+        }
+      ],
+      "prerequisites": [
+        "Client implementation allows sending frames before receiving server SETTINGS",
+        "Server delays sending SETTINGS frame"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should implement a conservative initial flow control window and rate-limit frame transmission until the server's SETTINGS frame is received and acknowledged. Servers should enforce strict limits on initial data reception regardless of client behavior.",
+      "fingerprint": "d053943c134814d8b8bdd0da995261292fc4ec00b782c013f6840fd027dd307d"
+    },
+    {
+      "id": "4a9b4360-781b-4978-894c-f5672451e501",
+      "technique_name": "PUSH_PROMISE Stream State Confusion",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a PUSH_PROMISE frame on a valid stream to reserve a new stream ID, transitioning it to 'reserved (remote)'. Step 2: Attacker sends a RST_STREAM frame for the promised stream ID before sending the promised HEADERS frame. Step 3: Attacker sends a HEADERS frame for the promised stream ID. The receiver may be confused about whether the stream is 'closed' or 'half-closed (local)', potentially leading to state desynchronization or resource exhaustion if the implementation incorrectly processes the HEADERS frame after the RST_STREAM.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "5.1",
+          "quote": "Sending a PUSH_PROMISE frame creates a new stream and puts the stream into the 'reserved (local)' state for the server and the 'reserved (remote)' state for the client."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.6",
+          "quote": "Recipients of PUSH_PROMISE frames can choose to reject promised streams by returning a RST_STREAM referencing the promised stream identifier back to the sender of the PUSH_PROMISE."
+        },
+        {
+          "rfc": 9113,
+          "section": "5.1",
+          "quote": "Receiving a HEADERS frame causes the stream to transition to 'half-closed (local)'."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send frames on an established HTTP/2 connection",
+        "Server supports server push"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must strictly enforce the stream state machine. A RST_STREAM on a reserved stream should transition it to 'closed', and any subsequent HEADERS frame for that stream ID should be treated as a PROTOCOL_ERROR.",
+      "fingerprint": "8b9289518a6bdfac368ff1e63025500ea96f75a9c365c230c0784f1ace9c2e9f"
+    },
+    {
+      "id": "c2c6330a-5304-4bc1-9f92-580a1d6dec2f",
+      "technique_name": "HTTP/2 PUSH_PROMISE Stream Reservation Desync",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: PUSH_PROMISE frames reserve a stream identifier. The RFC states that ignoring a PUSH_PROMISE causes the stream state to become indeterminate. Step 2: Clients can reject promised streams by sending RST_STREAM. Step 3: Ambiguity exists in the timing of when a client can send RST_STREAM relative to the PUSH_PROMISE. If a client sends RST_STREAM before fully processing the PUSH_PROMISE, or if the server sends data on the promised stream before receiving the RST_STREAM, implementations may disagree on whether the stream is 'reserved' or 'closed', leading to flow control credit miscalculations or HPACK state desynchronization.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.6",
+          "quote": "Since PUSH_PROMISE reserves a stream, ignoring a PUSH_PROMISE frame causes the stream state to become indeterminate."
+        },
+        {
+          "rfc": 9113,
+          "section": "8.4.2",
+          "quote": "If the client determines, for any reason, that it does not wish to receive the pushed response from the server... the client can send a RST_STREAM frame... referencing the pushed stream's identifier."
+        }
+      ],
+      "prerequisites": [
+        "Server pushes resources",
+        "Client rejects push",
+        "Race condition between PUSH_PROMISE and RST_STREAM"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should process PUSH_PROMISE frames fully before sending RST_STREAM. Servers should not send DATA frames on promised streams until they are certain the client has accepted the push (e.g., by not receiving RST_STREAM within a reasonable time).",
+      "fingerprint": "676d0a4689ca454f894612f3db1344f3e6bbc04c98178b332de0647944fbef7a"
+    },
+    {
+      "id": "e8a7bb31-7073-4635-8f25-22f86342a147",
+      "technique_name": "GOAWAY Last Stream ID Confusion",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends a GOAWAY frame with a Last-Stream-ID that is lower than the highest stream ID currently in use. Step 2: Attacker continues to send frames on streams with IDs higher than the Last-Stream-ID. Step 3: The receiver may be confused about whether to process these frames or treat them as errors, potentially leading to a denial of service or state desynchronization if the implementation does not strictly follow the GOAWAY processing rules.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.8",
+          "quote": "Once the GOAWAY is sent, the sender will ignore frames sent on streams initiated by the receiver if the stream has an identifier higher than the included last stream identifier."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.8",
+          "quote": "If the receiver of the GOAWAY has sent data on streams with a higher stream identifier than what is indicated in the GOAWAY frame, those streams are not or will not be processed."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send frames on an established HTTP/2 connection",
+        "Receiver does not strictly enforce GOAWAY Last-Stream-ID rules"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must strictly enforce the GOAWAY Last-Stream-ID. Any frames received on streams with IDs higher than the Last-Stream-ID should be ignored or treated as a PROTOCOL_ERROR, depending on the implementation's error handling strategy.",
+      "fingerprint": "7868a065b559d6cfe413ea290359cc9c98bce5dc8f2e6f746c44900f29a7b8dc"
+    },
+    {
+      "id": "ae4e5578-d20c-4fb0-a4d1-c2fcebd893d9",
+      "technique_name": "Cleartext HTTP/2 (h2c) Authentication Downgrade",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker intercepts or initiates a connection to a server that supports both HTTP/2 over TLS (h2) and cleartext HTTP/2 (h2c). Step 2: The attacker forces or negotiates the use of the 'h2c' protocol identifier, which does not use TLS. Step 3: Without TLS, the connection lacks encryption and server authentication, making it vulnerable to man-in-the-middle attacks. Step 4: The attacker can intercept, modify, or inject requests and responses, potentially bypassing application-layer authentication mechanisms that rely on secure transport or session cookies transmitted over the cleartext channel.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "3.2",
+          "quote": "The 'h2c' protocol identifier describes a protocol that does not use TLS."
+        },
+        {
+          "rfc": 9113,
+          "section": "10",
+          "quote": "The use of TLS is necessary to provide many of the security properties of this protocol. Many of the claims in this section do not hold unless TLS is used as described in."
+        }
+      ],
+      "prerequisites": [
+        "Server supports cleartext HTTP/2 (h2c)",
+        "Attacker can influence protocol negotiation or is on-path",
+        "Application relies on transport-layer security for authentication integrity"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Disable cleartext HTTP/2 (h2c) support unless absolutely necessary and in a trusted network environment. Enforce HTTP/2 over TLS (h2) using Strict-Transport-Security (HSTS) and ensure that authentication mechanisms are robust against transport-layer downgrades.",
+      "fingerprint": "dab1fc4c15e94505befbee7d67ae1ac24b5f5e6c58023b812c8403d62759173d"
+    },
+    {
+      "id": "86eacb56-f09f-42da-a23e-b8de29091ab5",
+      "technique_name": "Cleartext HTTP/2 (h2c) Downgrade",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker forces a client to connect to a server over cleartext TCP (port 80) instead of TLS (port 443), potentially via DNS spoofing or network redirection. Step 2: The client initiates an HTTP/2 connection using the cleartext connection preface ('PRI * HTTP/2.0...'). Step 3: The connection proceeds without encryption, exposing all HTTP/2 frames, headers, and data to eavesdropping and manipulation. The RFC explicitly notes that cleartext HTTP/2 has minimal protection against cross-protocol attacks.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "3.3",
+          "quote": "This only affects the establishment of HTTP/2 connections over cleartext TCP; HTTP/2 connections over TLS use ."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.2",
+          "quote": "The cleartext version of HTTP/2 has minimal protection against cross-protocol attacks. The contains a string that is designed to confuse HTTP/1.1 servers, but no special protection is offered for other protocols."
+        },
+        {
+          "rfc": 9113,
+          "section": "3.2",
+          "quote": "The \"h2c\" protocol identifier be sent by a client or selected by a server; the \"h2c\" protocol identifier describes a protocol that does not use TLS."
+        }
+      ],
+      "prerequisites": [
+        "attacker can redirect client to cleartext port",
+        "client supports h2c (cleartext HTTP/2)",
+        "server supports h2c"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Disable cleartext HTTP/2 (h2c) support. Enforce HTTPS-only policies using HSTS (HTTP Strict Transport Security). Use ALPN exclusively for protocol negotiation.",
+      "fingerprint": "7325e960faaec54552b90c274c4086798c3ed3809e28eedd4370b1449fe655fd"
+    },
+    {
+      "id": "b7c7a223-7c6d-45b6-a133-5031383f533a",
+      "technique_name": "GOAWAY Stream Identifier Race Condition",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.95,
+      "description": "Step 1: A client initiates new HTTP/2 streams concurrently while a server is preparing to shut down the connection. Step 2: The server sends a GOAWAY frame containing the last stream identifier it will process. Step 3: Due to network latency and the inherent race between the client creating new streams and the server sending GOAWAY, the client may have already sent frames for streams with identifiers higher than the GOAWAY's last stream ID. Step 4: The server ignores these frames, but the client may incorrectly assume they were processed, leading to request loss or inconsistent application state unless the client implements retry logic based on the GOAWAY frame.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.8",
+          "quote": "There is an inherent race condition between an endpoint starting new streams and the remote peer sending a GOAWAY frame. To deal with this case, the GOAWAY contains the stream identifier of the last peer-initiated stream that was or might be processed on the sending endpoint in this connection."
+        }
+      ],
+      "prerequisites": [
+        "Client and server are actively exchanging frames",
+        "Server initiates graceful shutdown or connection termination"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementers must handle the GOAWAY frame by checking the last stream identifier. Any streams with higher identifiers that have not received a response should be retried on a new connection. The RFC explicitly notes this race and provides the GOAWAY mechanism to resolve it.",
+      "fingerprint": "44ac3f8ba394d57ab37217989c9ac943f79bf7aeb330b7d291e206f76d3e1411"
+    },
+    {
+      "id": "eb59105a-efb1-4c39-bf17-54227e10f744",
+      "technique_name": "HTTP/2 CONTINUATION Frame Interleaving Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: The RFC mandates that field blocks be transmitted as a contiguous sequence of frames with no interleaved frames of any other type or stream. Step 2: However, the error handling for receiving a non-CONTINUATION frame while expecting one is defined as a PROTOCOL_ERROR. Step 3: Ambiguity arises in how implementations handle the state of the 'field block assembly' when a PROTOCOL_ERROR is triggered mid-continuation. Some implementations may reset the entire connection, while others might only reset the stream, leading to desynchronization in header compression state (HPACK) if the connection is kept alive but the stream is reset.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "4.3",
+          "quote": "Field blocks MUST be transmitted as a contiguous sequence of frames, with no interleaved frames of any other type or from any other stream."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.10",
+          "quote": "A receiver MUST treat the receipt of any other type of frame or a CONTINUATION frame on a different stream as a connection error of type PROTOCOL_ERROR."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can inject or delay frames",
+        "Implementation handles PROTOCOL_ERROR on CONTINUATION inconsistently"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "man-in-the-middle"
+      ],
+      "mitigation": "Implementations must strictly adhere to resetting the connection upon receiving an interleaved frame during a CONTINUATION sequence, as specified. HPACK state must be synchronized across the connection, not just per stream.",
+      "fingerprint": "5aafb760e3f12d6bfdbac849965bbaac58be0747e3ea980d1b9ceb966a5c0f05"
+    },
+    {
+      "id": "e5b2d15e-03da-4f14-8e5b-7da703980d46",
+      "technique_name": "HTTP/2 GOAWAY Last Stream Identifier Race",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: GOAWAY frames indicate the last stream identifier the sender might have processed. Step 2: The RFC notes an inherent race condition between starting new streams and sending GOAWAY. Step 3: Ambiguity arises in how clients handle streams initiated just before receiving GOAWAY. If a client sends a request on stream N, and the server sends GOAWAY with last_stream_id = N-1, the client must retry. However, if the server actually processed stream N but sent GOAWAY with N-1 due to internal state lag, the client will retry unnecessarily, potentially causing duplicate requests or resource exhaustion on the server.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.8",
+          "quote": "There is an inherent race condition between an endpoint starting new streams and the remote peer sending a GOAWAY frame."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.8",
+          "quote": "If the receiver of the GOAWAY has sent data on streams with a higher stream identifier than what is indicated in the GOAWAY frame, those streams are not or will not be processed."
+        }
+      ],
+      "prerequisites": [
+        "Server sends GOAWAY",
+        "Client has in-flight requests",
+        "Server state and GOAWAY last_stream_id are out of sync"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should implement idempotency keys for retryable requests. Servers should ensure GOAWAY last_stream_id accurately reflects the highest stream that has been passed to the application layer.",
+      "fingerprint": "11cdfeb374a1cc891c646b4bfdf752d527e3aadcf29b4a2e74939711a7c84e78"
+    },
+    {
+      "id": "b09723d9-7148-4aab-bc05-3709e317cb6b",
+      "technique_name": "Frame Padding Information Leakage",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: HTTP/2 allows padding in DATA, HEADERS, and PUSH_PROMISE frames to obscure message sizes. Step 2: If padding is implemented incorrectly (e.g., fixed-size padding or predictable randomization), an attacker can infer the actual size of the payload by observing the total frame size. Step 3: The attacker sends requests with varying payload sizes and observes the resulting padded frame sizes. Step 4: By analyzing the distribution of frame sizes, the attacker can deduce the exact length of the underlying data, potentially leaking sensitive information about the application state or user input.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.7",
+          "quote": "Use of padding can result in less protection than might seem immediately obvious. At best, padding only makes it more difficult for an attacker to infer length information by increasing the number of frames an attacker has to observe. Incorrectly implemented padding schemes can be easily defeated. In particular, randomized padding with a predictable distribution provides very little protection; similarly, padding frame payloads to a fixed size exposes information as frame payload sizes cross the fixed-sized boundary, which could be possible if an attacker can control plaintext."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.1",
+          "quote": "DATA frames also contain padding. Padding can be added to DATA frames to obscure the size of messages. Padding is a security feature; see Section 10.7."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can observe encrypted frame sizes on the network",
+        "Padding implementation uses fixed sizes or predictable distributions"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Implement robust, unpredictable padding schemes that do not correlate with payload size. RFC 9113 Section 10.7 notes that padding is not a replacement for general-purpose padding like TLS record splitting/padding and warns against predictable distributions.",
+      "fingerprint": "223eb89dd6ad59d06e854b90251ec4fe3437383c3a71562fc80ccde55d0680e2"
+    },
+    {
+      "id": "4f97aa03-b94f-42b5-8cef-6ecac65c9741",
+      "technique_name": "ALPN Protocol Downgrade",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker intercepts the TLS handshake. Step 2: The attacker strips the 'h2' token from the client's ALPN extension or modifies the server's ALPN response to select 'http/1.1'. Step 3: The client falls back to HTTP/1.1, losing HTTP/2 security properties like HPACK compression limits and multiplexing protections, potentially exposing the client to HTTP/1.1 specific attacks (e.g., request smuggling, header injection) if the application layer is not hardened for HTTP/1.1.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "3.2",
+          "quote": "A client that makes a request to an \"https\" URI uses with the . HTTP/2 over TLS uses the \"h2\" protocol identifier."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.2",
+          "quote": "Completing a TLS handshake with an ALPN identifier for HTTP/2 can be considered sufficient protection against cross-protocol attacks. ALPN provides a positive indication that a server is willing to proceed with HTTP/2..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path during TLS handshake",
+        "client supports HTTP/1.1 fallback",
+        "server supports HTTP/1.1"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use TLS 1.3 which binds ALPN selection to the handshake transcript, preventing modification. Implement strict ALPN validation and consider disabling HTTP/1.1 fallback if HTTP/2 is required.",
+      "fingerprint": "c94ac59d2125c927ad6d0ab99c1c281ac52c3f90cb763c9f65507ba447200fb3"
+    },
+    {
+      "id": "2ff6822b-ce42-436f-937e-fea10e1ff78f",
+      "technique_name": "Flow Control Starvation / Tiny Window Updates",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends WINDOW_UPDATE frames with very small increments (e.g., 1 byte) to a server or client. Step 2: The receiver is forced to process a high volume of WINDOW_UPDATE frames to maintain flow control, consuming CPU and network bandwidth. Step 3: Alternatively, the attacker can withhold WINDOW_UPDATE frames entirely, causing the sender's flow control window to close, stalling legitimate data transmission and potentially causing timeouts or resource leaks on the sender side. The RFC explicitly mentions that providing tiny increments can cause a sender to generate a large number of frames.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.5",
+          "quote": "Providing tiny increments to flow control in WINDOW_UPDATE frames can cause a sender to generate a large number of frames."
+        },
+        {
+          "rfc": 9113,
+          "section": "5.2.2",
+          "quote": "Deployments that do not require this capability can advertise a flow-control window of the maximum size (2^31-1) and can maintain this window by sending a WINDOW_UPDATE frame when any data is received. This effectively disables flow control for that receiver."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.9",
+          "quote": "The legal range for the increment to the flow-control window is 1 to 2^31-1 (2,147,483,647) octets."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an HTTP/2 connection",
+        "Protocol relies on flow control for data transmission"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ignore WINDOW_UPDATE frames with increments below a certain threshold. Implement rate limiting for WINDOW_UPDATE frames. Consider disabling flow control if not strictly necessary by advertising a maximum window size.",
+      "fingerprint": "8fb50b2252a2f4472fd368825f98904a65e6e548cc85bb5b05b7a1bf110cfbf7"
+    },
+    {
+      "id": "e99baa13-d548-4efe-850a-d615ab0e4386",
+      "technique_name": "Padding Oracle Attack via Missing Validation of Padding Integrity",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends HTTP/2 frames (DATA, HEADERS, PUSH_PROMISE) with varying amounts of padding and different padding values (zero vs. non-zero). Step 2: The receiver processes the frames. If the implementation treats non-zero padding differently (e.g., by returning a specific error code like PROTOCOL_ERROR vs. silently ignoring or processing differently) or if the processing time varies based on padding validation, it creates a side-channel. Step 3: The attacker measures the response time or error type to infer information about the compressed header block or data, potentially leading to the extraction of sensitive information like cookies or tokens via a padding oracle attack.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.1",
+          "quote": "Padding octets MUST be set to zero when sending. A receiver is not obligated to verify padding but MUST treat non-zero padding as a connection error of type PROTOCOL_ERROR."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.2",
+          "quote": "Padding octets MUST be set to zero when sending. A receiver is not obligated to verify padding but MUST treat non-zero padding as a connection error of type PROTOCOL_ERROR."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send padded HTTP/2 frames",
+        "Receiver's error handling or processing time leaks information based on padding validation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure constant-time processing of padding validation. Treat all padding errors uniformly and avoid leaking information through error codes or timing differences. Consider disabling padding if not strictly necessary for security.",
+      "fingerprint": "07b731baab13f7c6d723946c9666b886e43f57de43e12830838e969eb81e77e2"
+    },
+    {
+      "id": "ded786a1-c1ec-4284-8c5a-2c6e49602657",
+      "technique_name": "Ping Flood / PING Frame Abuse",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends a high volume of PING frames to the peer. Step 2: The protocol requires the receiver to respond to each PING frame with a PING frame containing the ACK flag and identical payload. Step 3: This forces the receiver to expend CPU cycles and network bandwidth generating and sending responses, potentially overwhelming the server or client. The RFC notes that PING responses MUST be given higher priority than any other frame, exacerbating the impact.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.7",
+          "quote": "Receivers of a PING frame that does not include an ACK flag MUST send a PING frame with the ACK flag set in response, with an identical frame payload. PING responses MUST be given higher priority than any other frame."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.5",
+          "quote": "The PING frame might also be abused to cause a peer to expend additional processing time."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an HTTP/2 connection"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement rate limiting for PING frames. Terminate connections that exceed a reasonable PING frequency. Consider treating excessive PING frames as a connection error (ENHANCE_YOUR_CALM).",
+      "fingerprint": "2ba5a8457efa5ef0f65863a298a0189345815a2295055957ea1b4cc517bafd49"
+    },
+    {
+      "id": "7ba71b91-ff5e-49f5-84a0-9aa1a07defd3",
+      "technique_name": "Large Frame Payload / Memory Exhaustion",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends DATA or HEADERS frames with payloads close to the maximum allowed size (16 MB by default, configurable via SETTINGS_MAX_FRAME_SIZE). Step 2: The receiver must allocate memory to buffer these large frames. Step 3: By sending many such frames across multiple streams, the attacker can exhaust the receiver's memory, causing it to crash or become unresponsive. The RFC notes that implementations must be capable of receiving frames up to 16 KB, but can be configured to accept much larger frames.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "4.2",
+          "quote": "The size of a frame payload is limited by the maximum size that a receiver advertises in the SETTINGS_MAX_FRAME_SIZE setting. This setting can have any value between 2^14 (16,384) and 2^24-1 (16,777,215) octets, inclusive."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.5.1",
+          "quote": "A large field block can cause an implementation to commit a large amount of state... some endpoints could be forced to commit a large amount of available memory for field blocks."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an HTTP/2 connection",
+        "Receiver accepts large frame sizes"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Limit SETTINGS_MAX_FRAME_SIZE to a reasonable value. Implement memory limits for frame buffering. Use flow control to limit the amount of data that can be sent without acknowledgment.",
+      "fingerprint": "a9af64ca2b0ebcd36058aee035000398ab0be0f076e1de47397d2f944e586154"
+    },
+    {
+      "id": "2c062fb9-910f-4cde-a3f8-ff475e1bf54e",
+      "technique_name": "SETTINGS Frame Flood / Parameter Churning",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends a continuous stream of SETTINGS frames, either changing values slightly, sending multiple undefined settings, or changing the same setting multiple times. Step 2: Each SETTINGS frame requires the receiver to process the parameters and send a SETTINGS ACK frame in response. Step 3: This consumes CPU and network resources on the receiver, potentially causing it to drop other legitimate frames or exhaust resources. The RFC explicitly warns against this abuse.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.5",
+          "quote": "The SETTINGS frame might also be abused to cause a peer to expend additional processing time. This might be done by pointlessly changing settings, sending multiple undefined settings, or changing the same setting multiple times in the same SETTINGS frame."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.5.3",
+          "quote": "Once all values have been processed, the recipient immediately MUST emit a SETTINGS frame with the ACK flag set."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an HTTP/2 connection"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Rate limit the frequency of SETTINGS frames. Ignore redundant or unchanged settings. Terminate connections that send SETTINGS frames at an excessive rate.",
+      "fingerprint": "a88bbd629aa790c10a306714807cb66bccf139967f23db2b2b484245fd8053b0"
+    },
+    {
+      "id": "e8e21603-4542-472b-9121-d47963d9b896",
+      "technique_name": "Stream State Confusion via Missing Validation of Stream Identifier",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker sends frames with invalid stream identifiers, such as 0x00 for stream-specific frames (DATA, HEADERS, RST_STREAM, etc.) or stream identifiers that do not match the expected parity (client-initiated vs. server-initiated). Step 2: If the receiver fails to validate the stream identifier against the current stream state and ownership rules, it may process the frame incorrectly. Step 3: This can lead to state confusion, where frames are applied to the wrong stream or connection state, potentially causing resource exhaustion, denial of service, or bypassing stream-level security controls.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.1",
+          "quote": "If a DATA frame is received whose Stream Identifier field is 0x00, the recipient MUST respond with a connection error of type PROTOCOL_ERROR."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.4",
+          "quote": "If a RST_STREAM frame is received with a stream identifier of 0x00, the recipient MUST treat this as a connection error of type PROTOCOL_ERROR."
+        },
+        {
+          "rfc": 9113,
+          "section": "5.1",
+          "quote": "Receiving any frame other than WINDOW_UPDATE or PRIORITY on a stream in this state [idle] MUST be treated as a connection error of type PROTOCOL_ERROR."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send HTTP/2 frames",
+        "Receiver does not strictly validate stream identifiers and state transitions"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly validate stream identifiers for all frames. Ensure that stream-specific frames are not sent on stream 0x00. Validate that stream identifiers match the expected parity for the sender. Reject frames that violate stream state machine rules with appropriate connection or stream errors.",
+      "fingerprint": "6a89c109f0d9920f99104e3a3284b1d01ecf245e40eec360a79505ae494b7b64"
+    },
+    {
+      "id": "46fdbbb6-f977-4a01-8948-639ac5f6ba01",
+      "technique_name": "Flow Control Window Exhaustion via Oversized DATA Frames",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker establishes an HTTP/2 connection and opens multiple streams. Step 2: Attacker sends WINDOW_UPDATE frames to grant large flow control windows (up to 2^31 - 1 octets). Step 3: Attacker sends large DATA frames filling these windows. Step 4: The server must buffer this data, potentially exhausting memory if it cannot process or forward the data quickly enough. Step 5: The attacker can repeat this across many streams, leveraging the connection-level flow control window to maximize impact.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "5.2.1",
+          "quote": "The initial value for the flow-control window is 65,535 octets for both new streams and the overall connection."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.9",
+          "quote": "The legal range for the increment to the flow-control window is 1 to 2^31 - 1 (2,147,483,647) octets."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.9.1",
+          "quote": "A sender MUST NOT allow a flow-control window to exceed 2^31 - 1 octets."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate HTTP/2 connections",
+        "Server does not enforce strict limits on flow control window sizes or buffered data",
+        "Server processes data slower than it receives it"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement backpressure mechanisms to limit the amount of buffered data per stream and per connection. Enforce reasonable limits on flow control window sizes. Use asynchronous processing to avoid blocking on large payloads. Monitor memory usage and terminate connections that exceed thresholds.",
+      "fingerprint": "43fd1e9af5db59d7f3bdcd246c2c16f0bedb53bed1b0756f5039c0c966fa31af"
+    },
+    {
+      "id": "4000ffb8-5d0a-41fd-bd01-17c900e74bd0",
+      "technique_name": "HTTP/2 SETTINGS ACK Timeout Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The RFC states that if a SETTINGS frame is not acknowledged within a 'reasonable amount of time', the sender MUST issue a connection error. Step 2: 'Reasonable amount of time' is undefined and left to implementation discretion. Step 3: An attacker can exploit this ambiguity by sending SETTINGS frames and then delaying the ACK, causing the peer to close the connection prematurely (DoS) or, conversely, by setting a very long timeout, allowing the attacker to keep the connection open while withholding critical settings updates, leading to resource exhaustion or state desynchronization.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.5.3",
+          "quote": "If the sender of a SETTINGS frame does not receive an acknowledgment within a reasonable amount of time, it MUST issue a connection error of type SETTINGS_TIMEOUT."
+        }
+      ],
+      "prerequisites": [
+        "Attacker controls one endpoint or can delay packets",
+        "Implementations have mismatched timeout values"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should use a standardized timeout value (e.g., based on RTT estimates) and clearly document their timeout policy. Connections should be gracefully closed rather than abruptly terminated if possible.",
+      "fingerprint": "e46fa45664adb26ed70697abb00e5b70c6da0581e197e56582316fd6cea0a9ec"
+    },
+    {
+      "id": "0c1bb444-04d8-475b-ba43-0ebab42f953b",
+      "technique_name": "Server Push Abuse via Missing Validation of Pushed Resources",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: A malicious server sends PUSH_PROMISE frames to push resources to the client that are not cacheable, not safe, or for which the server is not authoritative. Step 2: If the client fails to validate the pushed resources according to RFC 9113 Section 8.4, it may accept and process these resources. Step 3: This can lead to resource exhaustion on the client side, cache poisoning, or the client executing unintended actions based on pushed content, especially if the pushed resources contain malicious scripts or data.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "8.4",
+          "quote": "Clients that receive a promised request that is not cacheable, that is not known to be safe, or that indicates the presence of request content MUST reset the promised stream with a stream error of type PROTOCOL_ERROR."
+        },
+        {
+          "rfc": 9113,
+          "section": "8.4",
+          "quote": "A client MUST treat a :authority for which the server is not authoritative as a stream error of type PROTOCOL_ERROR."
+        }
+      ],
+      "prerequisites": [
+        "Attacker controls the server or can inject PUSH_PROMISE frames",
+        "Client does not validate pushed resources for safety, cacheability, or authority"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients must validate all pushed resources. Reject pushes that are not safe, not cacheable, or for which the server is not authoritative. Allow users to disable server push via SETTINGS_ENABLE_PUSH. Limit the number of concurrent pushed streams.",
+      "fingerprint": "dcd858e26bba6d2ef1f4a2b0129bbb374863988b69961b1414d38059b70746c1"
+    },
+    {
+      "id": "29891c24-3920-4274-81e0-d2c63211f194",
+      "technique_name": "TLS Renegotiation Downgrade/Interference",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker attempts to trigger a TLS renegotiation during an established HTTP/2 connection to inject data or force a state change. Step 2: The HTTP/2 specification mandates that TLS renegotiation be disabled and treated as a connection error. Step 3: If an implementation incorrectly handles the renegotiation request (e.g., by falling back to HTTP/1.1 renegotiation semantics or failing to close the connection), it may allow an attacker to interfere with the connection state or downgrade security guarantees. The RFC explicitly states renegotiation must be disabled to prevent this.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "9.2.1",
+          "quote": "A deployment of HTTP/2 over TLS 1.2 disable renegotiation. An endpoint treat a TLS renegotiation as a of type ."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "TLS 1.2 is used",
+        "implementation fails to strictly disable renegotiation"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Strictly disable TLS renegotiation. Treat any renegotiation request as a PROTOCOL_ERROR and terminate the connection. Use TLS 1.3 which removes renegotiation entirely.",
+      "fingerprint": "d573fd8f3181f629331986afc013a3751ad5b6a4cc7e8204767bd7622da1e3f3"
+    },
+    {
+      "id": "464df0a1-c0da-43eb-adb1-930b2c9e961b",
+      "technique_name": "Server Push Authentication Context Confusion",
+      "category": "AuthBypass",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker establishes an authenticated HTTP/2 connection to a server. Step 2: The server sends a PUSH_PROMISE frame to push a resource that requires different authentication credentials or is intended for a different user context. Step 3: The client receives the pushed response on a server-initiated stream. Step 4: If the client does not strictly validate the authentication context of the pushed resource against the original request's authentication state, it might accept and cache the resource, leading to authentication context confusion or bypass of resource-specific access controls.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "8.4.2",
+          "quote": "Clients receiving a pushed response validate that either the server is authoritative or the proxy that provided the pushed response is configured for the corresponding request."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.6",
+          "quote": "The PUSH_PROMISE frame (type=0x05) is used to notify the peer endpoint in advance of streams the sender intends to initiate."
+        }
+      ],
+      "prerequisites": [
+        "Server supports HTTP/2 Server Push",
+        "Client does not strictly validate pushed resource authentication context",
+        "Server misconfigures push resources for different authentication scopes"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should validate the authentication context and authority of pushed resources against the original request's credentials. Servers should ensure that pushed resources match the authentication scope of the initiating request.",
+      "fingerprint": "7ade650df0a3596877520ef35bbb68480ab3fc80123795c88ef78b08d2c46269"
+    },
+    {
+      "id": "a3f5b728-d257-43fd-8468-18845888d4b3",
+      "technique_name": "SETTINGS Acknowledgment State Race",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker sends a SETTINGS frame with a new value for SETTINGS_MAX_CONCURRENT_STREAMS. Step 2: Before receiving the SETTINGS ACK, the attacker sends frames that would exceed the new limit but are within the old limit. Step 3: The receiver may be confused about which limit applies, potentially leading to a stream limit violation or connection error if the state is not synchronized correctly.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.5.3",
+          "quote": "Upon receiving a SETTINGS frame with the ACK flag set, the sender of the altered settings can rely on the values from the oldest unacknowledged SETTINGS frame having been applied."
+        },
+        {
+          "rfc": 9113,
+          "section": "5.1.2",
+          "quote": "An endpoint that receives a frame that causes its advertised concurrent stream limit to be exceeded treat this as a stream error of type REFUSED_STREAM or PROTOCOL_ERROR."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send frames on an established HTTP/2 connection",
+        "Network latency allows for race condition"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must track the acknowledgment state of SETTINGS frames and apply limits only after receiving the ACK. Frames sent before the ACK should be evaluated against the previous settings.",
+      "fingerprint": "cd0a6c4d86b4b8fb75f1c7513bb05d17ae7fd37c9165da1c74a2b3e66503cd48"
+    },
+    {
+      "id": "ebd39321-521a-4404-90f8-9e432a3efc73",
+      "technique_name": "CONNECT Tunnel Resource Exhaustion",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker sends multiple CONNECT requests to an HTTP/2 proxy. Step 2: Each CONNECT request establishes a new TCP connection to the target host, which is relatively expensive for the proxy to maintain. Step 3: The proxy may hold resources for the TCP connection even after the HTTP/2 stream closes (e.g., TIME_WAIT state). This can exhaust the proxy's file descriptors or connection limits, preventing legitimate users from using the proxy. The RFC notes that stream creation is inexpensive compared to TCP connection creation.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.5.2",
+          "quote": "The CONNECT method can be used to create disproportionate load on a proxy, since stream creation is relatively inexpensive when compared to the creation and maintenance of a TCP connection. A proxy might also maintain some resources for a TCP connection beyond the closing of the stream that carries the CONNECT request, since the outgoing TCP connection remains in the TIME_WAIT state."
+        },
+        {
+          "rfc": 9113,
+          "section": "8.5",
+          "quote": "A proxy that supports CONNECT establishes a TCP connection to the host and port identified in the ':authority' pseudo-header field."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can connect to an HTTP/2 proxy",
+        "Proxy supports CONNECT method"
+      ],
+      "entities_involved": [
+        "client",
+        "proxy"
+      ],
+      "mitigation": "Implement rate limiting for CONNECT requests. Limit the number of concurrent CONNECT tunnels per client. Use connection pooling and reuse for CONNECT tunnels where possible.",
+      "fingerprint": "0c22c4ea61dd143d34258601110fb365375c8fee1f905eff9cbd4be9242a1823"
+    },
+    {
+      "id": "47fa4425-4143-4a71-98fb-f2808f373519",
+      "technique_name": "HTTP/2 Connection Preface Replay (Cleartext)",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker captures the HTTP/2 connection preface and initial SETTINGS frame from a cleartext (h2c) connection. Step 2: The attacker replays this preface to the server to establish a new HTTP/2 connection. Step 3: If the server relies on connection-specific state or initial settings for security decisions without proper authentication, the attacker may bypass rate limits or exploit server resource allocation based on the replayed settings.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "3.3",
+          "quote": "A client that knows that a server supports HTTP/2 can establish a TCP connection and send the connection preface followed by HTTP/2 frames. Servers can identify these connections by the presence of the connection preface. This only affects the establishment of HTTP/2 connections over cleartext TCP..."
+        },
+        {
+          "rfc": 9113,
+          "section": "3.4",
+          "quote": "The client connection preface starts with a sequence of 24 octets... This sequence MUST be followed by a SETTINGS frame..."
+        }
+      ],
+      "prerequisites": [
+        "HTTP/2 over cleartext (h2c) is used",
+        "Attacker is on-path or can capture traffic",
+        "Server does not enforce strict authentication or rate limiting per connection"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use HTTP/2 over TLS (h2) to prevent cleartext replay. Implement application-level authentication and rate limiting independent of connection establishment.",
+      "fingerprint": "31ca295b11f6a6e8cbc7d04309843cae44f98a4ad0f62db32d0386224882110d"
+    },
+    {
+      "id": "b34a3804-a365-4037-8e80-6f8824a81a86",
+      "technique_name": "Flow Control Window State Confusion",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker sends a WINDOW_UPDATE frame with a large increment to the flow control window. Step 2: Attacker sends DATA frames that exceed the new window size but are within the old window size plus the increment. Step 3: The receiver may be confused about the correct window size, potentially leading to a flow control violation or connection error if the state is not updated correctly.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.9",
+          "quote": "The WINDOW_UPDATE frame is used to implement flow control."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.9.2",
+          "quote": "A change to SETTINGS_INITIAL_WINDOW_SIZE can cause the available space in a flow-control window to become negative."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send frames on an established HTTP/2 connection",
+        "Receiver does not strictly enforce flow control window updates"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must strictly enforce flow control window updates. Any DATA frames that exceed the current flow control window should be treated as a FLOW_CONTROL_ERROR.",
+      "fingerprint": "ffb4f48f4e1e7d134d7b1653f642dae3a00c9b0369e5f8b7c57fcbe42da90392"
+    },
+    {
+      "id": "98a0c948-e28c-41f3-8d07-b9f331856db5",
+      "technique_name": "Server Push vs Client Request Race",
+      "category": "RaceCondition",
+      "severity": "low",
+      "confidence": 0.9,
+      "description": "Step 1: A server decides to push a resource to a client using a PUSH_PROMISE frame. Step 2: Simultaneously, the client is preparing to send a request for that same resource. Step 3: If the client sends the request before receiving the PUSH_PROMISE, the server will receive a duplicate request. Step 4: This race condition can lead to redundant network traffic and potential application-level confusion if the server does not properly deduplicate or handle the concurrent request and push.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "8.4.1",
+          "quote": "The server MUST NOT send PUSH_PROMISE frames prior to sending any HEADERS frames that reference the promised responses. This avoids a race where clients issue requests prior to receiving any PUSH_PROMISE frames."
+        }
+      ],
+      "prerequisites": [
+        "Server push is enabled",
+        "Client and server are processing resources concurrently"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "The server should send PUSH_PROMISE frames as early as possible in the response stream, ideally before sending the HEADERS frame that references the pushed resources. Clients should be prepared to receive pushed responses and cancel or ignore duplicate requests if they detect a push for a resource they are about to request.",
+      "fingerprint": "b9d60cf9a11ff300c135b697b58ec69cdc004f0420210cf30f770d093ac91a81"
+    },
+    {
+      "id": "3c07a6c6-a536-41a5-aa53-84e6355a767b",
+      "technique_name": "Connection Preface and Settings Synchronization Race",
+      "category": "RaceCondition",
+      "severity": "low",
+      "confidence": 0.85,
+      "description": "Step 1: A client sends the connection preface and immediately begins sending HTTP/2 frames without waiting for the server's connection preface (SETTINGS frame). Step 2: The server's SETTINGS frame may contain critical parameters (e.g., MAX_CONCURRENT_STREAMS, INITIAL_WINDOW_SIZE) that differ from defaults. Step 3: If the client sends frames before receiving and processing the server's SETTINGS, it may violate the server's constraints, leading to protocol errors or suboptimal performance. Step 4: This race between client frame transmission and server settings advertisement can cause transient state mismatches.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "3.4",
+          "quote": "To avoid unnecessary latency, clients are permitted to send additional frames to the server immediately after sending the client connection preface, without waiting to receive the server connection preface. It is important to note, however, that the server connection preface SETTINGS frame might include settings that necessarily alter how a client is expected to communicate with the server."
+        }
+      ],
+      "prerequisites": [
+        "Client optimizes for latency by sending frames early",
+        "Server uses non-default SETTINGS values"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should be prepared to receive and immediately apply SETTINGS frames from the server. If a client sends frames that violate server settings, it must handle the resulting protocol errors gracefully. The RFC advises that in some configurations, the server can transmit SETTINGS before the client sends additional frames to avoid this issue.",
+      "fingerprint": "961e8686118505b56abfbaeafacb2f8d2cc29516cba4a9674e5744926a10a53f"
+    },
+    {
+      "id": "916672d1-4fb5-46a9-8659-456fd5cb8720",
+      "technique_name": "GOAWAY Debug Data Leakage",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: An HTTP/2 endpoint sends a GOAWAY frame to initiate connection shutdown or signal an error. Step 2: The GOAWAY frame includes a 32-bit error code and an optional opaque debug data field. Step 3: If the implementation includes verbose error messages, stack traces, or internal state information in the debug data field, this information is sent to the peer. Step 4: An attacker or passive observer can capture this debug data, gaining insights into the server's internal configuration, software versions, or error conditions.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.8",
+          "quote": "Endpoints MAY append opaque data to the frame payload of any GOAWAY frame. Additional debug data is intended for diagnostic purposes only and carries no semantic value. Debug information could contain security- or privacy-sensitive data. Logged or otherwise persistently stored debug data MUST have adequate safeguards to prevent unauthorized access."
+        }
+      ],
+      "prerequisites": [
+        "Server implementation includes sensitive information in GOAWAY debug data",
+        "Attacker can trigger connection errors or observe connection teardowns"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Ensure GOAWAY debug data does not contain sensitive information. Use generic error messages. RFC 9113 Section 6.8 explicitly warns: 'Debug information could contain security- or privacy-sensitive data.'",
+      "fingerprint": "416cc2b7cd17144932386ef5b375907be40665f878e7d74a02a274f66d842967"
+    },
+    {
+      "id": "10b4175e-0158-4ada-b1a3-7e6923a9c559",
+      "technique_name": "HTTP/2 Flow Control Window Update Granularity",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: The RFC allows flow control window updates to be sent at any time. Step 2: It does not specify a minimum granularity or rate for WINDOW_UPDATE frames. Step 3: An attacker can send a large number of small WINDOW_UPDATE frames, causing the receiver to expend significant CPU resources processing frame headers and updating flow control state, leading to a denial of service. While the RFC mentions this as a DoS consideration, the lack of explicit rate-limiting or minimum increment requirements creates an implementation ambiguity in how to defend against it without breaking legitimate use cases.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "10.5",
+          "quote": "Providing tiny increments to flow control in WINDOW_UPDATE frames can cause a sender to generate a large number of frames."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send WINDOW_UPDATE frames",
+        "Receiver does not rate-limit or batch process WINDOW_UPDATE frames"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should implement rate-limiting on WINDOW_UPDATE frames and batch small updates to reduce processing overhead.",
+      "fingerprint": "a014bdaf61f944c0152acfeee187dc65a59d4cd5b4ac07dc73e288414a0514fb"
+    },
+    {
+      "id": "59c19c0a-c061-4295-a2b2-bfe463175ebc",
+      "technique_name": "Padding-Based Oversized Payloads",
+      "category": "OversizedPayload",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker establishes an HTTP/2 connection. Step 2: Attacker sends HEADERS or DATA frames with the PADDED flag set. Step 3: Attacker specifies a large Pad Length value, causing the frame to include a large amount of padding data. Step 4: The server must process and allocate memory for the entire frame, including the padding, even though the padding has no semantic value. Step 5: This can be used to amplify the resource consumption per frame, especially when combined with high concurrency.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.1",
+          "quote": "DATA frames also contain padding. Padding can be added to DATA frames to obscure the size of messages. Padding is a security feature..."
+        },
+        {
+          "rfc": 9113,
+          "section": "6.2",
+          "quote": "The HEADERS frame payload has the following additional fields: Pad Length: An 8-bit field containing the length of the frame padding in units of octets."
+        },
+        {
+          "rfc": 9113,
+          "section": "10.7",
+          "quote": "Padding can be used to obscure the exact size of frame content and is provided to mitigate specific attacks within HTTP..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate HTTP/2 connections",
+        "Server processes padding data without strict limits"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Limit the maximum allowed padding size per frame. Validate that padding does not exceed a reasonable proportion of the frame size. Process padding efficiently without unnecessary memory allocation.",
+      "fingerprint": "6765f15aa65b157878bdf4a6a89c0c9020b970060d42a2f64f848271468bf844"
+    },
+    {
+      "id": "9c1fa4cf-ed65-4526-9696-5aa853985b94",
+      "technique_name": "Server Push Replay",
+      "category": "ReplayAttack",
+      "severity": "low",
+      "confidence": 0.65,
+      "description": "Step 1: An attacker captures PUSH_PROMISE frames and associated response data from a previous HTTP/2 session. Step 2: The attacker replays these frames to the client. Step 3: If the client does not validate the context or freshness of pushed resources, it may cache or execute stale or malicious content, potentially leading to information disclosure or client-side resource exhaustion.",
+      "rfc_references": [
+        {
+          "rfc": 9113,
+          "section": "6.6",
+          "quote": "The PUSH_PROMISE frame (type=0x05) is used to notify the peer endpoint in advance of streams the sender intends to initiate."
+        },
+        {
+          "rfc": 9113,
+          "section": "8.4.2",
+          "quote": "After sending the PUSH_PROMISE frame, the server can begin delivering the pushed response as a response on a server-initiated stream..."
+        }
+      ],
+      "prerequisites": [
+        "Server Push is enabled",
+        "Attacker can inject or replay frames to the client",
+        "Client does not validate pushed resource freshness or origin"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Clients should validate pushed resources against cached versions and check for appropriate cache-control headers. Disable server push if not needed.",
+      "fingerprint": "bdeb855e99e33d12f4ff4a08be675aaae2ae4f51b08da17d03468e702be88bf6"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T15:25:07.396483+00:00",
+    "model_used": "Qwen3.6-27B-Q4_K_M.gguf",
+    "total_tokens_used": 226768,
+    "analysis_duration_secs": 694.881555208,
+    "run_id": 40,
+    "input_hash": "e87d966258604b41a8bf224182ea8907a175df3f11fd2ee654b667e2983062d7",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

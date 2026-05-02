@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Post-authentication SSH security tests.
-Tests findings from rfc-analyzer that require valid credentials.
+Tests findings from ietf-draft-analyzer that require valid credentials.
 
 Tests:
   1. Direct-tcpip originator spoofing (RFC 4254 Section 7.2)

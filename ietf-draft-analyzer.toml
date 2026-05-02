@@ -1,7 +1,7 @@
 [llm]
 api_base = "http://ayourtch-desktop:8000/v1"
 api_key_env = "OPENAI_API_KEY"
-model = "bad-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf"
+model = "Qwen3.6-27B-Q4_K_M.gguf"
 max_tokens_per_request = 4096
 max_concurrent_requests = 1
 temperature = 0.2

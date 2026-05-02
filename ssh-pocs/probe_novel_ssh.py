@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test novel (no-CVE) SSH findings from rfc-analyzer reports.
+Test novel (no-CVE) SSH findings from ietf-draft-analyzer reports.
 
 Finding: SSH authentication state flush failure when username changes
 RFC 4252 Section 5: "The server implementation MUST carefully check them

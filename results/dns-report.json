@@ -1,0 +1,507 @@
+{
+  "protocol_name": "dns",
+  "rfcs_analyzed": [
+    1035,
+    2136,
+    6895
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 3,
+    "total_edges": 33,
+    "connected_components": 1,
+    "most_referenced_rfcs": [
+      [
+        1035,
+        20
+      ],
+      [
+        2136,
+        13
+      ]
+    ]
+  },
+  "state_machines_count": 5,
+  "security_leads": [
+    {
+      "id": "1a7cc8cf-d79c-478a-b5a8-6d303c36b779",
+      "technique_name": "RDLENGTH Field Manipulation",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker constructs a DNS message containing a Resource Record (RR) with the RDLENGTH field set to a value larger than the remaining bytes in the message or larger than the allocated buffer for RDATA. Step 2: The DNS parser reads the RDLENGTH value and attempts to read or allocate memory for the RDATA section based on this inflated length. Step 3: This results in a buffer over-read, heap overflow, or denial of service as the parser tries to access memory beyond the packet boundary or allocates excessive resources.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "3",
+          "quote": "RDLENGTH is an unsigned 16-bit integer that specifies the length in octets of the RDATA field."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can inject or modify DNS messages",
+        "Target DNS implementation does not validate RDLENGTH against the remaining message size or buffer capacity"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Validate RDLENGTH against the remaining bytes in the DNS message before processing RDATA. Ensure memory allocation and reading operations are bounded by the actual message size and safe buffer limits.",
+      "fingerprint": "4da709afa0dda767c261fb9e6084d2b9fbf61e467cf9b253ee5a667982a9e234"
+    },
+    {
+      "id": "99660a39-85f7-4b31-9770-560be26123eb",
+      "technique_name": "RCODE Overloading and Context-Dependent Interpretation",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The protocol defines a unified DNS error number space but explicitly overloads RCODE 9 ('NotAuth') and RCODE 16 ('BADVERS' vs 'BADSIG'). Step 2: The interpretation of RCODE 9 depends on the presence of a TSIG RR and its error field. If RCODE 9 is in the header without a TSIG RR or with a zero-error TSIG, it means 'Not Authoritative'. If it appears with a non-zero error TSIG, it means 'Not Authorized'. Step 3: An attacker can craft a DNS response containing RCODE 9 and manipulate the TSIG RR presence/error field to force the receiver into an incorrect state (e.g., treating an authorization failure as a zone authority issue, or vice versa), potentially bypassing security checks or causing incorrect error handling.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "Note on error number 9 (NotAuth): This error number means either 'Not Authoritative' [RFC2136] or 'Not Authorized' [RFC2845]. If 9 appears as the RCODE in the header of a DNS response without a TSIG RR or with a TSIG RR having a zero error field, then it means 'Not Authoritative'. If 9 appears as the RCODE in the header of a DNS response that includes a TSIG RR with a non-zero error field, then it means 'Not Authorized'."
+        },
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "The duplicate assignment of 16 was accidental... error code 16, which has a different meaning in the OPT RR than in the TSIG RR..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can inject or modify DNS responses",
+        "Receiver implementation relies on RCODE 9 or 16 for state transitions"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "resolver"
+      ],
+      "mitigation": "Implementations should strictly validate the context (TSIG/OPT presence and fields) before interpreting overloaded RCODEs. Security-critical state transitions should not rely solely on overloaded RCODEs without additional cryptographic verification or explicit context checks.",
+      "fingerprint": "8a51d03bb26c2cf431c83d37f55272698c13a15f3ef688bb1fa87d64a0ca4f56"
+    },
+    {
+      "id": "156eba93-8089-472e-96a4-79d3efb32388",
+      "technique_name": "DNS Header Count Field Overflow",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker crafts a DNS query or response with the QDCOUNT, ANCOUNT, NSCOUNT, or ARCOUNT fields set to a value significantly larger than the actual number of records present or the maximum allowed by the message size. Step 2: The target DNS resolver or server parses the header and allocates memory or sets up loop counters based on these inflated count values. Step 3: The implementation attempts to read or process the specified number of records, leading to a buffer over-read, out-of-bounds access, or excessive resource consumption (DoS) as it tries to parse non-existent or truncated data.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2",
+          "quote": "The unsigned integer fields query count (QDCOUNT), answer count (ANCOUNT), authority count (NSCOUNT), and additional information count (ARCOUNT) express the number of records in each section for all OpCodes except Update [RFC2136]."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send crafted DNS packets to the target resolver/server",
+        "Target implementation trusts header count fields without validating against message length or actual record boundaries"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict validation of DNS header count fields against the actual message length and the number of successfully parsed records. Ensure parsers terminate loops based on message boundaries rather than solely trusting count fields.",
+      "fingerprint": "182efe572872257480931b670f6e4ce01d137f2a0332bc862236d60c3802e1e4"
+    },
+    {
+      "id": "66c2a62d-a3c5-4e11-a6dc-e9fb07df2dbe",
+      "technique_name": "Resource Exhaustion via Malformed RDATA Length (RDLENGTH)",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The RFC defines RDLENGTH as an unsigned 16-bit integer specifying the length of the RDATA field. Step 2: An attacker sends a DNS response or query containing a resource record with an RDLENGTH value that significantly exceeds the remaining message size or available memory buffers. Step 3: The receiving DNS implementation attempts to allocate memory or read data based on the inflated RDLENGTH value. Step 4: This leads to buffer over-reads, excessive memory allocation, or parsing loops, causing the server to crash, hang, or exhaust resources, resulting in a Denial of Service.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "3",
+          "quote": "RDLENGTH is an unsigned 16-bit integer that specifies the length in octets of the RDATA field. RDATA is a variable-length string of octets that constitutes the resource."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send DNS messages to the target",
+        "Target implementation trusts RDLENGTH without strict bounds checking against message size"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict bounds checking on RDLENGTH. Ensure RDLENGTH does not exceed the remaining length of the DNS message. Validate RDATA size against allocated buffers before processing. Implement rate limiting and resource caps for DNS message processing.",
+      "fingerprint": "753289969b0e13fa9ac8d594ec0e3d2814982e6e087be0cbb096dbe1e8a09634"
+    },
+    {
+      "id": "714e0664-9f39-44a4-ba3a-e40cc69cd88c",
+      "technique_name": "DNS Header Bit Copying Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: A DNS client sends a query with specific header flags set (e.g., AD, CD, or other query-specific bits). Step 2: A DNS server implementation, following the behavior noted in the RFC where 'some DNS implementations copy all the query header as the initial value of the response header', blindly copies these query-specific bits into the response header. Step 3: The client or an intermediate resolver interprets these copied bits according to their response-specific meanings, leading to incorrect protocol state, misinterpretation of security flags (like AD/CD), or potential cache poisoning/manipulation if the bits alter response validation logic.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2",
+          "quote": "Only the RD and CD bits are expected to be copied from the query to the response; however, some DNS implementations copy all the query header as the initial value of the response header. Thus, any attempt to use a 'query' bit with a different meaning in a response or to define a query meaning for a 'response' bit may be dangerous, given the existing implementation."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can influence DNS query headers or observe responses",
+        "Target DNS server implementation copies entire query header to response"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "DNS server implementations should strictly adhere to copying only the RD and CD bits from the query to the response, explicitly zeroing or setting other bits according to their response-specific definitions rather than blindly copying the query header.",
+      "fingerprint": "f809f8325f1fd494581a9a33b514df480e8dd3d1568614e36a54ed6c587d1017"
+    },
+    {
+      "id": "a365c7a2-e0bf-421f-ac6f-02bea08ae95f",
+      "technique_name": "RCODE 9 Context-Dependent Interpretation",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: A DNS response is generated with RCODE 9 (NotAuth). Step 2: The interpretation of RCODE 9 depends on the presence of a TSIG RR and the value of its error field. If no TSIG RR is present or the TSIG error field is zero, it means 'Not Authoritative'. If a TSIG RR is present with a non-zero error field, it means 'Not Authorized'. Step 3: An implementation that fails to correctly check the TSIG RR presence and error field context may misinterpret the error code, leading to incorrect authentication/authorization decisions or logging of false security events.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "Note on error number 9 (NotAuth): This error number means either 'Not Authoritative' [RFC2136] or 'Not Authorized' [RFC2845]. If 9 appears as the RCODE in the header of a DNS response without a TSIG RR or with a TSIG RR having a zero error field, then it means 'Not Authoritative'. If 9 appears as the RCODE in the header of a DNS response that includes a TSIG RR with a non-zero error field, then it means 'Not Authorized'."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can manipulate DNS responses or TSIG records",
+        "Target implementation does not correctly correlate RCODE 9 with TSIG context"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "resolver"
+      ],
+      "mitigation": "Implementations must strictly follow the context-dependent logic for RCODE 9, checking for the presence of TSIG RRs and their error fields before interpreting the meaning of the RCODE in the header.",
+      "fingerprint": "86856b75f550b7169c1636751dd51f1caded5f1710f5a6ccba689736b35db6b0"
+    },
+    {
+      "id": "2c9c2cee-0bef-4b0a-bff1-195e64d40a7f",
+      "technique_name": "DNS Query Header Bit Copying Information Leak",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: A client sends a DNS query with specific bits set in the header (e.g., AD, CD, or other reserved bits) that may carry application-specific or implementation-specific state. Step 2: The DNS server processes the query and generates a response. Step 3: Due to implementation behavior noted in the RFC, the server copies the entire query header to the response header, including bits that should theoretically only be meaningful in queries or responses. Step 4: An on-path attacker or the server itself can observe the response and infer the values of these query-specific bits, potentially leaking client-side configuration, security state, or implementation details.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2",
+          "quote": "Only the RD and CD bits are expected to be copied from the query to the response; however, some DNS implementations copy all the query header as the initial value of the response header. Thus, any attempt to use a \"query\" bit with a different meaning in a response or to define a query meaning for a \"response\" bit may be dangerous, given the existing implementation."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe DNS responses",
+        "server implementation copies full query header to response"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "DNS implementations should strictly adhere to copying only the RD and CD bits from the query to the response, zeroing out or ignoring other query-specific bits in the response header to prevent unintended information leakage.",
+      "fingerprint": "95941a67901ef4058087d00760851bdede3a020eb36035853e297e26b815e9b2"
+    },
+    {
+      "id": "c7c90d1f-b0f4-41f3-825c-f36026f91ee6",
+      "technique_name": "DNS Header Bit Copying and Meaning Overlap",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The RFC notes that some DNS implementations copy all query header bits as the initial value of the response header, including bits like AA, TC, RD, RA, CD, and AD, which are theoretically meaningful only in queries or only in responses. Step 2: An attacker can craft a DNS query with specific values in these 'query-only' or 'response-only' bits. Step 3: When the server copies these bits into the response without validating or clearing them based on the response context, the response may carry unintended or misleading flags, potentially confusing downstream resolvers or applications that rely on these flags for security or routing decisions.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2",
+          "quote": "Only the RD and CD bits are expected to be copied from the query to the response; however, some DNS implementations copy all the query header as the initial value of the response header. Thus, any attempt to use a 'query' bit with a different meaning in a response or to define a query meaning for a 'response' bit may be dangerous, given the existing implementation."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send crafted DNS queries to a resolver or authoritative server",
+        "Target DNS implementation copies all query header bits to the response header"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "DNS implementations should explicitly validate and clear query-specific bits (like AA, TC, AD) when constructing a response header, only copying bits explicitly allowed to be echoed (RD, CD) and setting response-specific bits according to the actual response state.",
+      "fingerprint": "7b9e40c4bbb407043f1829f637fd439909432e7c1932fa96d790ab6da77c08fe"
+    },
+    {
+      "id": "c11a182c-dc30-49f8-921d-abb2a0b525bb",
+      "technique_name": "Unassigned OpCode/RCODE Handling",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The RFC lists several OpCode and RCODE values as 'Unassigned' or 'Reserved'. Step 2: The specification does not explicitly mandate a strict validation step for receiving unassigned OpCodes or RCODEs in the provided text, relying on general DNS robustness principles. Step 3: An attacker sending a DNS message with an unassigned OpCode or RCODE could cause a non-compliant or poorly implemented resolver to crash, hang, or behave unpredictably if it lacks proper validation to reject or safely ignore unknown code points.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.2",
+          "quote": "3     Unassigned ... 6-15   Unassigned"
+        },
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "11 - 15 ... Unassigned ... 23 - 3,840 ... Unassigned"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send crafted DNS messages with unassigned OpCodes or RCODEs",
+        "Target DNS implementation lacks robust handling for unknown/unassigned code points"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "DNS implementations must validate OpCode and RCODE fields against the current IANA registry. Messages containing unassigned or reserved values should be rejected with a FormErr or safely ignored, depending on the context, to prevent undefined behavior.",
+      "fingerprint": "a6cd5c1e53d70dbfc160261bfe9e0290f5baf74600d48bf1fba7fc0ce7617339"
+    },
+    {
+      "id": "2f711754-50d0-4bd9-9085-b33742bbebb7",
+      "technique_name": "DNS Query/Response Header Bit Copying Ambiguity Leading to State Confusion",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: The RFC notes that 'some DNS implementations copy all the query header as the initial value of the response header.' Step 2: An attacker crafts a DNS query with specific bits set in the header that are theoretically only meaningful in queries or responses. Step 3: The server copies these bits into the response header. Step 4: If the copied bits have a different meaning in the response context, or if they trigger unexpected behavior in downstream resolvers or the server's own state machine, it can lead to processing errors, dropped packets, or resource exhaustion as the server attempts to handle malformed or semantically invalid responses.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2",
+          "quote": "Only the RD and CD bits are expected to be copied from the query to the response; however, some DNS implementations copy all the query header as the initial value of the response header. Thus, any attempt to use a 'query' bit with a different meaning in a response or to define a query meaning for a 'response' bit may be dangerous, given the existing implementation."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send DNS queries to the target server",
+        "Target server implementation copies all query header bits to the response"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should strictly copy only the RD and CD bits from the query to the response header, as specified, and ignore or reset other bits to their default response values. Servers should validate header bits before processing.",
+      "fingerprint": "82ee1032d96b4f0e4739a2a8224109f774b7344e7c7337d75fca6065ff2df76c"
+    },
+    {
+      "id": "bd500985-5c24-459f-916e-d8fc6b11bb9a",
+      "technique_name": "Header Bit Copying and Meaning Ambiguity",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: RFC 6895 notes that while only RD and CD bits are expected to be copied from query to response, 'some DNS implementations copy all the query header as the initial value of the response header.' Step 2: Bits like AA, TC, RA, AD, and CD have different meanings or are only meaningful in specific directions (query vs response). Step 3: An attacker can set specific bits in a query (e.g., AD or CD) that are blindly copied to the response header by the server. If the client or an intermediate resolver interprets these copied bits as server-set flags, it may enter an incorrect state (e.g., assuming DNSSEC validation status or checking disabled status based on client-provided data rather than server evaluation).",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2",
+          "quote": "Only the RD and CD bits are expected to be copied from the query to the response; however, some DNS implementations copy all the query header as the initial value of the response header. Thus, any attempt to use a 'query' bit with a different meaning in a response or to define a query meaning for a 'response' bit may be dangerous, given the existing implementation."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can control query header bits",
+        "Server implementation blindly copies query header to response header"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers should explicitly initialize response header bits to safe defaults rather than copying the query header. Clients and resolvers should only trust response bits that are explicitly set by the authoritative server or resolver, ignoring bits that might be echoed from the query.",
+      "fingerprint": "84a33b5031cbfdeab62a31ebac2b085e2c5f5c53343f53b8f48397dfbe1c5ba4"
+    },
+    {
+      "id": "d51771d9-2ae6-43f4-9687-99c383c1a2e0",
+      "technique_name": "EDNS0/TSIG RCODE Ambiguity Exploitation",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An on-path attacker intercepts a DNS response containing a TSIG or OPT RR. Step 2: The attacker modifies the RCODE in the DNS header to 16 (BADVERS/BADSIG) or 9 (NotAuth), exploiting the unified error space ambiguity defined in RFC 6895. Step 3: The client, misinterpreting the error due to the overlapping definitions (e.g., BADVERS vs BADSIG, or NotAuth in different contexts), may fallback to a less secure query mode (e.g., disabling EDNS0 or TSIG validation), effectively downgrading the security posture of the DNS transaction.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "The duplicate assignment of 16 was accidental... error code 16, which has a different meaning in the OPT RR than in the TSIG RR... Note on error number 9 (NotAuth): This error number means either 'Not Authoritative' [RFC2136] or 'Not Authorized' [RFC2845]."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client implements fallback logic on RCODE 9 or 16",
+        "client does not strictly validate TSIG/OPT integrity before processing RCODE"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Implement strict stateful validation of TSIG/OPT RRs before interpreting RCODEs. Avoid automatic fallback to insecure modes based solely on ambiguous RCODEs; instead, treat unexpected RCODEs in secured transactions as fatal errors.",
+      "fingerprint": "4dd50b5b0e88ce0af4de6e795454fa6e1da9acf08afc9e8913b630d76a0dd281"
+    },
+    {
+      "id": "4cee1935-2435-4ea5-a256-76f24317b7e4",
+      "technique_name": "RCODE 16 Duplicate Assignment Confusion",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.8,
+      "description": "Step 1: A DNS response contains RCODE 16. Step 2: Depending on the context (OPT RR vs TSIG RR), RCODE 16 means either 'BADVERS' (Bad OPT Version) or 'BADSIG' (TSIG Signature Failure). Step 3: An implementation that does not correctly distinguish the source of the RCODE (header/OPT vs TSIG) may misinterpret the error, potentially treating a version mismatch as a signature failure or vice versa, leading to incorrect error handling or security logging.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "The duplicate assignment of 16 was accidental. ... error code 16, which has a different meaning in the OPT RR than in the TSIG RR"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can craft DNS messages with specific RCODEs",
+        "Target implementation conflates RCODE sources or contexts"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must track the origin of RCODE 16 (whether it comes from the OPT RR extended RCODE or the TSIG RR error field) and interpret it according to the specific context defined in RFC 6891 (BADVERS) or RFC 2845 (BADSIG).",
+      "fingerprint": "6194a7f7079dc8ceac0142fc7303cb4e7e31e27a4e6ac18c67ca4098fe90d819"
+    },
+    {
+      "id": "10ba1642-2e30-4523-af69-c1aba17ee8e3",
+      "technique_name": "RCODE Ambiguity Side-Channel",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker sends a DNS query that triggers a specific error condition. Step 2: The server responds with RCODE 9 (NotAuth). Step 3: The attacker observes whether the response includes a TSIG RR with a non-zero error field. Step 4: Based on the presence/absence of the TSIG error field, the attacker can distinguish between 'Not Authoritative' (RFC 2136) and 'Not Authorized' (RFC 2845), potentially leaking information about the server's TSIG configuration, key management state, or authorization policies.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "Note on error number 9 (NotAuth): This error number means either \"Not Authoritative\" [RFC2136] or \"Not Authorized\" [RFC2845]. If 9 appears as the RCODE in the header of a DNS response without a TSIG RR or with a TSIG RR having a zero error field, then it means \"Not Authoritative\". If 9 appears as the RCODE in the header of a DNS response that includes a TSIG RR with a non-zero error field, then it means \"Not Authorized\"."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe DNS responses",
+        "attacker can trigger RCODE 9 conditions"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Standardize RCODE usage to avoid overloading, or ensure that TSIG error fields do not leak authorization state differences that could be used for fingerprinting or policy inference.",
+      "fingerprint": "3ac89f152026d8c364876fcbd50200e3ff6b2eed957be97e5186adacc0179a3b"
+    },
+    {
+      "id": "f02b9f93-c883-4e01-bc50-48c3b0e557d8",
+      "technique_name": "RCODE Ambiguity Exploitation via TSIG/TKEY Context",
+      "category": "MissingValidation",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: The RFC defines a unified DNS error number space but notes that RCODE 9 ('NotAuth') has dual meanings: 'Not Authoritative' in DNS UPDATE contexts and 'Not Authorized' in TSIG contexts. Step 2: The meaning depends on the presence of a TSIG RR and its error field. Step 3: An attacker could potentially craft a response containing RCODE 9 without a TSIG RR, or with a TSIG RR having a zero error field, forcing the interpretation to 'Not Authoritative'. If a system expects 'Not Authorized' for security decisions but fails to validate the TSIG context strictly, it might misinterpret the error, leading to incorrect authorization or logging decisions.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "Note on error number 9 (NotAuth): This error number means either 'Not Authoritative' [RFC2136] or 'Not Authorized' [RFC2845]. If 9 appears as the RCODE in the header of a DNS response without a TSIG RR or with a TSIG RR having a zero error field, then it means 'Not Authoritative'. If 9 appears as the RCODE in the header of a DNS response that includes a TSIG RR with a non-zero error field, then it means 'Not Authorized'."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can influence DNS responses or intercept traffic",
+        "Target system relies on RCODE 9 for security/authorization logic without strict TSIG validation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations processing RCODE 9 must strictly validate the presence and error field of TSIG RRs to determine the correct semantic meaning. Security-critical decisions should not rely solely on the RCODE value without verifying the associated cryptographic context.",
+      "fingerprint": "c6db21b5a426a01c540572e674ecf2c8b57639982cb837603bc91a51eb6d4780"
+    },
+    {
+      "id": "3271ecb0-09b8-4ede-a8f4-1e4b38ec2640",
+      "technique_name": "RCODE Ambiguity Exploitation for Error Handling Exhaustion",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.65,
+      "description": "Step 1: The RFC notes that RCODE 9 has dual meanings ('Not Authoritative' vs 'Not Authorized') depending on the presence and error field of a TSIG RR. Step 2: An attacker sends a stream of DNS responses with RCODE 9, alternating between including a TSIG RR with a zero error field and a non-zero error field, or omitting the TSIG RR entirely. Step 3: The receiving server must parse the TSIG RR and check its error field to determine the correct meaning of RCODE 9. Step 4: If the server's error handling logic is complex or inefficient, this constant context-switching and parsing overhead can lead to increased CPU usage and potential exhaustion of error-handling resources, especially if combined with high query rates.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.3",
+          "quote": "Note on error number 9 (NotAuth): This error number means either 'Not Authoritative' [RFC2136] or 'Not Authorized' [RFC2845]. If 9 appears as the RCODE in the header of a DNS response without a TSIG RR or with a TSIG RR having a zero error field, then it means 'Not Authoritative'. If 9 appears as the RCODE in the header of a DNS response that includes a TSIG RR with a non-zero error field, then it means 'Not Authorized'."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send DNS responses to the target",
+        "Target server performs TSIG validation and RCODE interpretation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Optimize RCODE and TSIG parsing logic. Implement rate limiting for error responses. Ensure error handling paths are lightweight and do not involve excessive computation or memory allocation.",
+      "fingerprint": "4a7775302f524bc3a3e551dfb1be93562d9e078cacb494b307e2fc951a683061"
+    },
+    {
+      "id": "b998b954-a5bf-4c1e-a143-f09dbc81fad1",
+      "technique_name": "OpCode 3 (Unassigned) State Transition Ambiguity",
+      "category": "StateConfusion",
+      "severity": "low",
+      "confidence": 0.65,
+      "description": "Step 1: OpCode 3 is listed as 'Unassigned' in the current registry. Step 2: Legacy or non-compliant implementations might still recognize OpCode 3 or treat it as a valid query type, potentially transitioning to a 'Processing Response' state expecting specific payload formats. Step 3: An attacker can send a message with OpCode 3 to trigger undefined behavior or fallback states in older implementations, potentially causing the receiver to misinterpret the message structure or enter an error handling state that leaks information or causes a denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.2",
+          "quote": "3     Unassigned"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send crafted DNS messages",
+        "Target implementation has legacy support or undefined behavior for OpCode 3"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should strictly reject messages with unassigned or reserved OpCodes with a FormErr (RCODE 1) response, ensuring no state transition occurs for undefined OpCodes.",
+      "fingerprint": "eb3ce6b02165e7a9b7490f9d264ad6da968ad4613e20b79c7f78126733e883c8"
+    },
+    {
+      "id": "961f6cdc-bf24-453e-a5c4-1a56f73d49d1",
+      "technique_name": "OpCode Downgrade via Unassigned OpCode Injection",
+      "category": "Downgrade",
+      "severity": "low",
+      "confidence": 0.6,
+      "description": "Step 1: An attacker intercepts a DNS Update (OpCode 5) or Notify (OpCode 4) message. Step 2: The attacker modifies the OpCode to an unassigned or legacy value (e.g., OpCode 3 or 6-15) or forces a fallback to OpCode 0 (Query). Step 3: If the server or client has legacy handling for unassigned OpCodes that defaults to standard Query processing, the secure Update/Notify operation is downgraded to a simple Query, bypassing update-specific security checks or authentication requirements.",
+      "rfc_references": [
+        {
+          "rfc": 6895,
+          "section": "2.2",
+          "quote": "OpCode Name Reference ... 3 Unassigned ... 6-15 Unassigned"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "implementation has legacy fallback for unassigned OpCodes"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Reject DNS messages with unassigned or unexpected OpCodes immediately rather than falling back to default Query processing. Enforce strict OpCode validation in the state machine.",
+      "fingerprint": "8008b787a31e35d8debc9d60592a391a67f9c73fe1eac5cafe1e7d8eac76bd75"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T14:29:44.198074+00:00",
+    "model_used": "Qwen3.6-27B-Q4_K_M.gguf",
+    "total_tokens_used": 73028,
+    "analysis_duration_secs": 253.380701541,
+    "run_id": 36,
+    "input_hash": "b151711cb6fdced2f47e973c033740363252bb39bd3fa7e80570bd2c27980309",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

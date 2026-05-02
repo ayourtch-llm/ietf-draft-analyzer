@@ -1,0 +1,867 @@
+{
+  "protocol_name": "ipv6",
+  "rfcs_analyzed": [
+    5722,
+    8200
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 2,
+    "total_edges": 3,
+    "connected_components": 1,
+    "most_referenced_rfcs": [
+      [
+        5722,
+        3
+      ]
+    ]
+  },
+  "state_machines_count": 5,
+  "security_leads": [
+    {
+      "id": "8dc18267-63f8-4467-b6c5-ea70f70b8a9f",
+      "technique_name": "IPv6 Overlapping Fragment Firewall Bypass",
+      "category": "StateConfusion",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: Attacker crafts a large IPv6 packet that requires fragmentation, placing a Destination Options Header (DOH) and a TCP header in the first fragment. The TCP header is configured with SYN=1 and ACK=1 flags, making a stateful firewall believe it is a response to an established connection, thus allowing it through.\nStep 2: Attacker sends subsequent fragments with the same Fragment Identification value but with a non-zero Fragment Offset that overlaps with the TCP header in the first fragment.\nStep 3: The overlapping fragment contains a modified TCP header with SYN=1 and ACK=0, effectively overwriting the original TCP flags during reassembly at the destination.\nStep 4: The destination reassembles the packet and sees a SYN-only packet, initiating a new connection. The firewall's state table is confused because it allowed the initial fragment based on the ACK flag, but the reassembled packet acts as a connection initiation, bypassing inbound connection checks.",
+      "rfc_references": [
+        {
+          "rfc": 5722,
+          "section": "3",
+          "quote": "This attack describes how a malicious node can bypass a firewall using overlapping fragments... A malicious node can form a second fragment with a TCP header that changes the flags and sets S(YN)=1 and A(CK)=0. This can change the packet on the receiving end to consider the packet as a connection request instead of a response."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Changed the text to require that IPv6 nodes must not create overlapping fragments. Also, when reassembling an IPv6 datagram, if one or more of its constituent fragments is determined to be an overlapping fragment, the entire datagram (and any constituent fragments) must be silently discarded."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send fragmented IPv6 packets to the target",
+        "Target firewall performs stateful inspection on fragments before reassembly",
+        "Target firewall does not strictly enforce non-overlapping fragment rules or drops overlapping fragments inconsistently"
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination host"
+      ],
+      "mitigation": "Implement strict overlapping fragment detection and discard the entire datagram if any overlap is detected, as mandated by RFC 5722 and RFC 8200. Firewalls should inspect reassembled packets or maintain strict state across all fragments of a datagram.",
+      "fingerprint": "5aba1a18472c74d3fd6fc646afc05aa9789a5e5e2958065da7f86d56ad1efaa0"
+    },
+    {
+      "id": "2a8007c7-aa6b-47c2-97aa-a4b5d44aed34",
+      "technique_name": "IPv6 Overlapping Fragment Firewall Bypass",
+      "category": "AuthBypass",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: Attacker crafts a large IPv6 packet that requires fragmentation, placing critical upper-layer header fields (e.g., TCP flags, source/destination ports) in the first fragment to pass initial firewall inspection. Step 2: Attacker sends a subsequent overlapping fragment with a different Fragment Offset that overlaps with the first fragment's data, containing modified upper-layer header fields (e.g., changing TCP SYN/ACK flags or port numbers). Step 3: The firewall, inspecting only the first fragment or statefully tracking based on the first fragment, allows the traffic. Step 4: The destination host reassembles the packet, and depending on implementation, the overlapping data from the second fragment overwrites the first fragment's data, effectively bypassing the firewall's access control rules and allowing unauthorized connection initiation or data injection.",
+      "rfc_references": [
+        {
+          "rfc": 5722,
+          "section": "3",
+          "quote": "This attack describes how a malicious node can bypass a firewall using overlapping fragments... A malicious node can form a second fragment with a TCP header that changes the flags and sets S(YN)=1 and A(CK)=0. This can change the packet on the receiving end to consider the packet as a connection request instead of a response. By doing this, the malicious node has bypassed the firewall's access control to initiate a connection request to a node protected by a firewall."
+        },
+        {
+          "rfc": 5722,
+          "section": "5",
+          "quote": "This document discusses an attack that can be used to bypass IPv6 firewalls using overlapping fragments. It recommends disallowing overlapping fragments in order to prevent this attack."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Changed the text to require that IPv6 nodes must not create overlapping fragments. Also, when reassembling an IPv6 datagram, if one or more of its constituent fragments is determined to be an overlapping fragment, the entire datagram (and any constituent fragments) must be silently discarded."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send fragmented IPv6 packets to the target network",
+        "Firewall performs stateful inspection on the first fragment only or does not properly handle overlapping fragments",
+        "Destination host reassembles fragments and allows overlapping data to overwrite previous data (or firewall does not drop overlapping fragments before reassembly)"
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination host"
+      ],
+      "mitigation": "Implement strict overlapping fragment detection and discard mechanisms at both the firewall and the destination host. Ensure firewalls inspect all fragments or use stateful inspection that accounts for potential overlaps. RFC 5722 and RFC 8200 mandate that nodes must not create overlapping fragments and must silently discard any datagram containing overlapping fragments during reassembly.",
+      "fingerprint": "f0bcca97538a20452fe7df85f05aa98a2e25527cd12af45416f4063c7ebcd7f1"
+    },
+    {
+      "id": "60d60d3d-0d88-4c4f-a8ca-d39cec95d2b4",
+      "technique_name": "Eavesdropping on IPv6 Packets",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An on-path attacker can observe the entire packet, including both contents and metadata, of each IPv6 datagram. Step 2: Without encryption, the attacker can read the payload and header information. Step 3: This allows the attacker to gain sensitive information about the communication, such as the data being exchanged and the identities of the communicating parties.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Eavesdropping, where on-path elements can observe the whole packet (including both contents and metadata) of each IPv6 datagram."
+        }
+      ],
+      "prerequisites": [
+        "Attacker is on-path",
+        "No encryption is used (e.g., IPsec, TLS)"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use IPsec (RFC 4301) or upper-layer encryption protocols like TLS or SSH to protect the confidentiality of IPv6 packets.",
+      "fingerprint": "1188b68a826462bed3998d6939c869f330d15984dfb82ff59fa2d0099ced1186"
+    },
+    {
+      "id": "36141670-4d03-4dd1-a13e-0515bd737fb4",
+      "technique_name": "IPv6 Fragment Overlap Attack",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: Attacker crafts an IPv6 packet that requires fragmentation due to path MTU constraints. Step 2: The attacker sends the first fragment containing the IPv6 header, extension headers, and part of the upper-layer header (e.g., TCP). Step 3: The attacker sends a second fragment with a non-zero Fragment Offset that overlaps with the first fragment, containing a modified upper-layer header (e.g., different TCP flags or ports). Step 4: If the receiving node or an intermediate firewall does not properly detect and discard overlapping fragments, the overlapping data from the second fragment overwrites the data from the first fragment during reassembly. Step 5: This allows the attacker to bypass firewall inspection rules that were applied to the first fragment, effectively injecting malicious payload or altering connection semantics.",
+      "rfc_references": [
+        {
+          "rfc": 5722,
+          "section": "3",
+          "quote": "This attack describes how a malicious node can bypass a firewall using overlapping fragments."
+        },
+        {
+          "rfc": 5722,
+          "section": "4",
+          "quote": "When reassembling an IPv6 datagram, if one or more its constituent fragments is determined to be an overlapping fragment, the entire datagram (and any constituent fragments, including those not yet received) MUST be silently discarded."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If any of the fragments being reassembled overlap with any other fragments being reassembled for the same packet, reassembly of that packet must be abandoned and all the fragments that have been received for that packet must be discarded, and no ICMP error messages should be sent."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send fragmented IPv6 packets to the target.",
+        "Target or intermediate firewall does not strictly enforce RFC 5722 / RFC 8200 overlapping fragment discard rules.",
+        "Path MTU is smaller than the crafted packet size, forcing fragmentation."
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination_node"
+      ],
+      "mitigation": "Implement strict adherence to RFC 5722 and RFC 8200 Section 4.5: silently discard the entire datagram if any overlapping fragments are detected. Ensure firewalls inspect the first fragment and drop subsequent fragments that overlap with already inspected regions. Deploy stateful inspection that tracks fragment reassembly and validates offsets.",
+      "fingerprint": "cde8ff06fce6d7f0506746ec6955cf1ee7b87395c2db899af10d25e48cef1f8c"
+    },
+    {
+      "id": "de0a310a-3ca0-471a-9488-98643e34116c",
+      "technique_name": "IPv6 Overlapping Fragment Firewall Bypass",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker crafts an IPv6 packet that requires fragmentation due to path MTU constraints. Step 2: The first fragment contains valid extension headers and a TCP header with flags that pass stateful firewall inspection (e.g., SYN-ACK). Step 3: The attacker sends a second overlapping fragment with a different Fragment Offset that overwrites the TCP header fields (e.g., changing SYN-ACK to SYN) upon reassembly at the destination. Step 4: The firewall inspects only the first fragment and allows it, while the destination reassembles the packet with the malicious TCP flags, bypassing the firewall's access control rules.",
+      "rfc_references": [
+        {
+          "rfc": 5722,
+          "section": "3",
+          "quote": "This attack describes how a malicious node can bypass a firewall using overlapping fragments."
+        },
+        {
+          "rfc": 5722,
+          "section": "4",
+          "quote": "IPv6 nodes transmitting datagrams that need to be fragmented MUST NOT create overlapping fragments. When reassembling an IPv6 datagram, if one or more its constituent fragments is determined to be an overlapping fragment, the entire datagram (and any constituent fragments, including those not yet received) MUST be silently discarded."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Changed the text to require that IPv6 nodes must not create overlapping fragments. Also, when reassembling an IPv6 datagram, if one or more of its constituent fragments is determined to be an overlapping fragment, the entire datagram (and any constituent fragments) must be silently discarded."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send fragmented IPv6 packets",
+        "firewall performs stateful inspection on first fragment only",
+        "destination node reassembles fragments without strict overlap validation"
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination node"
+      ],
+      "mitigation": "Implement strict validation to detect and discard overlapping IPv6 fragments during reassembly. Firewalls should inspect all fragments or drop packets with overlapping fragment offsets. RFC 5722 and RFC 8200 mandate silent discarding of overlapping fragments.",
+      "fingerprint": "f709f57c3bb4a0e61d098001a91fd0933d1f645842f67176d6f6092e03632a85"
+    },
+    {
+      "id": "5af6962a-0490-4952-9369-989df636b8e0",
+      "technique_name": "IPv6 Fragment Reassembly Resource Exhaustion",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker sends a stream of IPv6 fragments with unique Fragment Identification values to a target node. Step 2: The target node allocates reassembly buffers for each unique Identification value, entering the 'Reassembly_Started' state. Step 3: Attacker never sends the remaining fragments or the final fragment, causing the reassembly timer to expire or the buffer pool to be exhausted. Step 4: The target node is forced to discard partial reassembly contexts, consuming CPU and memory resources, potentially leading to a Denial of Service.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If insufficient fragments are received to complete reassembly of a packet within 60 seconds of the reception of the first-arriving fragment of that packet, reassembly of that packet must be abandoned and all the fragments that have been received for that packet must be discarded."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Denial-of-service (DoS) attacks, where the attacker sends large amounts of legitimate traffic to a destination to overwhelm it."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send IPv6 packets to the target",
+        "Target implements IPv6 fragment reassembly"
+      ],
+      "entities_involved": [
+        "attacker",
+        "target_node"
+      ],
+      "mitigation": "Implement strict limits on the number of concurrent reassembly contexts per source IP and globally. Use randomized reassembly timeouts. Rate-limit fragment reception.",
+      "fingerprint": "016b252f6a995895015b1e19a8a1e17fa3c72422d4706130e838509fe8205ef2"
+    },
+    {
+      "id": "5c86a6a7-03b1-4870-b0b8-4447d1513a53",
+      "technique_name": "IPv6 Overlapping Fragment Reassembly Race",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker sends a first fragment containing a legitimate-looking upper-layer header (e.g., TCP SYN-ACK) to pass firewall inspection. Step 2: Attacker sends a second overlapping fragment with a malicious upper-layer header (e.g., TCP SYN) that overlaps the first fragment's header region. Step 3: Due to a race condition in the reassembly state machine or firewall inspection logic, the overlapping fragment is processed before the reassembly is finalized or before the firewall drops the packet, allowing the malicious header to overwrite the legitimate one in the reassembled packet, bypassing access controls.",
+      "rfc_references": [
+        {
+          "rfc": 5722,
+          "section": "3",
+          "quote": "This attack describes how a malicious node can bypass a firewall using overlapping fragments... A malicious node can form a second fragment with a TCP header that changes the flags... By doing this, the malicious node has bypassed the firewall's access control..."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If any of the fragments being reassembled overlap with any other fragments being reassembled for the same packet, reassembly of that packet must be abandoned and all the fragments that have been received for that packet must be discarded..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can inject packets into the network",
+        "Firewall or middlebox inspects fragments before full reassembly",
+        "Reassembly implementation has a race between overlap detection and header processing"
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination host"
+      ],
+      "mitigation": "Implement strict overlapping fragment detection and discard the entire datagram immediately upon overlap detection. Ensure firewall inspection occurs only after full reassembly or uses stateful tracking that accounts for fragment offsets and overlaps. RFC 5722 mandates discarding overlapping fragments.",
+      "fingerprint": "99294c8a52e2c84b299e7965f76599695a6942cf9df8457147958b1626e71c7f"
+    },
+    {
+      "id": "23caed25-1c8a-4ca5-a96e-919964deb282",
+      "technique_name": "IPv6 Fragment Replay Attack",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker captures a valid sequence of IPv6 fragments (including the first fragment containing the upper-layer headers and subsequent fragments) from the network. Step 2: The attacker replays these captured fragments to the destination node or an intermediate firewall. Step 3: If the destination node or firewall does not implement strict anti-replay mechanisms (e.g., using IPsec AH/ESP or upper-layer sequence numbers), the replayed fragments are reassembled and processed as a legitimate packet, potentially bypassing stateful inspection or causing unauthorized actions.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Replay, where the attacker records a sequence of packets off of the wire and plays them back to the party that originally received them."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "IPv6 packets can be protected from eavesdropping, replay, packet insertion, packet modification, and MITM attacks by use of the 'Security Architecture for the Internet Protocol' [RFC4301]."
+        }
+      ],
+      "prerequisites": [
+        "Attacker is on-path or can sniff network traffic",
+        "No IPsec (AH/ESP) or upper-layer anti-replay protection is in use",
+        "Fragment Identification values are reused or predictable within the reassembly window"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client",
+        "server",
+        "firewall"
+      ],
+      "mitigation": "Use IPsec Authentication Header (AH) or Encapsulating Security Payload (ESP) to provide anti-replay services at the network layer. Alternatively, rely on upper-layer protocols (e.g., TLS, SSH) that implement their own sequence numbers and anti-replay mechanisms. Ensure firewalls and reassembly engines discard packets with duplicate Fragment Identifications within the reassembly timeout window.",
+      "fingerprint": "0fd409b055634bf035ceebf0ee826d1ff5a4b38d66f046d319c34401fec4690f"
+    },
+    {
+      "id": "3e38890b-e9f2-42c3-bfbf-d392e408a923",
+      "technique_name": "IPv6 Fragment Offset Manipulation for Oversized Reassembly",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker crafts IPv6 fragments with manipulated Fragment Offset values. Step 2: The attacker sets the Fragment Offset in a later fragment to a value that, when combined with the fragment's payload length, results in a reassembled packet size exceeding the maximum IPv6 payload length (65,535 octets) or the implementation's buffer limits. Step 3: If the receiving node does not validate the reassembled packet size during fragment processing, it may allocate insufficient memory or write beyond buffer boundaries. Step 4: This can lead to heap overflows, memory corruption, or denial of service. Step 5: The attacker may also use this to bypass size-based security controls by fragmenting a large payload into smaller pieces that individually pass inspection but reassemble into an oversized payload.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If the length and offset of a fragment are such that the Payload Length of the packet reassembled from that fragment would exceed 65,535 octets, then that fragment must be discarded and an ICMP Parameter Problem, Code 0, message should be sent to the source of the fragment, pointing to the Fragment Offset field of the fragment packet."
+        },
+        {
+          "rfc": 8200,
+          "section": "5",
+          "quote": "A node must be able to accept a fragmented packet that, after reassembly, is as large as 1500 octets. A node is permitted to accept fragmented packets that reassemble to more than 1500 octets."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send fragmented IPv6 packets to the target.",
+        "Target IPv6 stack does not strictly enforce the 65,535 octet reassembly limit as per RFC 8200 Section 4.5.",
+        "Target lacks proper bounds checking during fragment reassembly."
+      ],
+      "entities_involved": [
+        "attacker",
+        "destination_node"
+      ],
+      "mitigation": "Strictly enforce RFC 8200 Section 4.5: discard any fragment where the calculated reassembled payload length exceeds 65,535 octets. Implement robust bounds checking during fragment reassembly to prevent buffer overflows. Log and alert on fragments that trigger this discard condition.",
+      "fingerprint": "723af7152b4c4c802f78a3bba7fa2847fb6d43384c4e353a954b5a07d9a37031"
+    },
+    {
+      "id": "7cdae594-1cd7-4e3e-ac88-586ee2521ce0",
+      "technique_name": "IPv6 Fragmentation Header Manipulation for Access Control Bypass",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker crafts an IPv6 packet with a Fragment header placed before critical extension headers or upper-layer headers that are subject to firewall filtering. Step 2: The attacker ensures the first fragment contains headers that appear benign or authorized to the firewall (e.g., a specific Next Header value or options). Step 3: Subsequent fragments contain the actual malicious payload or headers that would normally be blocked. Step 4: If the firewall does not reassemble fragments before inspection or fails to validate the complete header chain across fragments, the malicious content bypasses the access control list and reaches the destination.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "The first fragment packet is composed of: (3) Extension headers, if any, and the Upper-Layer header. These headers must be in the first fragment. Note: This restricts the size of the headers through the Upper-Layer header to the MTU of the path to the packet's destinations(s)."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Revised the text to require that all headers through the first upper-layer header are in the first fragment. See [RFC7112] for more information."
+        }
+      ],
+      "prerequisites": [
+        "Firewall inspects only the first fragment or lacks deep packet inspection for fragmented IPv6 traffic",
+        "Attacker can control the fragmentation of the IPv6 packet"
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination host"
+      ],
+      "mitigation": "Firewalls must reassemble IPv6 fragments before performing access control checks, or strictly enforce that all critical headers (through the first upper-layer header) are present in the first fragment as mandated by RFC 8200. Implementations should discard fragments that do not comply with the requirement that all headers through the first upper-layer header are in the first fragment.",
+      "fingerprint": "2f1492178a1aa91fe35c368921fd9819fc8228d39b663915b6d3fc5cf429ba9f"
+    },
+    {
+      "id": "35d68d1a-b518-4528-809b-b9f2f7614d8e",
+      "technique_name": "IPv6 Atomic Fragment State Confusion",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends an IPv6 packet with a Fragment header where both the Fragment Offset field and the M (More Fragments) flag are zero. This is known as an 'atomic' or 'whole datagram' fragment.\nStep 2: The receiving node's state machine may incorrectly classify this packet. If processed as a regular first fragment, it waits for more fragments that will never arrive, potentially causing a timeout or resource exhaustion.\nStep 3: If the implementation incorrectly treats it as a complete packet but retains the Fragment header, or processes it differently than a standard unfragmented packet, it may bypass security controls that expect specific header chains for unfragmented traffic.\nStep 4: This confusion in state handling can lead to inconsistent processing between the firewall (which might drop or allow based on one interpretation) and the end host (which processes based on another), or cause denial of service by tying up reassembly buffers.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Revised the text to handle the case of fragments that are whole datagrams (i.e., both the Fragment Offset field and the M flag are zero). If received, they should be processed as a reassembled packet. Any other fragments that match should be processed independently."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If the fragment is a whole datagram (that is, both the Fragment Offset field and the M flag are zero), then it does not need any further reassembly and should be processed as a fully reassembled packet... Any other fragments that match this packet... should be processed independently."
+        },
+        {
+          "rfc": 8021,
+          "section": "1",
+          "quote": "Generation of IPv6 Atomic Fragments Considered Harmful"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send IPv6 packets with Fragment headers",
+        "Target implementation has inconsistent handling of atomic fragments (Offset=0, M=0) between firewall and host, or within the host's own state machine"
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination host"
+      ],
+      "mitigation": "Ensure all nodes strictly follow RFC 8200 and RFC 8021 guidelines: process atomic fragments (Offset=0, M=0) immediately as complete packets without entering a reassembly wait state, and discard any subsequent fragments matching the same Identification value.",
+      "fingerprint": "632b10195360a8460f26bdca3303a5363fa3a621bd4b69b135171810c18b0957"
+    },
+    {
+      "id": "cf8d32a9-8c91-4eb2-ac44-d28c9f2e3ae1",
+      "technique_name": "Fragment Reassembly Ambiguity in Overlap Handling",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: RFC 5722 and RFC 8200 mandate that overlapping fragments must be discarded. Step 2: However, RFC 8200 Section 4.5 states 'an implementation may choose to detect this case and drop exact duplicate fragments while keeping the other fragments belonging to the same packet.' Step 3: This creates an ambiguity where different implementations may handle exact duplicate fragments differently (some dropping the whole datagram, others keeping it), potentially leading to inconsistent firewall inspection or state machine desynchronization between a firewall and the end host.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "It should be noted that fragments may be duplicated in the network. Instead of treating these exact duplicate fragments as overlapping fragments, an implementation may choose to detect this case and drop exact duplicate fragments while keeping the other fragments belonging to the same packet."
+        },
+        {
+          "rfc": 5722,
+          "section": "4",
+          "quote": "When reassembling an IPv6 datagram, if one or more its constituent fragments is determined to be an overlapping fragment, the entire datagram (and any constituent fragments, including those not yet received) MUST be silently discarded."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can inject duplicate fragments",
+        "Firewall and end-host have different duplicate fragment handling implementations"
+      ],
+      "entities_involved": [
+        "firewall",
+        "end-host"
+      ],
+      "mitigation": "Implement strict duplicate fragment detection and ensure consistent handling across all network devices. Firewalls should ideally perform full reassembly or strictly enforce the same duplicate handling logic as the end-host.",
+      "fingerprint": "9e6555c2b260d44903574fd00544d166602ce3b56bf37d0bb81ca8fd98392287"
+    },
+    {
+      "id": "5c2be489-aefe-4d21-9e5b-e4d0090f3942",
+      "technique_name": "Fragment Identification Reuse Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 8200 Section 4.5 states 'The Identification must be different than that of any other fragmented packet sent recently* with the same Source Address and Destination Address.' Step 2: The term 'recently' is defined as 'within the maximum likely lifetime of a packet', but it is 'not required that a source node knows the maximum packet lifetime.' Step 3: This ambiguity can lead to implementations using different algorithms for generating Identification values, potentially causing collisions. An attacker could exploit this by predicting or forcing Identification reuse, leading to fragment injection or reassembly attacks.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "The Identification must be different than that of any other fragmented packet sent recently* with the same Source Address and Destination Address... * 'recently' means within the maximum likely lifetime of a packet... However, it is not required that a source node knows the maximum packet lifetime. Rather, it is assumed that the requirement can be met by implementing an algorithm that results in a low identification reuse frequency."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can influence or predict Fragment Identification values"
+      ],
+      "entities_involved": [
+        "source",
+        "destination"
+      ],
+      "mitigation": "Implement robust, cryptographically secure random number generators for Fragment Identification values. Follow guidelines in RFC 7739 for generating Identification values.",
+      "fingerprint": "06b172736e62f3c2f7d0bab016a10fc7855b574537e8a3272c551a4b72d2f4c8"
+    },
+    {
+      "id": "c5b6cbfb-93da-49f1-847c-073b694c49bc",
+      "technique_name": "IPv6 Address Visibility and Endpoint Distinguishability",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: IPv6 addresses are significantly larger than IPv4 addresses, making them more visible on the Internet. Step 2: The use of address translation technology is reduced in IPv6, leading to increased visibility of node addresses. Step 3: This increased visibility creates privacy issues, making it easier to distinguish endpoints and potentially track user activity.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "IPv6 addresses of nodes are expected to be more visible on the Internet as compared with IPv4 since the use of address translation technology is reduced. This creates some additional privacy issues such as making it easier to distinguish endpoints."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can observe network traffic",
+        "IPv6 addresses are not randomized or obscured"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use privacy extensions for IPv6 address generation (e.g., RFC 7721) to randomize addresses and reduce endpoint distinguishability.",
+      "fingerprint": "5e1514f4127bb2d174bcd408e59904a4dab0161057cbed234e9a0d018312c55a"
+    },
+    {
+      "id": "3cd3319d-ac3a-4d2b-b952-90c1d347fc83",
+      "technique_name": "Metadata Leakage via Extension Headers",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: IPv6 extension headers can carry optional information that may be examined by nodes along the packet's path. Step 2: The Hop-by-Hop Options header, in particular, can be processed by any node along the delivery path. Step 3: If sensitive information is included in these headers, it can be leaked to intermediate nodes, potentially revealing details about the packet's routing or options.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4",
+          "quote": "The Hop-by-Hop Options header is not inserted or deleted, but may be examined or processed by any node along a packet's delivery path, until the packet reaches the node (or each of the set of nodes, in the case of multicast) identified in the Destination Address field of the IPv6 header."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.3",
+          "quote": "The Hop-by-Hop Options header is used to carry optional information that may be examined and processed by every node along a packet's delivery path."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can observe or process Hop-by-Hop Options headers",
+        "Sensitive information is included in extension headers"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "intermediate nodes",
+        "attacker"
+      ],
+      "mitigation": "Avoid including sensitive information in extension headers, especially the Hop-by-Hop Options header. Use encryption to protect the contents of extension headers if necessary.",
+      "fingerprint": "a49dceb6a4e02196227539a9708104d22a92c09c6432d9424648214e0efd09d2"
+    },
+    {
+      "id": "32a88234-6d0d-48b7-9498-5b8b18be5551",
+      "technique_name": "IPv6 Extension Header Processing Exhaustion",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker crafts IPv6 packets containing a long chain of extension headers (e.g., Hop-by-Hop, Routing, Destination Options) or uses padding options to increase header size. Step 2: The target node processes each extension header sequentially as per the protocol state machine. Step 3: The excessive processing required to parse and validate the header chain consumes significant CPU cycles on the target node. Step 4: The target node's ability to process legitimate traffic is degraded, resulting in a Denial of Service.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4",
+          "quote": "extension headers must be processed strictly in the order they appear in the packet; a receiver must not, for example, scan through a packet looking for a particular kind of extension header and process that header prior to processing all preceding ones."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.2",
+          "quote": "The sequence of options within a header must be processed strictly in the order they appear in the header"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send IPv6 packets to the target",
+        "Target processes extension headers sequentially"
+      ],
+      "entities_involved": [
+        "attacker",
+        "target_node"
+      ],
+      "mitigation": "Limit the maximum number of extension headers processed per packet. Limit the total size of extension headers. Implement fast-path processing for known benign header chains.",
+      "fingerprint": "4d2240f70b0af2ec311d5a17e20defd6c77334793540f6d1a7a53b4c0f313b65"
+    },
+    {
+      "id": "b7327411-8832-4150-b366-93b33c0553f1",
+      "technique_name": "IPv6 Atomic Fragment Misinterpretation",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends an IPv6 packet with a Fragment header where both the Fragment Offset field and the M flag are zero, creating a 'whole datagram fragment' or atomic fragment. Step 2: If the receiving node does not properly validate this condition, it may incorrectly queue the fragment for reassembly instead of processing it immediately as a complete packet. Step 3: This can lead to reassembly timeouts, resource exhaustion, or incorrect packet processing if subsequent fragments with the same Identification are expected but never arrive.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Revised the text to handle the case of fragments that are whole datagrams (i.e., both the Fragment Offset field and the M flag are zero). If received, they should be processed as a reassembled packet. Any other fragments that match should be processed independently."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If the fragment is a whole datagram (that is, both the Fragment Offset field and the M flag are zero), then it does not need any further reassembly and should be processed as a fully reassembled packet."
+        },
+        {
+          "rfc": 8021,
+          "section": "1",
+          "quote": "Generation of IPv6 Atomic Fragments Considered Harmful"
+        }
+      ],
+      "prerequisites": [
+        "attacker can send IPv6 fragments",
+        "receiver implementation lacks validation for atomic fragments (Offset=0, M=0)"
+      ],
+      "entities_involved": [
+        "attacker",
+        "receiver"
+      ],
+      "mitigation": "Validate Fragment Offset and M flag upon receipt. If both are zero, process the packet immediately as a complete datagram without queuing for reassembly. Discard any subsequent fragments matching the same Identification.",
+      "fingerprint": "dbace1ad4e5bfd563c5b590f65637fec1eaa95e1024dc955a9402056a24f6eae"
+    },
+    {
+      "id": "acf62e95-d63c-4a64-b987-d69ccbdf9736",
+      "technique_name": "IPv6 Atomic Fragment Reassembly Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a fragment with Fragment Offset=0 and M=0 (an 'atomic' fragment) that contains a complete, legitimate-looking packet. Step 2: Attacker sends additional fragments with the same Identification value that overlap or extend the atomic fragment. Step 3: A race condition in the reassembly state machine may cause the atomic fragment to be processed as a complete packet before the overlapping fragments arrive, or vice versa, leading to inconsistent state or bypass of security controls that rely on the atomic fragment's content.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If the fragment is a whole datagram (that is, both the Fragment Offset field and the M flag are zero), then it does not need any further reassembly and should be processed as a fully reassembled packet... Any other fragments that match this packet... should be processed independently."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Revised the text to handle the case of fragments that are whole datagrams... If received, they should be processed as a reassembled packet. Any other fragments that match should be processed independently."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send fragmented packets",
+        "Implementation processes atomic fragments immediately upon receipt",
+        "State machine does not properly lock or discard matching fragments when an atomic fragment is processed"
+      ],
+      "entities_involved": [
+        "attacker",
+        "destination host"
+      ],
+      "mitigation": "Ensure that when an atomic fragment is processed, any subsequent fragments with the same Identification are either queued for independent processing or discarded according to RFC 8021. Implement proper state locking to prevent race conditions between atomic fragment processing and overlapping fragment arrival.",
+      "fingerprint": "6f97819b5d65d7dc4a72bdfeec3ed450b5fb92329b43cb2b47d68e96a1eab705"
+    },
+    {
+      "id": "570fe5cb-422c-4f55-a0d3-8c83208844fd",
+      "technique_name": "IPv6 Packet Replay Attack",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker captures a complete, unfragmented IPv6 packet. Step 2: The attacker replays this packet to the intended receiver. Step 3: Without network-layer anti-replay protection, the receiver processes the packet as if it were newly sent, which could lead to duplicate processing of commands, transactions, or state changes.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Replay, where the attacker records a sequence of packets off of the wire and plays them back to the party that originally received them."
+        },
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "IPv6 packets can be protected from eavesdropping, replay, packet insertion, packet modification, and MITM attacks by use of the 'Security Architecture for the Internet Protocol' [RFC4301]."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can capture network traffic",
+        "No IPsec anti-replay protection is enabled",
+        "Upper-layer protocol does not have its own replay protection"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement IPsec with anti-replay services (sliding window mechanism). Use transport-layer security protocols like TLS that include sequence numbers to detect and discard replayed records.",
+      "fingerprint": "81b5dcfe584bb88fa82a040cb934e65514a6b2870834e6f4380fa1005f49823c"
+    },
+    {
+      "id": "5f46560d-4c01-4757-a0a4-135bbb6ce8c6",
+      "technique_name": "IPv6 Extension Header Chain Validation Bypass",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker crafts an IPv6 packet with a long chain of extension headers or places critical headers (like TCP/UDP) in non-first fragments. Step 2: If the receiver or intermediate nodes do not strictly validate that all headers through the first upper-layer header are contained in the first fragment, they may process incomplete or malicious header chains. Step 3: This can lead to firewall bypass, DoS through excessive header processing, or incorrect protocol demultiplexing.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "10",
+          "quote": "Revised the text to require that all headers through the first upper-layer header are in the first fragment."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If the first fragment does not include all headers through an Upper-Layer header, then that fragment should be discarded and an ICMP Parameter Problem, Code 3, message should be sent to the source of the fragment, with the Pointer field set to zero."
+        },
+        {
+          "rfc": 7112,
+          "section": "1",
+          "quote": "Implications of Oversized IPv6 Header Chains"
+        }
+      ],
+      "prerequisites": [
+        "attacker can craft IPv6 extension headers",
+        "receiver/firewall does not enforce first-fragment header completeness"
+      ],
+      "entities_involved": [
+        "attacker",
+        "receiver",
+        "firewall"
+      ],
+      "mitigation": "Validate that the first fragment contains all extension headers and the upper-layer header. Discard fragments that violate this rule. Implement limits on extension header chain length to prevent DoS.",
+      "fingerprint": "70db656bde10e1e26cd96a3aff97cae822b099a0cc4f5e1bf7d7e5425869ca0e"
+    },
+    {
+      "id": "7de79408-eb5d-482f-90e3-24c7ddca7186",
+      "technique_name": "Extension Header Processing Order Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 8200 Section 4 states 'extension headers must be processed strictly in the order they appear in the packet'. Step 2: However, the definition of 'processed' is ambiguous. Does it mean parsed, validated, or acted upon? Step 3: Some implementations might parse all headers first and then validate, while others validate as they parse. This can lead to differences in how malformed or malicious extension header chains are handled, potentially allowing header injection or bypass of security controls.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4",
+          "quote": "Therefore, extension headers must be processed strictly in the order they appear in the packet; a receiver must not, for example, scan through a packet looking for a particular kind of extension header and process that header prior to processing all preceding ones."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can craft packets with complex extension header chains"
+      ],
+      "entities_involved": [
+        "router",
+        "end-host"
+      ],
+      "mitigation": "Clearly define 'processing' in implementation guidelines. Ensure that validation and parsing are tightly coupled and that errors in any header lead to immediate packet discard.",
+      "fingerprint": "6f1d623d8b04cccd333458e25696d2d4b3fd137ca7be93f80cd5b9754da0740e"
+    },
+    {
+      "id": "e72927e4-5427-4652-bc3d-4d4be3d30494",
+      "technique_name": "IPv6 Extension Header Chain Overflow",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker crafts an IPv6 packet with a long chain of extension headers (e.g., multiple Destination Options, Routing, or Hop-by-Hop headers). Step 2: Each extension header points to the next via the Next Header field, and the Hdr Ext Len field specifies the length. Step 3: The attacker sets the Hdr Ext Len values to create a chain that exceeds the maximum IPv6 payload length (65,535 octets) or consumes excessive processing resources. Step 4: If the receiving node does not validate the cumulative length of extension headers against the IPv6 Payload Length field or lacks bounds checking, it may attempt to parse beyond the packet boundary or exhaust memory/CPU resources during header traversal. Step 5: This can lead to buffer overflows, denial of service, or unexpected behavior in the IP stack.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4",
+          "quote": "Extension headers are numbered from IANA IP Protocol Numbers... When processing a sequence of Next Header values in a packet, the first one that is not an extension header indicates that the next item in the packet is the corresponding upper-layer header."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "The Fragment Offset field is a 13-bit unsigned integer. The offset, in 8-octet units, of the data following this header, relative to the start of the Fragmentable Part of the original packet."
+        },
+        {
+          "rfc": 7112,
+          "section": "1",
+          "quote": "Implications of Oversized IPv6 Header Chains"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send IPv6 packets with extension headers to the target.",
+        "Target IPv6 stack does not strictly validate the cumulative length of extension headers against the IPv6 Payload Length field.",
+        "Target lacks limits on the number or total size of extension headers processed."
+      ],
+      "entities_involved": [
+        "attacker",
+        "destination_node"
+      ],
+      "mitigation": "Validate that the sum of all extension header lengths does not exceed the IPv6 Payload Length field. Implement a maximum limit on the number of extension headers and their total size. Use RFC 7112 guidelines to handle oversized header chains by discarding packets that exceed reasonable bounds.",
+      "fingerprint": "f69da2159fc0cf04fba4a9b641aa3e10da4299a96b9ab2712a64aa45bfd681d9"
+    },
+    {
+      "id": "a3d808c1-994c-4ab4-b0b0-c683335f95c0",
+      "technique_name": "Hop-by-Hop Options Header Processing Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: RFC 8200 Section 4 states 'it is now expected that nodes along a packet's delivery path only examine and process the Hop-by-Hop Options header if explicitly configured to do so.' Step 2: This creates an ambiguity where intermediate nodes might ignore Hop-by-Hop Options headers unless explicitly configured. Step 3: An attacker could exploit this by placing malicious options in the Hop-by-Hop header, assuming intermediate nodes will ignore them, potentially bypassing security checks or causing unexpected behavior at the destination.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4",
+          "quote": "NOTE: While [RFC2460] required that all nodes must examine and process the Hop-by-Hop Options header, it is now expected that nodes along a packet's delivery path only examine and process the Hop-by-Hop Options header if explicitly configured to do so."
+        }
+      ],
+      "prerequisites": [
+        "Intermediate nodes are not configured to process Hop-by-Hop Options"
+      ],
+      "entities_involved": [
+        "router",
+        "end-host"
+      ],
+      "mitigation": "Ensure that all nodes are configured to process Hop-by-Hop Options headers according to security policies. Implement strict validation of Hop-by-Hop Options at the destination.",
+      "fingerprint": "47c198be21059ebe3bc515adc4575df36b00d799fc1b050d85b2f44200418a55"
+    },
+    {
+      "id": "fa22b0f5-2a1c-4cde-866a-dfa849b13177",
+      "technique_name": "Extension Header Order Manipulation for State Bypass",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker crafts an IPv6 packet with extension headers in a non-standard order, such as placing the Fragment header before the Routing header, or duplicating headers.\nStep 2: The firewall, which may parse extension headers strictly according to the recommended order in RFC 8200 Section 4.1, might drop the packet or process it incorrectly, failing to extract the upper-layer protocol information.\nStep 3: The destination host, required by RFC 8200 to accept and process extension headers in any order, successfully parses the headers and processes the payload.\nStep 4: This discrepancy causes the firewall to drop legitimate-looking traffic or, conversely, allows malicious traffic to bypass firewall rules that rely on specific header ordering for state tracking, leading to state confusion between the security device and the end host.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.1",
+          "quote": "IPv6 nodes must accept and attempt to process extension headers in any order and occurring any number of times in the same packet, except for the Hop-by-Hop Options header... Nonetheless, it is strongly advised that sources of IPv6 packets adhere to the above recommended order..."
+        },
+        {
+          "rfc": 8200,
+          "section": "4",
+          "quote": "Therefore, extension headers must be processed strictly in the order they appear in the packet; a receiver must not, for example, scan through a packet looking for a particular kind of extension header and process that header prior to processing all preceding ones."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can craft IPv6 packets with custom extension header chains",
+        "Firewall and destination host have inconsistent strictness regarding extension header ordering"
+      ],
+      "entities_involved": [
+        "attacker",
+        "firewall",
+        "destination host"
+      ],
+      "mitigation": "Firewalls and security devices should be configured to parse extension headers in the order they appear, matching the behavior of compliant IPv6 hosts, rather than enforcing a strict recommended order that differs from the RFC's mandatory acceptance rules.",
+      "fingerprint": "ae31ab91835864d7b13b56ee68a2742752aa7131475c1155f1b7324117c3db49"
+    },
+    {
+      "id": "83a1ef78-aff1-4480-a1df-d6127106115e",
+      "technique_name": "Whole Datagram Fragment Handling Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: RFC 8200 Section 4.5 states 'If the fragment is a whole datagram (that is, both the Fragment Offset field and the M flag are zero), then it does not need any further reassembly and should be processed as a fully reassembled packet... Any other fragments that match this packet... should be processed independently.' Step 2: The term 'processed independently' is ambiguous. Does it mean they are ignored, discarded, or queued for a separate reassembly? Step 3: Different implementations might handle subsequent fragments differently, leading to inconsistent state and potential security bypasses if an attacker sends a whole datagram fragment followed by malicious fragments.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If the fragment is a whole datagram (that is, both the Fragment Offset field and the M flag are zero), then it does not need any further reassembly and should be processed as a fully reassembled packet (i.e., updating Next Header, adjust Payload Length, removing the Fragment header, etc.). Any other fragments that match this packet (i.e., the same IPv6 Source Address, IPv6 Destination Address, and Fragment Identification) should be processed independently."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send whole datagram fragments"
+      ],
+      "entities_involved": [
+        "destination"
+      ],
+      "mitigation": "Clearly define the handling of subsequent fragments after a whole datagram fragment is received. Ideally, discard any subsequent fragments with the same Identification to prevent confusion.",
+      "fingerprint": "afc6f2e4c784e463223733335762ea536dcf3873eb78fc782e98eb91e3172f0e"
+    },
+    {
+      "id": "0b62a8d4-1fe5-45e4-a7c0-4e6598bbeaaa",
+      "technique_name": "IPv6 Overlapping Fragment Discard Amplification",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker sends a valid first fragment to the target node, causing it to allocate reassembly state. Step 2: Attacker sends subsequent fragments that intentionally overlap with previously received fragments. Step 3: The target node detects the overlap and, per RFC 5722, must silently discard the entire datagram and all constituent fragments. Step 4: While the discard is silent, the repeated allocation and deallocation of reassembly state for overlapping fragments can consume CPU resources, especially if combined with high-volume traffic.",
+      "rfc_references": [
+        {
+          "rfc": 5722,
+          "section": "4",
+          "quote": "When reassembling an IPv6 datagram, if one or more its constituent fragments is determined to be an overlapping fragment, the entire datagram (and any constituent fragments, including those not yet received) MUST be silently discarded."
+        },
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If any of the fragments being reassembled overlap with any other fragments being reassembled for the same packet, reassembly of that packet must be abandoned and all the fragments that have been received for that packet must be discarded, and no ICMP error messages should be sent."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send IPv6 fragments to the target",
+        "Target implements strict overlap detection"
+      ],
+      "entities_involved": [
+        "attacker",
+        "target_node"
+      ],
+      "mitigation": "Implement efficient overlap detection algorithms. Rate-limit fragment processing. Use connection tracking to limit state allocation.",
+      "fingerprint": "03f414e0d658ee014c824ac505ef5130fb1c2ffffa0e1ad2f89673c16cf76048"
+    },
+    {
+      "id": "e83b9521-3d60-43cf-a02f-8df15972f7c7",
+      "technique_name": "Fragment Reassembly Timeout Race",
+      "category": "RaceCondition",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker sends the first fragment of a packet to initiate reassembly and start the 60-second timeout timer. Step 2: Attacker sends remaining fragments just before the timeout expires, or sends duplicate/overlapping fragments to reset or interfere with the timer. Step 3: A race condition between the timer expiration logic and fragment arrival processing may cause the reassembly state to be inconsistently updated, potentially leading to resource exhaustion or processing of malformed packets.",
+      "rfc_references": [
+        {
+          "rfc": 8200,
+          "section": "4.5",
+          "quote": "If insufficient fragments are received to complete reassembly of a packet within 60 seconds of the reception of the first-arriving fragment of that packet, reassembly of that packet must be abandoned and all the fragments that have been received for that packet must be discarded."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send fragmented packets",
+        "Implementation uses a fixed 60-second reassembly timeout",
+        "Timer and fragment processing are not properly synchronized"
+      ],
+      "entities_involved": [
+        "attacker",
+        "destination host"
+      ],
+      "mitigation": "Implement robust synchronization between the reassembly timer and fragment processing logic. Ensure that timer expiration atomically discards all associated fragments and clears the reassembly state. Consider using randomized or shorter timeouts to mitigate DoS.",
+      "fingerprint": "368980c9062a465dc50614bd7af8c502e352b8e8faf9c66717f93e2c0e1f2c3c"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T13:20:15.271260+00:00",
+    "model_used": "Qwen3.6-27B-Q4_K_M.gguf",
+    "total_tokens_used": 197478,
+    "analysis_duration_secs": 488.452654041,
+    "run_id": 30,
+    "input_hash": "23a5130e7fa951d0ae8384ac766891c2f73afebdc065d4802defdea74e389944",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

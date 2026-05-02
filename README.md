@@ -1,9 +1,9 @@
-# RFC Analyzer
+# IETF Draft Analyzer
 
-A Rust tool that treats protocol specifications (RFCs) as a first-class
-attack surface. It builds dependency graphs across RFCs, extracts protocol
-state machines, and runs LLM-powered security analysis to produce ranked
-vulnerability leads.
+A Rust tool that treats protocol specifications (RFCs and Internet-Drafts)
+as a first-class attack surface. It builds dependency graphs, extracts
+protocol state machines, and runs LLM-powered security analysis to produce
+ranked vulnerability leads.
 
 Inspired by the [DreamGroup Black Hat Asia talk](https://dreamgroup.com/our-latest-black-hat-asia-talk-introducing-the-rfc-analyzer/).
 
@@ -41,15 +41,15 @@ the next invocation picks up where it left off.
 
 ```bash
 git clone <repo-url>
-cd rfc-analyzer
+cd ietf-draft-analyzer
 cargo build --release
 ```
 
-The binary is at `target/release/rfc-analyzer`.
+The binary is at `target/release/ietf-draft-analyzer`.
 
 ## Configuration
 
-Create `rfc-analyzer.toml` in the working directory (all fields are
+Create `ietf-draft-analyzer.toml` in the working directory (all fields are
 optional -- defaults are shown):
 
 ```toml
@@ -88,13 +88,13 @@ Run the complete map-model-analyze pipeline in one command:
 
 ```bash
 # Analyze DNS protocol security
-rfc-analyzer run dns 1035 2136 6895 --depth 2 -o dns-report.json
+ietf-draft-analyzer run dns 1035 2136 6895 --depth 2 -o dns-report.json
 
 # Analyze TCP
-rfc-analyzer run tcp 9293 --depth 1 -o tcp-report.json
+ietf-draft-analyzer run tcp 9293 --depth 1 -o tcp-report.json
 
 # Analyze Telnet (known CVEs in this protocol)
-rfc-analyzer run telnet 854 855 857 858 1184 --depth 1 -o telnet-report.json
+ietf-draft-analyzer run telnet 854 855 857 858 1184 --depth 1 -o telnet-report.json
 ```
 
 ### Individual Stages
@@ -103,23 +103,23 @@ Run stages separately for more control:
 
 ```bash
 # Stage 1: Fetch and map RFCs
-rfc-analyzer map 9293 --depth 1 --protocol tcp
+ietf-draft-analyzer map 9293 --depth 1 --protocol tcp
 
 # Inspect what was fetched
-rfc-analyzer show 9293
+ietf-draft-analyzer show 9293
 
 # View the dependency graph
-rfc-analyzer graph tcp --format dot | dot -Tsvg > tcp-deps.svg
-rfc-analyzer graph tcp --format json
+ietf-draft-analyzer graph tcp --format dot | dot -Tsvg > tcp-deps.svg
+ietf-draft-analyzer graph tcp --format json
 
 # Stage 2: Extract state machines
-rfc-analyzer model tcp
+ietf-draft-analyzer model tcp
 
 # Stage 3: Security analysis
-rfc-analyzer analyze tcp --min-severity medium -o tcp-leads.json
+ietf-draft-analyzer analyze tcp --min-severity medium -o tcp-leads.json
 
 # Filter to specific attack categories
-rfc-analyzer analyze tcp --categories missing_validation,replay_attack
+ietf-draft-analyzer analyze tcp --categories missing_validation,replay_attack
 ```
 
 ### Analyzing Internet-Drafts
@@ -133,14 +133,14 @@ they become RFCs.
 curl -O https://www.ietf.org/archive/id/draft-ietf-tls-esni-22.xml
 
 # Import it (use a high number like 99001 to avoid clashing with real RFCs)
-rfc-analyzer import draft-ietf-tls-esni-22.xml -n 99001 --protocol ech
+ietf-draft-analyzer import draft-ietf-tls-esni-22.xml -n 99001 --protocol ech
 
 # Run the analysis pipeline
-rfc-analyzer model ech
-rfc-analyzer analyze ech -o ech-report.json
+ietf-draft-analyzer model ech
+ietf-draft-analyzer analyze ech -o ech-report.json
 
 # Or generate PoC scripts
-rfc-analyzer reproduce ech --output-dir ech-pocs
+ietf-draft-analyzer reproduce ech --output-dir ech-pocs
 ```
 
 The `import` command accepts RFC 7991+ XML (preferred) or plain text.
@@ -157,17 +157,17 @@ section numbering.
 
 ```bash
 # Show cached RFC info
-rfc-analyzer show 1035
+ietf-draft-analyzer show 1035
 
 # Clear analysis results (keeps fetched RFCs)
-rfc-analyzer clear analysis
+ietf-draft-analyzer clear analysis
 
 # Clear everything
-rfc-analyzer clear all --yes
+ietf-draft-analyzer clear all --yes
 
 # Increase verbosity
-rfc-analyzer -v map 9293 --depth 0 --protocol tcp    # debug
-rfc-analyzer -vv model tcp                             # trace
+ietf-draft-analyzer -v map 9293 --depth 0 --protocol tcp    # debug
+ietf-draft-analyzer -vv model tcp                             # trace
 ```
 
 ## Example Run
@@ -175,14 +175,14 @@ rfc-analyzer -vv model tcp                             # trace
 ```bash
 $ export OPENAI_API_KEY="local"
 
-$ cat rfc-analyzer.toml
+$ cat ietf-draft-analyzer.toml
 [llm]
 api_base = "http://ayourtch-desktop:8000/v1"
 model = "Qwen3.5-27B-512K"
 temperature = 0.2
 model_context_window = 512000
 
-$ rfc-analyzer run telnet 854 855 857 858 1184 --depth 1 -o telnet-report.json
+$ ietf-draft-analyzer run telnet 854 855 857 858 1184 --depth 1 -o telnet-report.json
 2026-05-01T22:00:00Z  INFO === Stage 1: Map ===
 2026-05-01T22:00:00Z  INFO Fetching RFC index...
 2026-05-01T22:00:02Z  INFO Depth 0: processing 5 RFCs
@@ -247,7 +247,7 @@ The output `telnet-report.json` contains:
     "total_tokens_used": 45000,
     "analysis_duration_secs": 330.0,
     "prompt_version": "1.0.0",
-    "rfc_analyzer_version": "0.1.0",
+    "ietf_draft_analyzer_version": "0.1.0",
     "report_format": "json"
   }
 }

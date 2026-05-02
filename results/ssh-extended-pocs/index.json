@@ -1,0 +1,184 @@
+[
+  {
+    "caveats": [
+      "This PoC uses the point at infinity (0x00) as the malicious key. Some implementations may handle this gracefully but still fail validation.",
+      "The target must support ECDH with NIST P-256 (ecdh-sha2-nistp256).",
+      "Network timeouts may occur if the server crashes or hangs during invalid key processing.",
+      "This script does not perform full key exchange; it only tests the validation step."
+    ],
+    "description": "Demonstrates SSH ECDH key exchange vulnerability by sending an invalid elliptic curve public key (point at infinity) to check for missing validation.",
+    "expected_patched": "The server rejects the invalid public key by sending SSH_MSG_DISCONNECT with reason code 16 (KEY_EXCHANGE_FAILED) or closes the connection immediately, indicating proper validation.",
+    "expected_vulnerable": "The server accepts the point at infinity (0x00) as a valid public key and proceeds with key exchange, potentially sending SSH_MSG_KEX_ECDH_REPLY. This indicates missing validation per RFC 5656 Section 4.",
+    "filename": "poc_unvalidated_elliptic_curve_public_key.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "89237072489c06d23d47f60d249ceaf93a4e320d9a6cc482ef63596a4a514866",
+    "lead_severity": "critical",
+    "lead_technique": "Unvalidated Elliptic Curve Public Key",
+    "setup": [
+      "Step 1: Ensure Python 3 and the `cryptography` library are installed (`pip install cryptography`).",
+      "Step 2: Start a vulnerable SSH server that supports ECDH key exchange (e.g., an older OpenSSH version or a custom test server)."
+    ]
+  },
+  {
+    "caveats": [
+      "This is a simulation. Real-world exploitation requires observing actual protocol messages and knowing the weak seed or PRNG state.",
+      "The weak PRNG implementation is simplified for demonstration. Real vulnerabilities may involve more complex seeding issues or side-channels.",
+      "The script assumes the attacker can predict the PRNG output. In practice, this may require additional information or side-channel data.",
+      "The ECDSA nonce reuse attack is a classic example. Other attacks may involve partial key leakage or timing side-channels."
+    ],
+    "description": "Demonstrates SSH ephemeral key leakage by exploiting a weak/improperly seeded PRNG to predict ECDSA nonces or ECDH ephemeral keys.",
+    "expected_patched": "The script fails to predict the ephemeral keys or nonces because the PRNG is cryptographically secure and properly seeded. The recovered key does not match the expected value, and no session compromise occurs.",
+    "expected_vulnerable": "The script successfully predicts the ephemeral keys or ECDSA nonces due to the weak PRNG. If nonce reuse occurs, the private key is recovered, demonstrating full session compromise and potential long-term key recovery.",
+    "filename": "poc_ephemeral_key_leakage_via_improper_rng.py",
+    "lead_category": "InformationLeak",
+    "lead_fingerprint": "fe223e08adfd54672cf92346131403a55c36070625cdb0835ae0eb3b18a470cc",
+    "lead_severity": "critical",
+    "lead_technique": "Ephemeral Key Leakage via Improper RNG",
+    "setup": [
+      "Step 1: Install dependencies: pip install pycryptodome paramiko",
+      "Step 2: Start a vulnerable SSH server that uses a weak PRNG for ephemeral key generation (e.g., seeded with a constant or low-entropy value)."
+    ]
+  },
+  {
+    "caveats": [
+      "This is a simplified simulation of the vulnerability. Real SSH implementations use more complex counter modes and rekeying mechanisms.",
+      "The script uses a small counter size (32-bit) for demonstration purposes. Real implementations typically use larger counters.",
+      "The vulnerability requires the attacker to capture ciphertexts encrypted with the same keystream, which may not always be feasible in practice."
+    ],
+    "description": "Demonstrates keystream reuse vulnerability in SDCTR mode when counter wraps around, allowing plaintext recovery via XOR of ciphertexts.",
+    "expected_patched": "In a patched implementation, the counter would not wrap around, or rekeying would occur before 2^L blocks are encrypted. The keystream would not be reused, and XORing the ciphertexts would not reveal the plaintext.",
+    "expected_vulnerable": "The script successfully recovers the plaintext by XORing the two ciphertexts. The output shows that the recovered plaintext matches the expected plaintext, demonstrating the keystream reuse vulnerability.",
+    "filename": "poc_keystream_reuse_sdctr.py",
+    "lead_category": "ReplayAttack",
+    "lead_fingerprint": "c5117bf26581311aaba8a072942f6b8b3413565a783dfd80bb277e8d0e5e13b2",
+    "lead_severity": "critical",
+    "lead_technique": "Keystream Reuse via Counter Wraparound in SDCTR Mode",
+    "setup": [
+      "Step 1: Install dependencies: pip install pycryptodome",
+      "Step 2: Run the script to simulate the vulnerability"
+    ]
+  },
+  {
+    "caveats": [
+      "This is a simulation of the cryptographic vulnerability. Real-world exploitation requires forcing a vulnerable SSH server to encrypt massive amounts of data without rekeying.",
+      "The script uses a simulated 32-bit counter for demonstration purposes. Real SSH SDCTR uses a 64-bit counter, making wrap-around extremely difficult to trigger without a vulnerable implementation.",
+      "The attack assumes the attacker can observe or influence the encryption of multiple messages with the same key and nonce.",
+      "Modern SSH implementations typically enforce rekeying limits, making this vulnerability rare in practice."
+    ],
+    "description": "Demonstrates keystream reuse in SSH SDCTR mode by forcing encryption of >2^L blocks with the same key, allowing plaintext recovery via XOR.",
+    "expected_patched": "A patched SSH implementation would enforce rekeying before 2^L blocks (or 2^(L/4) as recommended), preventing keystream reuse. The counter would not wrap, and each encryption would use a unique keystream, making the XOR attack ineffective.",
+    "expected_vulnerable": "The script will simulate counter wrap-around, causing keystream reuse. The XOR of the two ciphertexts will match the XOR of the two plaintexts, demonstrating that an attacker can recover the XOR of plaintexts and potentially decrypt sensitive data.",
+    "filename": "poc_keystream_reuse_sdctr_4.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "616f240cafa9302c8c69934239f5df4ace0c08a544cce3ead0fd65b72208d151",
+    "lead_severity": "critical",
+    "lead_technique": "Keystream Reuse DoS via SDCTR Misuse",
+    "setup": [
+      "Step 1: Ensure Python 3 and `cryptography` library are installed (`pip install cryptography`).",
+      "Step 2: Set up a vulnerable SSH server that does not rekey before 2^L blocks (for demonstration, we simulate the server-side encryption logic locally).",
+      "Step 3: Run the script to generate massive traffic, trigger counter wrap-around, and demonstrate keystream reuse."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC simulates the vulnerability locally and does not interact with a real SSH server.",
+      "The attack assumes the attacker can observe ciphertexts and knows at least one plaintext.",
+      "Real-world exploitation may require more sophisticated techniques to handle SSH protocol specifics."
+    ],
+    "description": "Demonstrates keystream reuse privacy attack in SSH SDCTR mode when >2^L blocks are encrypted with the same key",
+    "expected_patched": "If the SSH implementation properly rekeys before encrypting 2^L blocks, the keystream will not be reused, and the attacker will not be able to recover the plaintext using this method.",
+    "expected_vulnerable": "The script will successfully recover the second plaintext by XORing the two ciphertexts and the known first plaintext, demonstrating the keystream reuse vulnerability.",
+    "filename": "poc_keystream_reuse_privacy_attack.py",
+    "lead_category": "InformationLeak",
+    "lead_fingerprint": "c75391c196772000210a2db3259daeebdf45e163932bbcbe8a3a745e305b7c04",
+    "lead_severity": "high",
+    "lead_technique": "Keystream Reuse Privacy Attack",
+    "setup": [
+      "Step 1: Install dependencies: pip install pycryptodome paramiko",
+      "Step 2: Start a vulnerable SSH server that does not rekey before encrypting 2^L blocks (for demonstration, we simulate this locally)",
+      "Step 3: Run the script to observe keystream reuse and plaintext recovery"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC simulates high-volume data transfer to trigger rekeying thresholds. Actual vulnerability may depend on specific SSH implementation and configuration.",
+      "The script uses paramiko, which may not directly expose low-level rekeying counters. Adjustments may be needed for precise detection.",
+      "Ensure the SSH server allows high-volume data transfer and does not have rate limiting or other restrictions."
+    ],
+    "description": "Demonstrates SSH Missing Rekeying Validation by simulating high-volume packet transmission to check if the server enforces rekeying thresholds per RFC 4344.",
+    "expected_patched": "The script will complete the data transfer without reporting a vulnerability, indicating that the SSH server correctly enforces rekeying thresholds as per RFC 4344.",
+    "expected_vulnerable": "The script will report 'Rekeying threshold exceeded without rekeying!' if the SSH server does not enforce rekeying after the specified number of packets or blocks, indicating a vulnerability.",
+    "filename": "poc_missing_rekeying_validation.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "51edefd9b3024ce34f4cb9c8a46a977bc5c1feda7dbf8dded94953d5c94bf01f",
+    "lead_severity": "high",
+    "lead_technique": "Missing Rekeying Validation",
+    "setup": [
+      "Step 1: Install dependencies: pip install paramiko",
+      "Step 2: Ensure an SSH server is running on localhost (or modify TARGET_HOST/TARGET_PORT)",
+      "Step 3: Run the script with valid credentials: python poc_missing_rekeying_validation.py -u <username> -p <password>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC simulates the vulnerability by manually manipulating the sequence number counter.",
+      "Real-world exploitation requires monitoring a connection for 2^32 packets without rekeying, which is impractical.",
+      "The script uses a simplified MAC calculation for demonstration purposes.",
+      "This PoC does not interact with a real SSH server but demonstrates the theoretical vulnerability."
+    ],
+    "description": "Demonstrates SSH MAC collision replay attack via sequence number wraparound by simulating counter overflow and packet replay.",
+    "expected_patched": "A patched SSH implementation would rekey before the sequence number wraps around, resetting the counter and invalidating old MACs. The replayed packet would be rejected because the MAC would not match the new key context.",
+    "expected_vulnerable": "The script simulates a sequence number wraparound and demonstrates that a replayed packet with the same MAC is accepted because the sequence number matches the wrapped value. This shows how an attacker could replay old packets if the SSH implementation does not rekey after 2^32 packets.",
+    "filename": "poc_mac_collision_replay_attack.py",
+    "lead_category": "ReplayAttack",
+    "lead_fingerprint": "90646f1fb23b3d7f890bd8171143ae8ca8d9b34a25265276113b7fd6c2940036",
+    "lead_severity": "high",
+    "lead_technique": "MAC Collision Replay Attack via Sequence Number Wraparound",
+    "setup": [
+      "Step 1: Install dependencies: pip install paramiko cryptography",
+      "Step 2: Start a vulnerable SSH server that does not rekey after 2^32 packets (mocked in this PoC)",
+      "Step 3: Run the script to simulate the attack scenario"
+    ]
+  },
+  {
+    "caveats": [
+      "This is a simulation of the race condition, not an actual SSH implementation.",
+      "The actual vulnerability depends on the specific SSH implementation's threading model and synchronization mechanisms.",
+      "The script uses a simplified counter to demonstrate the concept; real SSH implementations may have more complex state management.",
+      "The race condition may not always manifest due to thread scheduling and system load."
+    ],
+    "description": "Demonstrates a race condition in SSH SDCTR rekeying where concurrent threads can exceed the 2^32 packet limit before rekeying is triggered.",
+    "expected_patched": "The safe implementation will show a final packet count that does not exceed the 2^32 rekey threshold, and the rekey process will be triggered correctly. This demonstrates that proper synchronization prevents the race condition.",
+    "expected_vulnerable": "The vulnerable implementation will show a final packet count that exceeds the 2^32 rekey threshold without triggering the rekey process. This demonstrates the race condition where multiple threads read the counter before it is incremented, potentially exceeding the limit before rekeying is initiated.",
+    "filename": "poc_rekeying_counter_race_condition.py",
+    "lead_category": "RaceCondition",
+    "lead_fingerprint": "cde09fd18e366168c04a224936e840a622df5a8cfcb9e4bf964fe4578efa5a42",
+    "lead_severity": "high",
+    "lead_technique": "Rekeying Counter Race Condition",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: No external dependencies required; uses standard library only.",
+      "Step 3: Run the script to simulate the race condition in a multi-threaded SSH encryption context."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target SSH server is vulnerable and does not enforce rekeying limits.",
+      "The script may not trigger the vulnerability if the server enforces rekeying or if the network conditions prevent high-volume traffic.",
+      "The script is for educational purposes only and should not be used against systems without explicit permission."
+    ],
+    "description": "Demonstrates SSH rekeying exhaustion by simulating high-volume traffic to trigger sequence number wrap-around and potential MAC collisions.",
+    "expected_patched": "The SSH server enforces rekeying limits as per RFC 4344, preventing sequence number wrap-around and mitigating the risk of MAC collisions and related attacks.",
+    "expected_vulnerable": "The SSH server does not enforce rekeying limits, allowing the sequence number to wrap around. This may lead to MAC collisions, replay attacks, or connection disruptions, resulting in a denial of service.",
+    "filename": "poc_rekeying_exhaustion_mac_collision_dos.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "968c0aeb381a3e01db4aed773510e44a8ff7630b91e376b305cbb332f0f851ad",
+    "lead_severity": "high",
+    "lead_technique": "Rekeying Exhaustion / MAC Collision DoS",
+    "setup": [
+      "Step 1: Install paramiko: pip install paramiko",
+      "Step 2: Set up a vulnerable SSH server that does not enforce rekeying limits (e.g., OpenSSH with RekeyLimit disabled or set to a very high value)",
+      "Step 3: Ensure you have valid credentials for the target SSH server"
+    ]
+  }
+]

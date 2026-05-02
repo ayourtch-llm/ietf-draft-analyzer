@@ -1,0 +1,645 @@
+============================================
+RFC Analyzer — Full Protocol Analysis Suite
+============================================
+
+=== Regression Protocols (Known CVEs) ===
+
+--- telnet ---
+[1/3] Analyzing telnet (RFCs: 854 855 857 858 1184, depth: 0)...
+  [2m2026-05-02T11:19:06.592485Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T11:19:07.689273Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 5 RFCs processed
+  [2m2026-05-02T11:19:07.691480Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T11:22:08.703006Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 5 state machines extracted
+  [2m2026-05-02T11:22:08.703063Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 5 state machines for 'telnet'
+  [2m2026-05-02T11:22:08.703120Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T11:22:59.905727Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 5 leads found
+  [2m2026-05-02T11:23:37.774032Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 3 leads found
+  [2m2026-05-02T11:23:41.543692Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 0 leads found
+  [2m2026-05-02T11:24:16.385333Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 3 leads found
+  [2m2026-05-02T11:25:01.849015Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 3 leads found
+  [2m2026-05-02T11:25:07.695443Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 0 leads found
+  [2m2026-05-02T11:25:44.316481Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 3 leads found
+  [2m2026-05-02T11:26:43.993267Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 4 leads found
+  [2m2026-05-02T11:27:17.126580Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 3 leads found
+  [2m2026-05-02T11:27:49.287372Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 3 leads found
+  [2m2026-05-02T11:27:49.297820Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 27 leads (after dedup/filter)
+[2/3] Generating PoCs for telnet (severity >= high)...
+  [2m2026-05-02T11:27:50.280243Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 10 leads (protocol: telnet, severity >= high, language: python)
+  [2m2026-05-02T11:27:50.287905Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/10: FORWARDMASK Buffer Overrun [critical]
+  [2m2026-05-02T11:28:24.734146Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_forwardmask_buffer_overrun.py (2270 tokens)
+  [2m2026-05-02T11:28:24.734950Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/10: Telnet Linemode Downgrade to Character-at-a-Time [high]
+  [2m2026-05-02T11:29:13.382042Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_telnet_linemode_downgrade.py (3128 tokens)
+  [2m2026-05-02T11:29:13.382193Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/10: Linemode State Transition Race [high]
+  [2m2026-05-02T11:29:40.574723Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_linemode_state_transition_race.py (1902 tokens)
+  [2m2026-05-02T11:29:40.574835Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/10: Linemode Mode Mask State Desynchronization [high]
+  [2m2026-05-02T11:30:21.743941Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_linemode_mode_mask_state_desynchronization.py (2645 tokens)
+  [2m2026-05-02T11:30:21.744006Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/10: LINEMODE Option Negotiation Replay [high]
+  [2m2026-05-02T11:31:58.736023Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/10: Malformed SLC Subnegotiation Processing [high]
+  [2m2026-05-02T11:32:26.516037Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_malformed_slc_subnegotiation.py (2013 tokens)
+  [2m2026-05-02T11:32:26.516144Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/10: FORWARDMASK Buffer Overflow via Unbounded Octet List [high]
+  [2m2026-05-02T11:32:56.190785Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_forwardmask_buffer_overflow.py (2034 tokens)
+  [2m2026-05-02T11:32:56.190838Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/10: SLC Special Character Injection via State Confusion [high]
+  [2m2026-05-02T11:33:48.735105Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_slc_special_character_injection_via_state_confusion.py (3138 tokens)
+  [2m2026-05-02T11:33:48.735142Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/10: SLC Subnegotiation Buffer Overflow via Excessive Triplets [high]
+  [2m2026-05-02T11:34:34.476289Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_slc_subnegotiation_buffer_overflow.py (2737 tokens)
+  [2m2026-05-02T11:34:34.476415Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/10: FORWARDMASK Buffer Exhaustion [high]
+  [2m2026-05-02T11:35:20.569916Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_FORWARDMASK_Buffer_Exhaustion.py (2767 tokens)
+  [2m2026-05-02T11:35:20.570015Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 9 PoCs for 10 leads
+  [2m2026-05-02T11:35:20.572550Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_forwardmask_buffer_overrun.py
+  [2m2026-05-02T11:35:20.572958Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_telnet_linemode_downgrade.py
+  [2m2026-05-02T11:35:20.573181Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_linemode_state_transition_race.py
+  [2m2026-05-02T11:35:20.573709Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_linemode_mode_mask_state_desynchronization.py
+  [2m2026-05-02T11:35:20.574085Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_malformed_slc_subnegotiation.py
+  [2m2026-05-02T11:35:20.574707Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_forwardmask_buffer_overflow.py
+  [2m2026-05-02T11:35:20.575117Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_slc_special_character_injection_via_state_confusion.py
+  [2m2026-05-02T11:35:20.575323Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_slc_subnegotiation_buffer_overflow.py
+  [2m2026-05-02T11:35:20.575497Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/telnet-pocs/poc_FORWARDMASK_Buffer_Exhaustion.py
+  [2m2026-05-02T11:35:20.576659Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 9 PoCs + README to results/telnet-pocs
+[3/3] telnet complete: 27 leads, 9 PoCs, 975s
+
+--- kerberos ---
+[1/3] Analyzing kerberos (RFCs: 4120, depth: 0)...
+  [2m2026-05-02T11:35:21.440364Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T11:35:22.363374Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 1 RFCs processed
+  [2m2026-05-02T11:35:22.366524Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T11:45:54.655459Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 10 state machines extracted
+  [2m2026-05-02T11:45:54.655886Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 10 state machines for 'kerberos'
+  [2m2026-05-02T11:45:54.655967Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T11:48:11.020106Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 7 leads found
+  [2m2026-05-02T11:49:53.062538Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 4 leads found
+  [2m2026-05-02T11:51:19.585080Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 4 leads found
+  [2m2026-05-02T11:52:33.177749Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 3 leads found
+  [2m2026-05-02T11:54:22.095272Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 5 leads found
+  [2m2026-05-02T11:56:27.778935Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 5 leads found
+  [2m2026-05-02T11:58:01.305670Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 6 leads found
+  [2m2026-05-02T12:00:08.834459Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 5 leads found
+  [2m2026-05-02T12:01:16.079159Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 2 leads found
+  [2m2026-05-02T12:03:15.629978Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 5 leads found
+  [2m2026-05-02T12:03:15.634703Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 45 leads (after dedup/filter)
+[2/3] Generating PoCs for kerberos (severity >= high)...
+  [2m2026-05-02T12:03:16.511761Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 18 leads (protocol: kerberos, severity >= high, language: python)
+  [2m2026-05-02T12:03:16.515966Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/18: Replay Cache State Loss Exploitation [critical]
+  [2m2026-05-02T12:04:07.608847Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_replay_cache_state_loss.py (6933 tokens)
+  [2m2026-05-02T12:04:07.608946Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/18: KDC Resource Exhaustion via Repeated Requests [high]
+  [2m2026-05-02T12:05:02.044323Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_kdc_resource_exhaustion.py (5291 tokens)
+  [2m2026-05-02T12:05:02.044375Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/18: DNS Canonicalization Spoofing [high]
+  [2m2026-05-02T12:05:53.650699Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_dns_canonicalization_spoofing.py (5892 tokens)
+  [2m2026-05-02T12:05:53.650950Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/18: KRB_ERROR Message Integrity Bypass [high]
+  [2m2026-05-02T12:06:42.858388Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_krb_error_integrity_bypass.py (3863 tokens)
+  [2m2026-05-02T12:06:42.858547Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/18: Inconsistent Principal Name Canonicalization [high]
+  [2m2026-05-02T12:07:37.686631Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_inconsistent_principal_name_canonicalization.py (3796 tokens)
+  [2m2026-05-02T12:07:37.686705Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/18: Offline Dictionary Attack via AS-REQ without Pre-Authentication [high]
+  [2m2026-05-02T12:09:20.969351Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/18: Encryption Type Downgrade via Known Plaintext Attack [high]
+  [2m2026-05-02T12:10:44.166298Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_kerberos_asrep_roasting.py (7715 tokens)
+  [2m2026-05-02T12:10:44.166362Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/18: TCP Connection Exhaustion on KDC [high]
+  [2m2026-05-02T12:11:13.108387Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_tcp_connection_exhaustion_on_kdc.py (2657 tokens)
+  [2m2026-05-02T12:11:13.108613Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/18: DNS Spoofing for Principal Name Canonicalization [high]
+  [2m2026-05-02T12:12:11.325399Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_dns_spoofing_principal_canonicalization.py (6176 tokens)
+  [2m2026-05-02T12:12:11.325516Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/18: Authorization Data Ignorance Leading to Privilege Downgrade [high]
+  [2m2026-05-02T12:12:53.725459Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_authorization_data_ignorance.py (5477 tokens)
+  [2m2026-05-02T12:12:53.725628Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 11/18: Ambiguous Replay Cache Scope [high]
+  [2m2026-05-02T12:13:38.136657Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ambiguous_replay_cache_scope.py (4357 tokens)
+  [2m2026-05-02T12:13:38.136734Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 12/18: Replay Cache Loss Leading to Replay Attack [high]
+  [2m2026-05-02T12:14:37.236909Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_replay_cache_loss_leading_to_replay_attack.py (7248 tokens)
+  [2m2026-05-02T12:14:37.236998Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 13/18: Transited Policy Check Bypass via Flag Confusion [high]
+  [2m2026-05-02T12:15:27.912749Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_transited_policy_check_bypass.py (6884 tokens)
+  [2m2026-05-02T12:15:27.912904Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 14/18: Replay Cache Race Condition in Multi-Instance Services [high]
+  [2m2026-05-02T12:16:13.014175Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_replay_cache_race_condition.py (4475 tokens)
+  [2m2026-05-02T12:16:13.014308Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 15/18: TCP Length Field Overflow / Resource Exhaustion [high]
+  [2m2026-05-02T12:16:43.686148Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_tcp_length_field_overflow.py (2905 tokens)
+  [2m2026-05-02T12:16:43.686258Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 16/18: DNS Poisoning for KDC Discovery [high]
+  [2m2026-05-02T12:18:05.314179Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_dns_poisoning_kdc_discovery.py (6765 tokens)
+  [2m2026-05-02T12:18:05.314916Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 17/18: Authorization Data Ignorance Leading to Privilege Confusion [high]
+  [2m2026-05-02T12:18:53.634284Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_authorization_data_ignorance.py (4009 tokens)
+  [2m2026-05-02T12:18:53.634353Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 18/18: Replay Attack via Replay Cache Loss [high]
+  [2m2026-05-02T12:19:40.539982Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_replay_attack_via_replay_cache_loss.py (6782 tokens)
+  [2m2026-05-02T12:19:40.540116Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 17 PoCs for 18 leads
+  [2m2026-05-02T12:19:40.543489Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_replay_cache_state_loss.py
+  [2m2026-05-02T12:19:40.543790Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_kdc_resource_exhaustion.py
+  [2m2026-05-02T12:19:40.544029Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_dns_canonicalization_spoofing.py
+  [2m2026-05-02T12:19:40.544275Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_krb_error_integrity_bypass.py
+  [2m2026-05-02T12:19:40.544708Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_inconsistent_principal_name_canonicalization.py
+  [2m2026-05-02T12:19:40.545255Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_kerberos_asrep_roasting.py
+  [2m2026-05-02T12:19:40.545600Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_tcp_connection_exhaustion_on_kdc.py
+  [2m2026-05-02T12:19:40.545856Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_dns_spoofing_principal_canonicalization.py
+  [2m2026-05-02T12:19:40.546077Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_authorization_data_ignorance.py
+  [2m2026-05-02T12:19:40.546290Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_ambiguous_replay_cache_scope.py
+  [2m2026-05-02T12:19:40.546494Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_replay_cache_loss_leading_to_replay_attack.py
+  [2m2026-05-02T12:19:40.546693Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_transited_policy_check_bypass.py
+  [2m2026-05-02T12:19:40.546905Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_replay_cache_race_condition.py
+  [2m2026-05-02T12:19:40.547116Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_tcp_length_field_overflow.py
+  [2m2026-05-02T12:19:40.547713Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_dns_poisoning_kdc_discovery.py
+  [2m2026-05-02T12:19:40.547994Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_authorization_data_ignorance_16.py
+  [2m2026-05-02T12:19:40.548234Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/kerberos-pocs/poc_replay_attack_via_replay_cache_loss.py
+  [2m2026-05-02T12:19:40.551576Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 17 PoCs + README to results/kerberos-pocs
+[3/3] kerberos complete: 45 leads, 17 PoCs, 2660s
+
+--- tls13 ---
+[1/3] Analyzing tls13 (RFCs: 8446, depth: 0)...
+  [2m2026-05-02T12:19:41.496897Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T12:19:42.458065Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 1 RFCs processed
+  [2m2026-05-02T12:19:42.462355Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T12:34:50.888935Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 17 state machines extracted
+  [2m2026-05-02T12:34:50.889376Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 17 state machines for 'tls13'
+  [2m2026-05-02T12:34:50.889471Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T12:36:22.959506Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 5 leads found
+  [2m2026-05-02T12:37:57.544102Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 4 leads found
+  [2m2026-05-02T12:39:17.633615Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 5 leads found
+  [2m2026-05-02T12:40:49.903016Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 5 leads found
+  [2m2026-05-02T12:42:04.454132Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 5 leads found
+  [2m2026-05-02T12:44:09.740404Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 5 leads found
+  [2m2026-05-02T12:45:46.065729Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 5 leads found
+  [2m2026-05-02T12:47:33.920491Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 4 leads found
+  [2m2026-05-02T12:49:01.355414Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 3 leads found
+  [2m2026-05-02T12:50:38.199291Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 5 leads found
+  [2m2026-05-02T12:50:38.203515Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 46 leads (after dedup/filter)
+[2/3] Generating PoCs for tls13 (severity >= high)...
+  [2m2026-05-02T12:50:39.138016Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 17 leads (protocol: tls13, severity >= high, language: python)
+  [2m2026-05-02T12:50:39.141926Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/17: Missing Validation of Certificate Chain [critical]
+  [2m2026-05-02T12:51:23.558858Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_missing_validation_of_certificate_chain.py (3021 tokens)
+  [2m2026-05-02T12:51:23.558954Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/17: Cipher Suite Downgrade to Weak Algorithms [critical]
+  [2m2026-05-02T12:52:47.919537Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_cipher_suite_downgrade.py (5771 tokens)
+  [2m2026-05-02T12:52:47.920268Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/17: 0-RTT Data Replay Attack [high]
+  [2m2026-05-02T12:53:36.677586Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_0rtt_replay_attack.py (5455 tokens)
+  [2m2026-05-02T12:53:36.677679Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/17: 0-RTT Replay Attack [high]
+  [2m2026-05-02T12:54:12.716208Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_0rtt_replay_attack.py (4165 tokens)
+  [2m2026-05-02T12:54:12.716279Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/17: 0-RTT Replay Attack [high]
+  [2m2026-05-02T12:55:21.434722Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_0rtt_replay_attack.py (5400 tokens)
+  [2m2026-05-02T12:55:21.434844Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/17: Record Layer Overflow [high]
+  [2m2026-05-02T12:56:12.841733Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_record_layer_overflow.py (5293 tokens)
+  [2m2026-05-02T12:56:12.842059Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/17: Missing Validation of Early Data Parameters [high]
+  [2m2026-05-02T12:57:33.662769Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_missing_validation_of_early_data_parameters.py (5686 tokens)
+  [2m2026-05-02T12:57:33.662833Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/17: TLS Version Downgrade via Legacy Version Field Manipulation [high]
+  [2m2026-05-02T12:59:14.505304Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/17: Downgrade Attack via Random Value Manipulation [high]
+  [2m2026-05-02T13:00:08.364006Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_downgrade_attack_via_random_value_manipulation.py (6447 tokens)
+  [2m2026-05-02T13:00:08.364161Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/17: Missing Validation of PSK Binder [high]
+  [2m2026-05-02T13:01:09.392127Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_missing_validation_of_psk_binder.py (4639 tokens)
+  [2m2026-05-02T13:01:09.392184Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 11/17: 0-RTT Replay State Confusion [high]
+  [2m2026-05-02T13:01:56.863679Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_0rtt_replay_state_confusion.py (3455 tokens)
+  [2m2026-05-02T13:01:56.863821Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 12/17: 0-RTT Data Replay Race Condition [high]
+  [2m2026-05-02T13:02:53.437943Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_0rtt_replay_race.py (5098 tokens)
+  [2m2026-05-02T13:02:53.438192Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 13/17: Ambiguous Record Padding Scanning [high]
+  [2m2026-05-02T13:03:32.961715Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ambiguous_record_padding_scanning.py (3132 tokens)
+  [2m2026-05-02T13:03:32.961892Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 14/17: HelloRetryRequest State Confusion [high]
+  [2m2026-05-02T13:04:38.338313Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_hello_retry_request_state_confusion.py (4288 tokens)
+  [2m2026-05-02T13:04:38.338474Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 15/17: Downgrade Attack via Legacy Version Negotiation [high]
+  [2m2026-05-02T13:06:09.135981Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_downgrade_attack_via_legacy_version_negotiation.py (8270 tokens)
+  [2m2026-05-02T13:06:09.136050Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 16/17: Ambiguous 0-RTT Replay Protection [high]
+  [2m2026-05-02T13:06:57.531310Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ambiguous_0rtt_replay_protection.py (3563 tokens)
+  [2m2026-05-02T13:06:57.531385Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 17/17: PSK-Only Downgrade Removing Forward Secrecy [high]
+  [2m2026-05-02T13:08:12.820821Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_psk_only_downgrade.py (5441 tokens)
+  [2m2026-05-02T13:08:12.820961Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 16 PoCs for 17 leads
+  [2m2026-05-02T13:08:12.824327Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_missing_validation_of_certificate_chain.py
+  [2m2026-05-02T13:08:12.824778Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_cipher_suite_downgrade.py
+  [2m2026-05-02T13:08:12.825216Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_0rtt_replay_attack.py
+  [2m2026-05-02T13:08:12.825522Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_0rtt_replay_attack_4.py
+  [2m2026-05-02T13:08:12.825782Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_0rtt_replay_attack_5.py
+  [2m2026-05-02T13:08:12.826024Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_record_layer_overflow.py
+  [2m2026-05-02T13:08:12.826555Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_missing_validation_of_early_data_parameters.py
+  [2m2026-05-02T13:08:12.826741Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_downgrade_attack_via_random_value_manipulation.py
+  [2m2026-05-02T13:08:12.826931Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_missing_validation_of_psk_binder.py
+  [2m2026-05-02T13:08:12.827126Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_0rtt_replay_state_confusion.py
+  [2m2026-05-02T13:08:12.827296Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_0rtt_replay_race.py
+  [2m2026-05-02T13:08:12.827478Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_ambiguous_record_padding_scanning.py
+  [2m2026-05-02T13:08:12.827658Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_hello_retry_request_state_confusion.py
+  [2m2026-05-02T13:08:12.827879Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_downgrade_attack_via_legacy_version_negotiation.py
+  [2m2026-05-02T13:08:12.828062Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_ambiguous_0rtt_replay_protection.py
+  [2m2026-05-02T13:08:12.828254Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/tls13-pocs/poc_psk_only_downgrade.py
+  [2m2026-05-02T13:08:12.830999Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 16 PoCs + README to results/tls13-pocs
+[3/3] tls13 complete: 46 leads, 16 PoCs, 2912s
+
+--- ipv6 ---
+[1/3] Analyzing ipv6 (RFCs: 8200 5722, depth: 0)...
+  [2m2026-05-02T13:08:13.671162Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T13:08:14.681791Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 2 RFCs processed
+  [2m2026-05-02T13:08:14.683651Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T13:12:06.813376Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 5 state machines extracted
+  [2m2026-05-02T13:12:06.813455Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 5 state machines for 'ipv6'
+  [2m2026-05-02T13:12:06.813522Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T13:13:01.087754Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 3 leads found
+  [2m2026-05-02T13:13:31.086422Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 2 leads found
+  [2m2026-05-02T13:14:16.038448Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 3 leads found
+  [2m2026-05-02T13:15:23.565669Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 3 leads found
+  [2m2026-05-02T13:16:27.286318Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 3 leads found
+  [2m2026-05-02T13:17:14.199455Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 2 leads found
+  [2m2026-05-02T13:18:00.272413Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 3 leads found
+  [2m2026-05-02T13:18:15.245078Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 0 leads found
+  [2m2026-05-02T13:19:10.241795Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 3 leads found
+  [2m2026-05-02T13:20:15.264013Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 5 leads found
+  [2m2026-05-02T13:20:15.268798Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 27 leads (after dedup/filter)
+[2/3] Generating PoCs for ipv6 (severity >= high)...
+  [2m2026-05-02T13:20:16.182889Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 13 leads (protocol: ipv6, severity >= high, language: python)
+  [2m2026-05-02T13:20:16.190239Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/13: IPv6 Overlapping Fragment Firewall Bypass [critical]
+  [2m2026-05-02T13:21:02.623295Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_overlapping_fragment_firewall_bypass.py (5082 tokens)
+  [2m2026-05-02T13:21:02.623429Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/13: IPv6 Overlapping Fragment Firewall Bypass [critical]
+  [2m2026-05-02T13:21:29.788542Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_overlapping_fragment_bypass.py (4435 tokens)
+  [2m2026-05-02T13:21:29.788706Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/13: IPv6 Fragment Overlap Attack [high]
+  [2m2026-05-02T13:23:14.652684Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/13: Eavesdropping on IPv6 Packets [high]
+  [2m2026-05-02T13:24:03.597329Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_eavesdropping_on_ipv6_packets.py (3938 tokens)
+  [2m2026-05-02T13:24:03.597386Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/13: IPv6 Overlapping Fragment Firewall Bypass [high]
+  [2m2026-05-02T13:24:49.573402Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_overlapping_fragment_firewall_bypass.py (5157 tokens)
+  [2m2026-05-02T13:24:49.573548Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/13: IPv6 Fragment Replay Attack [high]
+  [2m2026-05-02T13:25:25.176462Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_fragment_replay.py (3554 tokens)
+  [2m2026-05-02T13:25:25.176601Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/13: IPv6 Fragment Reassembly Resource Exhaustion [high]
+  [2m2026-05-02T13:26:47.833014Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_fragment_reassembly_exhaustion.py (8721 tokens)
+  [2m2026-05-02T13:26:47.833087Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/13: IPv6 Overlapping Fragment Reassembly Race [high]
+  [2m2026-05-02T13:27:35.938989Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_overlapping_fragment_race.py (7206 tokens)
+  [2m2026-05-02T13:27:35.939128Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/13: IPv6 Fragment Offset Manipulation for Oversized Reassembly [high]
+  [2m2026-05-02T13:28:34.140834Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_fragment_offset_manipulation.py (7302 tokens)
+  [2m2026-05-02T13:28:34.140974Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/13: IPv6 Atomic Fragment State Confusion [high]
+  [2m2026-05-02T13:29:42.119276Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_atomic_fragment_state_confusion.py (8321 tokens)
+  [2m2026-05-02T13:29:42.119547Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 11/13: IPv6 Fragmentation Header Manipulation for Access Control Bypass [high]
+  [2m2026-05-02T13:30:41.526015Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ipv6_fragmentation_header_manipulation.py (7897 tokens)
+  [2m2026-05-02T13:30:41.526161Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 12/13: Fragment Reassembly Ambiguity in Overlap Handling [high]
+  [2m2026-05-02T13:31:45.232038Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_fragment_reassembly_ambiguity.py (6964 tokens)
+  [2m2026-05-02T13:31:45.232094Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 13/13: Fragment Identification Reuse Ambiguity [high]
+  [2m2026-05-02T13:32:26.388904Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_fragment_id_reuse.py (5863 tokens)
+  [2m2026-05-02T13:32:26.388997Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 12 PoCs for 13 leads
+  [2m2026-05-02T13:32:26.391568Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_overlapping_fragment_firewall_bypass.py
+  [2m2026-05-02T13:32:26.391901Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_overlapping_fragment_bypass.py
+  [2m2026-05-02T13:32:26.392269Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_eavesdropping_on_ipv6_packets.py
+  [2m2026-05-02T13:32:26.392738Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_overlapping_fragment_firewall_bypass_4.py
+  [2m2026-05-02T13:32:26.392955Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_fragment_replay.py
+  [2m2026-05-02T13:32:26.393256Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_fragment_reassembly_exhaustion.py
+  [2m2026-05-02T13:32:26.393497Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_overlapping_fragment_race.py
+  [2m2026-05-02T13:32:26.393719Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_fragment_offset_manipulation.py
+  [2m2026-05-02T13:32:26.393942Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_atomic_fragment_state_confusion.py
+  [2m2026-05-02T13:32:26.394157Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_ipv6_fragmentation_header_manipulation.py
+  [2m2026-05-02T13:32:26.394363Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_fragment_reassembly_ambiguity.py
+  [2m2026-05-02T13:32:26.394554Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ipv6-pocs/poc_fragment_id_reuse.py
+  [2m2026-05-02T13:32:26.397042Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 12 PoCs + README to results/ipv6-pocs
+[3/3] ipv6 complete: 27 leads, 12 PoCs, 1454s
+
+=== Additional Protocols ===
+
+--- ssh ---
+[1/3] Analyzing ssh (RFCs: 4251 4252 4253 4254, depth: 0)...
+  [2m2026-05-02T13:32:27.247966Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T13:32:28.272765Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 4 RFCs processed
+  [2m2026-05-02T13:32:28.275705Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T13:42:26.761598Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 14 state machines extracted
+  [2m2026-05-02T13:42:26.761821Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 14 state machines for 'ssh'
+  [2m2026-05-02T13:42:26.761893Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T13:44:04.286254Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 6 leads found
+  [2m2026-05-02T13:44:27.256003Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 0 leads found
+  [2m2026-05-02T13:45:51.427287Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 6 leads found
+  [2m2026-05-02T13:46:52.011692Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 3 leads found
+  [2m2026-05-02T13:48:01.440640Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 3 leads found
+  [2m2026-05-02T13:49:43.971441Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 5 leads found
+  [2m2026-05-02T13:50:55.586855Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 4 leads found
+  [2m2026-05-02T13:52:07.524360Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 3 leads found
+  [2m2026-05-02T13:53:16.322067Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 3 leads found
+  [2m2026-05-02T13:54:44.950476Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 5 leads found
+  [2m2026-05-02T13:54:44.962575Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 38 leads (after dedup/filter)
+[2/3] Generating PoCs for ssh (severity >= high)...
+  [2m2026-05-02T13:54:46.001368Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 13 leads (protocol: ssh, severity >= high, language: python)
+  [2m2026-05-02T13:54:46.007262Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/13: Host Key Verification Bypass [critical]
+  [2m2026-05-02T13:55:21.697262Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_host_key_verification_bypass.py (4492 tokens)
+  [2m2026-05-02T13:55:21.697607Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/13: Protocol Version Downgrade via Compatibility Mode [high]
+  [2m2026-05-02T13:56:11.575892Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_protocol_version_downgrade_via_compatibility_mode.py (3297 tokens)
+  [2m2026-05-02T13:56:11.576205Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/13: Pre-Authentication Key Exchange Exhaustion [high]
+  [2m2026-05-02T13:56:55.445291Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_pre_auth_kex_exhaustion.py (3275 tokens)
+  [2m2026-05-02T13:56:55.445739Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/13: Host Key Verification Bypass (First Connection) [high]
+  [2m2026-05-02T13:57:29.751852Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_host_key_verification_bypass.py (4478 tokens)
+  [2m2026-05-02T13:57:29.751937Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/13: SSH Transport Layer Oversized Packet [high]
+  [2m2026-05-02T13:58:01.477178Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ssh_transport_oversized_packet.py (2338 tokens)
+  [2m2026-05-02T13:58:01.477231Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/13: Algorithm Negotiation Downgrade (Cipher/MAC/Compression) [high]
+  [2m2026-05-02T13:59:29.028829Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_algorithm_negotiation_downgrade.py (8256 tokens)
+  [2m2026-05-02T13:59:29.029745Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/13: Ambiguous Host Key Verification Policy [high]
+  [2m2026-05-02T14:00:27.586380Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ambiguous_host_key_verification.py (4379 tokens)
+  [2m2026-05-02T14:00:27.586475Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/13: SSH String Data Type Buffer Overflow [high]
+  [2m2026-05-02T14:00:58.223364Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ssh_string_buffer_overflow.py (3195 tokens)
+  [2m2026-05-02T14:00:58.223425Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/13: Authentication State Flush Race [high]
+  [2m2026-05-02T14:01:34.973603Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_authentication_state_flush_race.py (3559 tokens)
+  [2m2026-05-02T14:01:34.973658Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/13: Algorithm Downgrade via Missing Validation [high]
+  [2m2026-05-02T14:03:01.547301Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_algorithm_downgrade_via_missing_validation.py (6991 tokens)
+  [2m2026-05-02T14:03:01.547406Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 11/13: Authentication State Bypass via Premature Connection Protocol Messages [high]
+  [2m2026-05-02T14:03:41.228769Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_authentication_state_bypass_via_premature_connection_protocol_messages.py (2761 tokens)
+  [2m2026-05-02T14:03:41.228828Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 12/13: Authentication State Flush Bypass [high]
+  [2m2026-05-02T14:04:08.236679Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_authentication_state_flush_bypass.py (2445 tokens)
+  [2m2026-05-02T14:04:08.236734Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 13/13: Host-Based Authentication Trust Exploitation [high]
+  [2m2026-05-02T14:04:39.928812Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_hostbased_auth_exploit.py (3065 tokens)
+  [2m2026-05-02T14:04:39.928917Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 13 PoCs for 13 leads
+  [2m2026-05-02T14:04:39.933213Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_host_key_verification_bypass.py
+  [2m2026-05-02T14:04:39.934102Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_protocol_version_downgrade_via_compatibility_mode.py
+  [2m2026-05-02T14:04:39.934631Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_pre_auth_kex_exhaustion.py
+  [2m2026-05-02T14:04:39.935596Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_host_key_verification_bypass_4.py
+  [2m2026-05-02T14:04:39.939279Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_ssh_transport_oversized_packet.py
+  [2m2026-05-02T14:04:39.940030Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_algorithm_negotiation_downgrade.py
+  [2m2026-05-02T14:04:39.940354Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_ambiguous_host_key_verification.py
+  [2m2026-05-02T14:04:39.941816Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_ssh_string_buffer_overflow.py
+  [2m2026-05-02T14:04:39.942514Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_authentication_state_flush_race.py
+  [2m2026-05-02T14:04:39.942923Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_algorithm_downgrade_via_missing_validation.py
+  [2m2026-05-02T14:04:39.943485Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_authentication_state_bypass_via_premature_connection_protocol_messages.py
+  [2m2026-05-02T14:04:39.943795Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_authentication_state_flush_bypass.py
+  [2m2026-05-02T14:04:39.944100Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-pocs/poc_hostbased_auth_exploit.py
+  [2m2026-05-02T14:04:39.947995Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 13 PoCs + README to results/ssh-pocs
+[3/3] ssh complete: 38 leads, 13 PoCs, 1933s
+
+--- ssh-extended ---
+[1/3] Analyzing ssh-extended (RFCs: 4256 4344 5656 6668, depth: 0)...
+  [2m2026-05-02T14:04:40.933352Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T14:04:41.971243Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 4 RFCs processed
+  [2m2026-05-02T14:04:41.973893Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T14:10:15.615834Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 10 state machines extracted
+  [2m2026-05-02T14:10:15.616042Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 10 state machines for 'ssh-extended'
+  [2m2026-05-02T14:10:15.616129Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T14:11:20.594494Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 5 leads found
+  [2m2026-05-02T14:11:48.960097Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 2 leads found
+  [2m2026-05-02T14:12:34.657597Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 4 leads found
+  [2m2026-05-02T14:13:15.007116Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 3 leads found
+  [2m2026-05-02T14:13:27.402082Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 0 leads found
+  [2m2026-05-02T14:13:40.726565Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 0 leads found
+  [2m2026-05-02T14:14:40.052302Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 5 leads found
+  [2m2026-05-02T14:14:51.170407Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 0 leads found
+  [2m2026-05-02T14:15:44.647739Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 3 leads found
+  [2m2026-05-02T14:16:59.107130Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 6 leads found
+  [2m2026-05-02T14:16:59.145071Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 27 leads (after dedup/filter)
+[2/3] Generating PoCs for ssh-extended (severity >= high)...
+  [2m2026-05-02T14:17:00.160199Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 9 leads (protocol: ssh-extended, severity >= high, language: python)
+  [2m2026-05-02T14:17:00.164598Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/9: Unvalidated Elliptic Curve Public Key [critical]
+  [2m2026-05-02T14:17:55.499181Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_unvalidated_elliptic_curve_public_key.py (5504 tokens)
+  [2m2026-05-02T14:17:55.499251Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/9: Ephemeral Key Leakage via Improper RNG [critical]
+  [2m2026-05-02T14:19:03.363465Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ephemeral_key_leakage_via_improper_rng.py (5005 tokens)
+  [2m2026-05-02T14:19:03.363549Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/9: Keystream Reuse via Counter Wraparound in SDCTR Mode [critical]
+  [2m2026-05-02T14:19:41.108608Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_keystream_reuse_sdctr.py (3392 tokens)
+  [2m2026-05-02T14:19:41.108667Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/9: Keystream Reuse DoS via SDCTR Misuse [critical]
+  [2m2026-05-02T14:20:29.003806Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_keystream_reuse_sdctr.py (3717 tokens)
+  [2m2026-05-02T14:20:29.003869Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/9: Keystream Reuse Privacy Attack [high]
+  [2m2026-05-02T14:21:03.164996Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_keystream_reuse_privacy_attack.py (3176 tokens)
+  [2m2026-05-02T14:21:03.165052Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/9: Missing Rekeying Validation [high]
+  [2m2026-05-02T14:21:30.173902Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_missing_rekeying_validation.py (3433 tokens)
+  [2m2026-05-02T14:21:30.173958Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/9: MAC Collision Replay Attack via Sequence Number Wraparound [high]
+  [2m2026-05-02T14:22:11.410878Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_mac_collision_replay_attack.py (3503 tokens)
+  [2m2026-05-02T14:22:11.410919Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/9: Rekeying Counter Race Condition [high]
+  [2m2026-05-02T14:22:58.460275Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_rekeying_counter_race_condition.py (5672 tokens)
+  [2m2026-05-02T14:22:58.461330Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/9: Rekeying Exhaustion / MAC Collision DoS [high]
+  [2m2026-05-02T14:23:27.915963Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_rekeying_exhaustion_mac_collision_dos.py (3195 tokens)
+  [2m2026-05-02T14:23:27.916079Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 9 PoCs for 9 leads
+  [2m2026-05-02T14:23:27.923430Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_unvalidated_elliptic_curve_public_key.py
+  [2m2026-05-02T14:23:27.923714Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_ephemeral_key_leakage_via_improper_rng.py
+  [2m2026-05-02T14:23:27.923868Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_keystream_reuse_sdctr.py
+  [2m2026-05-02T14:23:27.924000Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_keystream_reuse_sdctr_4.py
+  [2m2026-05-02T14:23:27.925501Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_keystream_reuse_privacy_attack.py
+  [2m2026-05-02T14:23:27.927154Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_missing_rekeying_validation.py
+  [2m2026-05-02T14:23:27.927430Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_mac_collision_replay_attack.py
+  [2m2026-05-02T14:23:27.927884Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_rekeying_counter_race_condition.py
+  [2m2026-05-02T14:23:27.928065Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/ssh-extended-pocs/poc_rekeying_exhaustion_mac_collision_dos.py
+  [2m2026-05-02T14:23:27.929154Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 9 PoCs + README to results/ssh-extended-pocs
+[3/3] ssh-extended complete: 27 leads, 9 PoCs, 1128s
+
+--- dns ---
+[1/3] Analyzing dns (RFCs: 1035 2136 6895, depth: 0)...
+  [2m2026-05-02T14:23:28.852766Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T14:23:32.774745Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 3 RFCs processed
+  [2m2026-05-02T14:23:32.796033Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T14:25:30.814972Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 5 state machines extracted
+  [2m2026-05-02T14:25:30.815019Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 5 state machines for 'dns'
+  [2m2026-05-02T14:25:30.815067Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T14:26:10.152448Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 3 leads found
+  [2m2026-05-02T14:26:17.577445Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 0 leads found
+  [2m2026-05-02T14:26:43.962951Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 2 leads found
+  [2m2026-05-02T14:27:07.415364Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 2 leads found
+  [2m2026-05-02T14:27:47.137053Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 3 leads found
+  [2m2026-05-02T14:27:53.947862Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 0 leads found
+  [2m2026-05-02T14:28:32.038374Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 3 leads found
+  [2m2026-05-02T14:28:58.140672Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 2 leads found
+  [2m2026-05-02T14:29:07.573169Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 0 leads found
+  [2m2026-05-02T14:29:44.190084Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 3 leads found
+  [2m2026-05-02T14:29:44.194393Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 18 leads (after dedup/filter)
+[2/3] Generating PoCs for dns (severity >= high)...
+  [2m2026-05-02T14:29:45.232143Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 4 leads (protocol: dns, severity >= high, language: python)
+  [2m2026-05-02T14:29:45.236363Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/4: Resource Exhaustion via Malformed RDATA Length (RDLENGTH) [high]
+  [2m2026-05-02T14:30:21.675422Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_resource_exhaustion_via_malformed_rdlength.py (2943 tokens)
+  [2m2026-05-02T14:30:21.675450Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/4: RDLENGTH Field Manipulation [high]
+  [2m2026-05-02T14:31:09.624838Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_rdlength_field_manipulation.py (3403 tokens)
+  [2m2026-05-02T14:31:09.625312Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/4: DNS Header Count Field Overflow [high]
+  [2m2026-05-02T14:31:47.667366Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_dns_header_count_overflow.py (3101 tokens)
+  [2m2026-05-02T14:31:47.667426Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/4: RCODE Overloading and Context-Dependent Interpretation [high]
+  [2m2026-05-02T14:33:26.697790Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 3 PoCs for 4 leads
+  [2m2026-05-02T14:33:26.699913Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/dns-pocs/poc_resource_exhaustion_via_malformed_rdlength.py
+  [2m2026-05-02T14:33:26.700936Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/dns-pocs/poc_rdlength_field_manipulation.py
+  [2m2026-05-02T14:33:26.701089Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/dns-pocs/poc_dns_header_count_overflow.py
+  [2m2026-05-02T14:33:26.702337Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 3 PoCs + README to results/dns-pocs
+[3/3] dns complete: 18 leads, 3 PoCs, 599s
+
+--- smtp ---
+[1/3] Analyzing smtp (RFCs: 5321, depth: 0)...
+  [2m2026-05-02T14:33:27.598845Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T14:33:29.938277Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 1 RFCs processed
+  [2m2026-05-02T14:33:29.971983Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T14:44:00.249242Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 12 state machines extracted
+  [2m2026-05-02T14:44:00.251863Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 12 state machines for 'smtp'
+  [2m2026-05-02T14:44:00.252082Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T14:45:21.066038Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 5 leads found
+  [2m2026-05-02T14:45:44.295519Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 0 leads found
+  [2m2026-05-02T14:47:18.715024Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 5 leads found
+  [2m2026-05-02T14:48:35.394377Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 4 leads found
+  [2m2026-05-02T14:49:42.782632Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 3 leads found
+  [2m2026-05-02T14:51:12.991130Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 5 leads found
+  [2m2026-05-02T14:52:47.582261Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 5 leads found
+  [2m2026-05-02T14:53:45.929831Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 2 leads found
+  [2m2026-05-02T14:54:55.105907Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 3 leads found
+  [2m2026-05-02T14:56:19.589016Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 5 leads found
+  [2m2026-05-02T14:56:19.596036Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 37 leads (after dedup/filter)
+[2/3] Generating PoCs for smtp (severity >= high)...
+  [2m2026-05-02T14:56:20.645181Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 15 leads (protocol: smtp, severity >= high, language: python)
+  [2m2026-05-02T14:56:20.649770Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/15: Open Relay via Missing Relay Policy Validation [critical]
+  [2m2026-05-02T14:57:03.630068Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_open_relay_via_missing_relay_policy_validation.py (3167 tokens)
+  [2m2026-05-02T14:57:03.630168Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/15: SMTP Open Relay via Misconfigured MX/Relay Logic [critical]
+  [2m2026-05-02T14:57:36.804291Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_smtp_open_relay.py (2901 tokens)
+  [2m2026-05-02T14:57:36.804396Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/15: EHLO to HELO Downgrade [high]
+  [2m2026-05-02T14:58:31.281669Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_ehlo_to_helo_downgrade.py (5115 tokens)
+  [2m2026-05-02T14:58:31.282077Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/15: VRFY/EXPN Address Harvesting [high]
+  [2m2026-05-02T14:59:11.386436Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_vrfy_expn_address_harvesting.py (4238 tokens)
+  [2m2026-05-02T14:59:11.386689Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/15: SMTP Command Flooding / Resource Exhaustion via RCPT TO [high]
+  [2m2026-05-02T14:59:37.895353Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_smtp_rcpt_flood.py (2424 tokens)
+  [2m2026-05-02T14:59:37.895405Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/15: SMTP Command Line Oversized Payload [high]
+  [2m2026-05-02T15:00:04.575673Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_smtp_command_line_oversized_payload.py (2168 tokens)
+  [2m2026-05-02T15:00:04.575726Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/15: VRFY/EXPN Information Disclosure via Ambiguous Reply Codes [high]
+  [2m2026-05-02T15:00:38.427084Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_vrfy_expn_info_disclosure.py (3265 tokens)
+  [2m2026-05-02T15:00:38.427210Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/15: SMTP Message Content Oversized Payload [high]
+  [2m2026-05-02T15:01:14.919373Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_smtp_oversized_payload.py (2717 tokens)
+  [2m2026-05-02T15:01:14.919615Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/15: VRFY/EXPN Information Disclosure via Missing Validation [high]
+  [2m2026-05-02T15:02:02.131663Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_vrfy_expn_information_disclosure.py (4628 tokens)
+  [2m2026-05-02T15:02:02.131802Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/15: Mail Loop / Bounce Storm DoS [high]
+  [2m2026-05-02T15:02:33.615086Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_mail_loop_bounce_storm.py (2922 tokens)
+  [2m2026-05-02T15:02:33.615270Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 11/15: Address Verification via VRFY/EXPN Commands [high]
+  [2m2026-05-02T15:03:27.481475Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_address_verification_vrfy_expn.py (4938 tokens)
+  [2m2026-05-02T15:03:27.481678Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 12/15: DATA Command State Confusion via Premature Termination [high]
+  [2m2026-05-02T15:03:56.127140Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_data_command_state_confusion.py (4746 tokens)
+  [2m2026-05-02T15:03:56.127193Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 13/15: Mailing List Explosion / Alias Expansion DoS [high]
+  [2m2026-05-02T15:04:28.829287Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_mailing_list_explosion_dos.py (3404 tokens)
+  [2m2026-05-02T15:04:28.829365Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 14/15: Mail Loop via Missing Return-Path Validation [high]
+  [2m2026-05-02T15:04:54.672107Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_mail_loop_via_missing_return_path_validation.py (2589 tokens)
+  [2m2026-05-02T15:04:54.672345Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 15/15: Sender Address Spoofing via MAIL FROM [high]
+  [2m2026-05-02T15:05:33.066921Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_sender_address_spoofing_via_mail_from.py (4706 tokens)
+  [2m2026-05-02T15:05:33.067217Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 15 PoCs for 15 leads
+  [2m2026-05-02T15:05:33.070073Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_open_relay_via_missing_relay_policy_validation.py
+  [2m2026-05-02T15:05:33.070440Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_smtp_open_relay.py
+  [2m2026-05-02T15:05:33.070832Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_ehlo_to_helo_downgrade.py
+  [2m2026-05-02T15:05:33.071254Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_vrfy_expn_address_harvesting.py
+  [2m2026-05-02T15:05:33.071543Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_smtp_rcpt_flood.py
+  [2m2026-05-02T15:05:33.072020Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_smtp_command_line_oversized_payload.py
+  [2m2026-05-02T15:05:33.072310Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_vrfy_expn_info_disclosure.py
+  [2m2026-05-02T15:05:33.072673Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_smtp_oversized_payload.py
+  [2m2026-05-02T15:05:33.073196Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_vrfy_expn_information_disclosure.py
+  [2m2026-05-02T15:05:33.073482Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_mail_loop_bounce_storm.py
+  [2m2026-05-02T15:05:33.073906Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_address_verification_vrfy_expn.py
+  [2m2026-05-02T15:05:33.074172Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_data_command_state_confusion.py
+  [2m2026-05-02T15:05:33.074536Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_mailing_list_explosion_dos.py
+  [2m2026-05-02T15:05:33.074804Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_mail_loop_via_missing_return_path_validation.py
+  [2m2026-05-02T15:05:33.075075Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/smtp-pocs/poc_sender_address_spoofing_via_mail_from.py
+  [2m2026-05-02T15:05:33.081936Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 15 PoCs + README to results/smtp-pocs
+[3/3] smtp complete: 37 leads, 15 PoCs, 1927s
+
+--- http2 ---
+[1/3] Analyzing http2 (RFCs: 9113, depth: 0)...
+  [2m2026-05-02T15:05:34.039893Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T15:05:35.929745Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 1 RFCs processed
+  [2m2026-05-02T15:05:35.949443Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T15:13:32.504440Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 9 state machines extracted
+  [2m2026-05-02T15:13:32.504724Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 9 state machines for 'http2'
+  [2m2026-05-02T15:13:32.504805Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T15:14:49.570935Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'MissingValidation': 5 leads found
+  [2m2026-05-02T15:15:32.945939Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 3 leads found
+  [2m2026-05-02T15:16:48.343690Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 4 leads found
+  [2m2026-05-02T15:17:56.721809Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 4 leads found
+  [2m2026-05-02T15:18:54.033728Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 4 leads found
+  [2m2026-05-02T15:19:42.064626Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 3 leads found
+  [2m2026-05-02T15:21:44.424207Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 8 leads found
+  [2m2026-05-02T15:22:52.848005Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 4 leads found
+  [2m2026-05-02T15:23:46.794833Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 3 leads found
+  [2m2026-05-02T15:25:07.370520Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 7 leads found
+  [2m2026-05-02T15:25:07.388098Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 44 leads (after dedup/filter)
+[2/3] Generating PoCs for http2 (severity >= high)...
+  [2m2026-05-02T15:25:08.433541Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 18 leads (protocol: http2, severity >= high, language: python)
+  [2m2026-05-02T15:25:08.437591Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/18: HPACK Bomb / Header Table Exhaustion [high]
+  [2m2026-05-02T15:26:18.040884Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_hpack_bomb.py (5610 tokens)
+  [2m2026-05-02T15:26:18.041269Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/18: HPACK Compression Side-Channel (CRIME/BREACH-like) [high]
+  [2m2026-05-02T15:27:01.584883Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_hpack_compression_side_channel.py (3681 tokens)
+  [2m2026-05-02T15:27:01.585045Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/18: HTTP/2 TLS 1.3 Post-Handshake CertificateRequest Handling [high]
+  [2m2026-05-02T15:27:44.474155Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_http2_tls13_post_handshake_cert_req.py (2857 tokens)
+  [2m2026-05-02T15:27:44.474342Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/18: HTTP/2 Request Smuggling via Unvalidated Header Fields [high]
+  [2m2026-05-02T15:28:36.151141Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_http2_request_smuggling_unvalidated_headers.py (4014 tokens)
+  [2m2026-05-02T15:28:36.151222Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/18: Oversized SETTINGS_MAX_FRAME_SIZE [high]
+  [2m2026-05-02T15:29:42.186449Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_oversized_settings_max_frame_size.py (4788 tokens)
+  [2m2026-05-02T15:29:42.186588Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/18: TLS 1.3 Early Data Replay [high]
+  [2m2026-05-02T15:30:58.519594Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/18: TLS Cipher Suite Downgrade [high]
+  [2m2026-05-02T15:32:07.431101Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_tls_cipher_suite_downgrade.py (7976 tokens)
+  [2m2026-05-02T15:32:07.431175Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/18: HPACK Decompression Bomb via Missing Size Limits [high]
+  [2m2026-05-02T15:32:49.750942Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_hpack_decompression_bomb.py (3556 tokens)
+  [2m2026-05-02T15:32:49.751011Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/18: Stream ID Exhaustion / Rapid Stream Creation [high]
+  [2m2026-05-02T15:33:29.225271Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_stream_id_exhaustion.py (3872 tokens)
+  [2m2026-05-02T15:33:29.225326Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/18: HTTP/2 Connection Preface Race Condition [high]
+  [2m2026-05-02T15:33:57.395837Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_http2_connection_preface_race.py (2387 tokens)
+  [2m2026-05-02T15:33:57.396016Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 11/18: HTTP/2 PUSH_PROMISE Stream Reservation Desync [high]
+  [2m2026-05-02T15:34:52.592294Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_http2_push_promise_desync.py (4537 tokens)
+  [2m2026-05-02T15:34:52.592381Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 12/18: Oversized HPACK Dynamic Table [high]
+  [2m2026-05-02T15:35:41.230018Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_oversized_hpack_dynamic_table.py (4547 tokens)
+  [2m2026-05-02T15:35:41.230068Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 13/18: TLS Post-Handshake Authentication Bypass via HTTP/2 Protocol Error [high]
+  [2m2026-05-02T15:36:22.292237Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_tls_phah2_bypass.py (2832 tokens)
+  [2m2026-05-02T15:36:22.292425Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 14/18: PUSH_PROMISE Stream State Confusion [high]
+  [2m2026-05-02T15:37:19.102613Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_push_promise_state_confusion.py (5944 tokens)
+  [2m2026-05-02T15:37:19.102736Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 15/18: Server Push Abuse / Reserved Stream Exhaustion [high]
+  [2m2026-05-02T15:38:10.501877Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_server_push_abuse.py (4927 tokens)
+  [2m2026-05-02T15:38:10.501968Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 16/18: Cleartext HTTP/2 (h2c) Downgrade [high]
+  [2m2026-05-02T15:38:50.074038Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_cleartext_h2c_downgrade.py (3162 tokens)
+  [2m2026-05-02T15:38:50.074101Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 17/18: GOAWAY Last Stream ID Confusion [high]
+  [2m2026-05-02T15:39:31.400475Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_goaway_last_stream_id_confusion.py (3855 tokens)
+  [2m2026-05-02T15:39:31.400524Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 18/18: Cleartext HTTP/2 (h2c) Authentication Downgrade [high]
+  [2m2026-05-02T15:40:15.806678Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_cleartext_h2c_auth_downgrade.py (2924 tokens)
+  [2m2026-05-02T15:40:15.806714Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 17 PoCs for 18 leads
+  [2m2026-05-02T15:40:15.808570Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_hpack_bomb.py
+  [2m2026-05-02T15:40:15.808852Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_hpack_compression_side_channel.py
+  [2m2026-05-02T15:40:15.809092Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_http2_tls13_post_handshake_cert_req.py
+  [2m2026-05-02T15:40:15.809200Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_http2_request_smuggling_unvalidated_headers.py
+  [2m2026-05-02T15:40:15.809496Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_oversized_settings_max_frame_size.py
+  [2m2026-05-02T15:40:15.809824Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_tls_cipher_suite_downgrade.py
+  [2m2026-05-02T15:40:15.810095Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_hpack_decompression_bomb.py
+  [2m2026-05-02T15:40:15.810361Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_stream_id_exhaustion.py
+  [2m2026-05-02T15:40:15.810641Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_http2_connection_preface_race.py
+  [2m2026-05-02T15:40:15.810759Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_http2_push_promise_desync.py
+  [2m2026-05-02T15:40:15.811007Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_oversized_hpack_dynamic_table.py
+  [2m2026-05-02T15:40:15.811261Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_tls_phah2_bypass.py
+  [2m2026-05-02T15:40:15.811506Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_push_promise_state_confusion.py
+  [2m2026-05-02T15:40:15.811749Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_server_push_abuse.py
+  [2m2026-05-02T15:40:15.811859Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_cleartext_h2c_downgrade.py
+  [2m2026-05-02T15:40:15.812082Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_goaway_last_stream_id_confusion.py
+  [2m2026-05-02T15:40:15.812175Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/http2-pocs/poc_cleartext_h2c_auth_downgrade.py
+  [2m2026-05-02T15:40:15.813624Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 17 PoCs + README to results/http2-pocs
+[3/3] http2 complete: 44 leads, 17 PoCs, 2082s
+
+--- bgp ---
+[1/3] Analyzing bgp (RFCs: 4271, depth: 0)...
+  [2m2026-05-02T15:40:16.680317Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 1: Map ===
+  [2m2026-05-02T15:40:19.095143Z[0m [32m INFO[0m [2mrfc_analyzer::commands::map[0m[2m:[0m Map complete: 1 RFCs processed
+  [2m2026-05-02T15:40:19.109219Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 2: Model ===
+  [2m2026-05-02T15:45:50.048108Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::modeling[0m[2m:[0m Stage 2 complete: 5 state machines extracted
+  [2m2026-05-02T15:45:50.048314Z[0m [32m INFO[0m [2mrfc_analyzer::commands::model[0m[2m:[0m Model complete: 5 state machines for 'bgp'
+  [2m2026-05-02T15:45:50.048393Z[0m [32m INFO[0m [2mrfc_analyzer::commands::run[0m[2m:[0m === Stage 3: Analyze ===
+  [2m2026-05-02T15:48:51.253178Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ReplayAttack': 3 leads found
+  [2m2026-05-02T15:50:07.340108Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'InformationLeak': 5 leads found
+  [2m2026-05-02T15:51:25.172906Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'OversizedPayload': 5 leads found
+  [2m2026-05-02T15:52:34.716571Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'StateConfusion': 3 leads found
+  [2m2026-05-02T15:53:37.681463Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'AuthBypass': 4 leads found
+  [2m2026-05-02T15:54:56.941804Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'DenialOfService': 5 leads found
+  [2m2026-05-02T15:55:49.849448Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'Downgrade': 2 leads found
+  [2m2026-05-02T15:56:12.704715Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'RaceCondition': 0 leads found
+  [2m2026-05-02T15:57:25.075635Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Category 'ImplementationAmbiguity': 5 leads found
+  [2m2026-05-02T15:57:25.080734Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::analysis[0m[2m:[0m Stage 3 complete: 29 leads (after dedup/filter)
+[2/3] Generating PoCs for bgp (severity >= high)...
+  [2m2026-05-02T15:57:26.085196Z[0m [32m INFO[0m [2mrfc_analyzer::commands::reproduce[0m[2m:[0m Generating PoCs for 11 leads (protocol: bgp, severity >= high, language: python)
+  [2m2026-05-02T15:57:26.090332Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 1/11: BGP Message Header Length Field Manipulation [critical]
+  [2m2026-05-02T15:58:22.343299Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_header_length_manipulation.py (4081 tokens)
+  [2m2026-05-02T15:58:22.343357Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 2/11: TCP MD5 Absence / Lack of Transport Authentication [critical]
+  [2m2026-05-02T15:59:28.889403Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_tcp_md5_absence.py (8690 tokens)
+  [2m2026-05-02T15:59:28.889524Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 3/11: BGP Session Hijacking via OPEN Replay [critical]
+  [2m2026-05-02T16:00:33.325780Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_open_replay.py (4944 tokens)
+  [2m2026-05-02T16:00:33.325827Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 4/11: BGP Route Table Overflow (Prefix Flooding) [high]
+  [2m2026-05-02T16:01:26.763869Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_route_table_overflow.py (3866 tokens)
+  [2m2026-05-02T16:01:26.766034Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 5/11: BGP UPDATE Message Withdrawn Routes Overflow [high]
+  [2m2026-05-02T16:02:05.283688Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_update_withdrawn_routes_overflow.py (6537 tokens)
+  [2m2026-05-02T16:02:05.283744Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 6/11: BGP UPDATE Message Path Attribute Overflow [high]
+  [2m2026-05-02T16:03:06.473238Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_update_path_attr_overflow.py (7492 tokens)
+  [2m2026-05-02T16:03:06.473315Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 7/11: BGP Session Replay Attack [high]
+  [2m2026-05-02T16:04:28.180951Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_session_replay_attack.py (11259 tokens)
+  [2m2026-05-02T16:04:28.180993Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 8/11: BGP Session Impersonation via IP Spoofing [high]
+  [2m2026-05-02T16:04:57.722581Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_session_impersonation.py (3357 tokens)
+  [2m2026-05-02T16:04:57.722641Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 9/11: BGP Version Downgrade Attack [high]
+  [2m2026-05-02T16:06:16.568835Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_version_downgrade.py (5846 tokens)
+  [2m2026-05-02T16:06:16.568881Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 10/11: BGP OPEN Message Collision State Confusion [high]
+  [2m2026-05-02T16:07:42.176192Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m PoC generated: poc_bgp_open_collision_state_confusion.py (13113 tokens)
+  [2m2026-05-02T16:07:42.176286Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generating PoC 11/11: BGP UPDATE Message Replay [high]
+  [2m2026-05-02T16:09:18.246349Z[0m [32m INFO[0m [2mrfc_analyzer::pipeline::reproduce[0m[2m:[0m Generated 10 PoCs for 11 leads
+  [2m2026-05-02T16:09:18.248054Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_header_length_manipulation.py
+  [2m2026-05-02T16:09:18.248177Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_tcp_md5_absence.py
+  [2m2026-05-02T16:09:18.248277Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_open_replay.py
+  [2m2026-05-02T16:09:18.248535Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_route_table_overflow.py
+  [2m2026-05-02T16:09:18.248687Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_update_withdrawn_routes_overflow.py
+  [2m2026-05-02T16:09:18.248815Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_update_path_attr_overflow.py
+  [2m2026-05-02T16:09:18.249178Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_session_replay_attack.py
+  [2m2026-05-02T16:09:18.249358Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_session_impersonation.py
+  [2m2026-05-02T16:09:18.249471Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_version_downgrade.py
+  [2m2026-05-02T16:09:18.249596Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote results/bgp-pocs/poc_bgp_open_collision_state_confusion.py
+  [2m2026-05-02T16:09:18.250525Z[0m [32m INFO[0m [2mrfc_analyzer::output::poc[0m[2m:[0m Wrote 10 PoCs + README to results/bgp-pocs
+[3/3] bgp complete: 29 leads, 10 PoCs, 1743s
+
+============================================
+Summary
+============================================
+
+  bgp:  29 leads,  5 state machines, 10 PoCs
+  dns:  18 leads,  5 state machines, 3 PoCs
+  http2:  44 leads,  9 state machines, 17 PoCs
+  ipv6:  27 leads,  5 state machines, 12 PoCs
+  kerberos:  45 leads, 10 state machines, 17 PoCs
+  smtp:  37 leads, 12 state machines, 15 PoCs
+  ssh-extended:  27 leads,  9 state machines, 9 PoCs
+  ssh:  38 leads, 14 state machines, 13 PoCs
+  telnet:  27 leads,  5 state machines, 9 PoCs
+  tls13:  46 leads, 16 state machines, 16 PoCs
+
+Total time: 17413s
+Reports in: results/
+PoCs in: results/<protocol>-pocs/

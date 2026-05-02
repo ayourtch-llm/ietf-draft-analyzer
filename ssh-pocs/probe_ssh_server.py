@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SSH Server Security Probe — tests findings from rfc-analyzer reports
+SSH Server Security Probe — tests findings from ietf-draft-analyzer reports
 against a real SSH server using proper protocol handling (paramiko).
 
 Tests performed:
@@ -588,7 +588,7 @@ def main():
     port = int(sys.argv[2]) if len(sys.argv) > 2 else 22
 
     print(f"\nSSH Server Security Probe — testing {host}:{port}")
-    print(f"Based on rfc-analyzer findings for SSH RFCs 4251-4254, 4256, 4344, 5656\n")
+    print(f"Based on ietf-draft-analyzer findings for SSH RFCs 4251-4254, 4256, 4344, 5656\n")
 
     # Tests that don't need authentication
     test_banner(host, port)

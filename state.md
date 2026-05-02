@@ -89,7 +89,7 @@ src/
 
 ### Configuration
 
-`rfc-analyzer.toml` — current config points to local llama-server:
+`ietf-draft-analyzer.toml` — current config points to local llama-server:
 
 ```toml
 [llm]
@@ -110,7 +110,7 @@ For DeepSeek: `api_base = "https://api.deepseek.com/v1"`,
 
 ### Database
 
-SQLite at `rfc-analyzer.db`. Schema v2 (2 migrations). Contains:
+SQLite at `ietf-draft-analyzer.db`. Schema v2 (2 migrations). Contains:
 - Cached RFCs (zstd-compressed raw content)
 - Parsed sections and cross-references
 - Dependency graph edges
@@ -198,4 +198,4 @@ Requires LLM endpoint configured and API key set.
 - `src/db/schema.rs` — migration SQL; never reorder/remove entries
 - `src/llm/prompts.rs` — changing prompts requires bumping `PROMPT_VERSION`
   to invalidate cached results
-- `rfc-analyzer.db` — project artifact, not a cache. Use `clear` command.
+- `ietf-draft-analyzer.db` — project artifact, not a cache. Use `clear` command.

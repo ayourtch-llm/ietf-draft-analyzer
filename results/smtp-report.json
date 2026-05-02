@@ -1,0 +1,1139 @@
+{
+  "protocol_name": "smtp",
+  "rfcs_analyzed": [
+    5321
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 12,
+  "security_leads": [
+    {
+      "id": "d833c300-5e65-4f66-aaf6-7a86541ea8a5",
+      "technique_name": "Open Relay via Missing Relay Policy Validation",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker connects to an SMTP server and initiates a mail transaction. Step 2: The server fails to validate whether the destination domain is local or if the client is authorized to relay mail. Step 3: The server accepts the RCPT TO command for a remote domain and relays the message, allowing the attacker to use the server as an open relay for spam.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.6.2",
+          "quote": "If it declines to relay mail to a particular address for policy reasons, a 550 response SHOULD be returned."
+        },
+        {
+          "rfc": 5321,
+          "section": "7.9",
+          "quote": "In recent years, use of the relay function through arbitrary sites has been used as part of hostile efforts to hide the actual origins of mail."
+        }
+      ],
+      "prerequisites": [
+        "Server is configured to allow relaying",
+        "Server lacks authentication or IP-based relay restrictions"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Configure the SMTP server to only relay mail for authenticated users or trusted IP addresses. Reject relay attempts for unauthorized clients with a 550 error.",
+      "fingerprint": "9ffbf243fdce83ab5223938cddc4f2e2c1dbae2ff62a0d6b1e43562a1bb2759b"
+    },
+    {
+      "id": "ef998dff-4b96-4df4-995f-488ce4bb5797",
+      "technique_name": "SMTP Open Relay via Misconfigured MX/Relay Logic",
+      "category": "AuthBypass",
+      "severity": "critical",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker identifies an SMTP server configured as an open relay or with permissive relay policies. Step 2: Attacker connects to the server and initiates a mail transaction using the MAIL FROM command with a spoofed sender address. Step 3: Attacker uses RCPT TO to specify an external recipient address outside the server's local domain. Step 4: If the server does not enforce authentication or strict relay restrictions, it accepts the transaction and relays the message, effectively bypassing authentication/access controls for mail submission.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.6.2",
+          "quote": "A relay SMTP server is usually the target of a DNS MX record that designates it, rather than the final delivery system. The relay server may accept or reject the task of relaying the mail in the same way it accepts or rejects mail for a local user."
+        },
+        {
+          "rfc": 5321,
+          "section": "7.9",
+          "quote": "In recent years, use of the relay function through arbitrary sites has been used as part of hostile efforts to hide the actual origins of mail. Some sites have decided to limit the use of the relay function to known or identifiable sources, and implementations SHOULD provide the capability to perform this type of filtering."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server is configured as an open relay or has permissive relay policies",
+        "No authentication or IP-based access control enforced for relay"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict relay restrictions, require SMTP AUTH for mail submission, and use IP-based access controls to limit relay capabilities to trusted networks only.",
+      "fingerprint": "f7e89bd7346fe156c0af9908dd669e45f02b6939e97dc24e78a4fa332b3e8b0d"
+    },
+    {
+      "id": "e0052129-8a87-469e-86cc-12d381f1b3a5",
+      "technique_name": "EHLO to HELO Downgrade",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An on-path attacker intercepts the initial SMTP connection between the client and server. Step 2: The attacker drops or modifies the client's 'EHLO' command, which is used to negotiate modern SMTP service extensions (such as STARTTLS, authentication, or 8BITMIME). Step 3: The client, expecting a failure or timeout, falls back to sending the legacy 'HELO' command as specified in the RFC. Step 4: The server responds to 'HELO' without advertising any extensions, forcing the session to proceed using the unextended, legacy SMTP protocol, effectively bypassing negotiated security features.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "2.2.1",
+          "quote": "Contemporary SMTP implementations MUST support the basic extension mechanisms. For instance, servers MUST support the EHLO command even if they do not implement any specific extensions and clients SHOULD preferentially utilize EHLO rather than HELO. (However, for compatibility with older conforming implementations, SMTP clients and servers MUST support the original HELO mechanisms as a fallback.)"
+        },
+        {
+          "rfc": 5321,
+          "section": "3.2",
+          "quote": "For a particular connection attempt, if the server returns a 'command not recognized' response to EHLO, the client SHOULD be able to fall back and send HELO."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.1.1.1",
+          "quote": "A client SMTP SHOULD start an SMTP session by issuing the EHLO command. ... Older client SMTP systems MAY, as discussed above, use HELO (as specified in RFC 821) instead of EHLO, and servers MUST support the HELO command and reply properly to it."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client implements EHLO-to-HELO fallback logic",
+        "server supports legacy HELO command"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Implement strict TLS enforcement (e.g., SMTP TLS Mandatory / RFC 3207 strict mode) where the server rejects HELO commands or refuses to proceed with mail transactions if EHLO is not used and TLS is not established. Clients should be configured to fail the transaction rather than fall back to HELO if EHLO is blocked.",
+      "fingerprint": "fb6e216fe76c9f2a74f6e525a40425948b92f3f2f05b54b9a53dd1f36e35da57"
+    },
+    {
+      "id": "ff0a917a-9db0-4def-85d7-896853f99618",
+      "technique_name": "VRFY/EXPN Address Harvesting",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker connects to an SMTP server. Step 2: The attacker sends the VRFY command with a target username or the EXPN command with a mailing list name. Step 3: If the server supports these commands and does not restrict them, it returns a 250 response containing the verified user's full name, mailbox, or the complete list of mailing list members, enabling address harvesting for spam or targeted attacks.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.3",
+          "quote": "On the public Internet, the contents of mailing lists have become popular as an address information source for so-called 'spammers.' The use of EXPN to 'harvest' addresses has increased..."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.5.1",
+          "quote": "SMTP provides commands to verify a user name or obtain the content of a mailing list. This is done with the VRFY and EXPN commands..."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server has VRFY or EXPN enabled",
+        "Attacker has network access to the SMTP server (port 25)"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Disable VRFY and EXPN commands on public-facing SMTP servers, or restrict them to authenticated users within the administrative domain. Return a 252 response if disabled for security reasons.",
+      "fingerprint": "8c37e48055ff0db89f2e4fd43aabd054907553008fd7ee9f32e73d17332443e7"
+    },
+    {
+      "id": "a233109a-bae5-471f-a8dc-59b0538e0530",
+      "technique_name": "SMTP Command Flooding / Resource Exhaustion via RCPT TO",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker establishes a TCP connection to the SMTP server. Step 2: Attacker sends a valid EHLO and MAIL FROM command. Step 3: Attacker sends a massive number of RCPT TO commands with invalid or non-existent addresses, exhausting server resources (CPU, memory, or connection limits) as the server attempts to validate each recipient. Step 4: Server becomes unresponsive to legitimate traffic due to resource exhaustion.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.8",
+          "quote": "In recent years, there has been an increase of attacks on SMTP servers... simply to make the servers inaccessible to others (i.e., as an application-level denial of service attack)... if a server determines that a large number of RCPT TO commands are being sent, most or all with invalid addresses, as part of such an attack, it would be reasonable for the server to close the connection after generating an appropriate number of 5yz (normally 550) replies."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.8",
+          "quote": "The minimum total number of recipients that MUST be buffered is 100 recipients. Rejection of messages (for excessive recipients) with fewer than 100 RCPT commands is a violation of this specification."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish TCP connection to port 25",
+        "Server does not implement rate limiting or connection throttling"
+      ],
+      "entities_involved": [
+        "attacker",
+        "smtp_server"
+      ],
+      "mitigation": "Implement rate limiting on RCPT TO commands, enforce maximum recipient limits per transaction, use connection throttling, and deploy intrusion prevention systems (IPS) to detect and block command flooding patterns.",
+      "fingerprint": "2873b86b99a67588cbb47c35d26a6f89b0bc684ab2a2123bb2486c54d45e021b"
+    },
+    {
+      "id": "45a2baab-24d9-4bab-a608-733657919ba1",
+      "technique_name": "SMTP Message Content Oversized Payload",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker initiates a DATA command and sends a message body exceeding the minimum required 64K octets, or exceeding the server's configured maximum message size. Step 2: If the server does not properly enforce size limits or uses fixed-size buffers for message storage, it may lead to resource exhaustion, disk space depletion, or buffer overflows. Step 3: The attacker achieves denial of service by consuming server resources or crashing the mail transfer agent.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.7",
+          "quote": "The maximum total length of a message content (including any message header section as well as the message body) MUST BE at least 64K octets. ... SMTP server systems that must impose restrictions SHOULD implement the 'SIZE' service extension of RFC 1870 [10]..."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.9",
+          "quote": "Errors due to exceeding these limits may be reported by using the reply codes. ... 552 Too much mail data."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an SMTP session and issue a DATA command",
+        "Server lacks proper message size limits or buffer overflow protections"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement and enforce maximum message size limits using the SIZE extension (RFC 1870). Use streaming or chunked processing for message data instead of loading entire messages into memory. Monitor and limit disk space usage for queued messages. Reject oversized messages with a 552 reply code.",
+      "fingerprint": "7449d1c27e1ba5591c43207e5c2b304f112d14b92dabdb2c3fecc9ca378b852c"
+    },
+    {
+      "id": "71a2f166-995f-4f0a-88b0-e57e1dcf28d3",
+      "technique_name": "VRFY/EXPN Information Disclosure via Missing Validation",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker sends a VRFY or EXPN command to an SMTP server. Step 2: The server, lacking proper validation or access controls, verifies the existence of a user or expands a mailing list. Step 3: The server returns a 250 response with the verified address or list of addresses, allowing the attacker to harvest valid email addresses for spam or targeted attacks.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.3",
+          "quote": "On the public Internet, the contents of mailing lists have become popular as an address information source for so-called 'spammers.' The use of EXPN to 'harvest' addresses has increased..."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.5.1",
+          "quote": "SMTP provides commands to verify a user name or obtain the content of a mailing list. This is done with the VRFY and EXPN commands..."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server supports VRFY or EXPN commands",
+        "Server does not restrict these commands to authenticated users or internal networks"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Disable VRFY and EXPN commands on public-facing SMTP servers, or restrict their use to authenticated users within a trusted administrative domain. Return a 252 response if disabled.",
+      "fingerprint": "4f081e4d33c3c3fd6f8b48e81bab218db171d74f95b756438a45f5435daa95db"
+    },
+    {
+      "id": "5738e19e-89de-4b02-bc6f-ba0d6f5d7215",
+      "technique_name": "VRFY/EXPN Information Disclosure via Ambiguous Reply Codes",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The RFC mandates that if VRFY/EXPN are disabled for security, the server MUST return a 252 response. Step 2: However, it also states that returning a 250 reply after only checking syntax violates the rule, and always returning 550 is also non-conforming. Step 3: This creates an ambiguity where implementations might inconsistently handle 'apparent validity' vs 'actual verification', potentially leaking information about address existence through subtle differences in reply codes (e.g., 252 vs 550 vs 502) or response times, allowing attackers to enumerate valid addresses.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.3",
+          "quote": "If a site disables these commands for security reasons, the SMTP server MUST return a 252 response, rather than a code that could be confused with successful or unsuccessful verification."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.5.3",
+          "quote": "A server MUST NOT return a 250 code in response to a VRFY or EXPN command unless it has actually verified the address."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can connect to the SMTP server",
+        "Server implements VRFY/EXPN with security restrictions"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict, uniform 252 responses for all VRFY/EXPN queries when disabled, ensuring no timing side-channels or subtle code variations leak address validity. Alternatively, completely disable VRFY/EXPN and return 502.",
+      "fingerprint": "f669c532a2f92ce2fe79f46749e68f3bfbc4f7f68a8ae478b76846c01a7d7335"
+    },
+    {
+      "id": "413c9e85-9283-4071-87b7-1e5f21b377ed",
+      "technique_name": "SMTP Command Line Oversized Payload",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker sends an SMTP command (e.g., EHLO, MAIL FROM, RCPT TO) with a payload exceeding the 512-octet maximum command line length specified in RFC 5321. Step 2: If the SMTP server implementation fails to strictly enforce the 512-octet limit or uses fixed-size buffers without proper bounds checking, it may cause a buffer overflow or crash. Step 3: The attacker achieves denial of service or potentially remote code execution depending on the server's memory handling.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.4",
+          "quote": "The maximum total length of a command line including the command word and the <CRLF> is 512 octets.  SMTP extensions may be used to increase this limit."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.9",
+          "quote": "Errors due to exceeding these limits may be reported by using the reply codes. Some examples of reply codes are: 500 Line too long."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish a TCP connection to the SMTP server on port 25",
+        "SMTP server implementation has a bug in parsing or buffer allocation for command lines"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict enforcement of the 512-octet command line limit (or negotiated extension limit). Use dynamic memory allocation or properly bounded buffers for command parsing. Reject commands exceeding the limit with a 500 or 501 reply code before processing.",
+      "fingerprint": "809a8532760b337391f110fa096563c9a482083cacb45f53eb94c5f3e70f9657"
+    },
+    {
+      "id": "a7690a62-a991-4335-a902-79fbf35f3b21",
+      "technique_name": "Mail Loop / Bounce Storm DoS",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a message with a forged or invalid return path to a server configured to generate bounce messages. Step 2: The server attempts delivery, fails, and generates a bounce notification to the return path. Step 3: If the return path points to another server that also bounces, or if the attacker controls the return path to reflect back, a loop is created. Step 4: Exponential growth of bounce messages consumes bandwidth, disk space, and CPU on multiple servers, leading to a distributed DoS.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "6.3",
+          "quote": "Simple counting of the number of 'Received:' header fields in a message has proven to be an effective, although rarely optimal, method of detecting loops in mail systems. SMTP servers using this technique SHOULD use a large rejection threshold, normally at least 100 Received entries."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.6.3",
+          "quote": "One way to prevent loops in error reporting is to specify a null reverse-path in the MAIL command of a notification message... SMTP servers MUST NOT send notification messages about problems transporting notification messages."
+        }
+      ],
+      "prerequisites": [
+        "Server generates bounce messages for undeliverable mail",
+        "Server lacks robust loop detection or null reverse-path enforcement"
+      ],
+      "entities_involved": [
+        "attacker",
+        "smtp_server",
+        "relay_server"
+      ],
+      "mitigation": "Enforce null reverse-path (MAIL FROM:<>) for all bounce messages, implement strict Received header counting to detect and drop looping messages, and validate return paths before generating bounces.",
+      "fingerprint": "8823a1af9364bb5b6b33cac44ec692b0669f003fcc3cd36ef289db7b564445c5"
+    },
+    {
+      "id": "7b83c357-aaee-4efd-9fa0-b33a219d701e",
+      "technique_name": "Address Verification via VRFY/EXPN Commands",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker connects to an SMTP server that supports the VRFY or EXPN commands. Step 2: Attacker sends a VRFY command with a target username or email address to verify its existence. Step 3: If the server responds with a 250 code, the attacker confirms the address is valid. Step 4: Attacker uses EXPN to expand mailing lists and harvest email addresses. This bypasses any intended access controls or privacy measures, allowing unauthorized enumeration of valid users and mailing list members.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.3",
+          "quote": "As discussed in Section 3.5, individual sites may want to disable either or both of VRFY or EXPN for security reasons (see below). As a corollary to the above, implementations that permit this MUST NOT appear to have verified addresses that are not, in fact, verified."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.5.1",
+          "quote": "SMTP provides commands to verify a user name or obtain the content of a mailing list. This is done with the VRFY and EXPN commands, which have character string arguments."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server supports VRFY or EXPN commands",
+        "No authentication required to use VRFY/EXPN"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Disable VRFY and EXPN commands entirely, or restrict their use to authenticated users within a trusted administrative domain. Return a 252 response code if verification is not possible or disabled.",
+      "fingerprint": "39ece17ede405574ca596f84a3985f4d377f4224dca0cb8c6e763e7013178eb8"
+    },
+    {
+      "id": "97034716-6ccf-4f76-8c0f-01a6b7c0e710",
+      "technique_name": "Mailing List Explosion / Alias Expansion DoS",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a message to a known mailing list or alias address on the target server. Step 2: The server expands the alias/list, potentially triggering recursive expansion or massive fan-out to thousands of recipients. Step 3: The server's queue fills up, CPU/memory resources are exhausted processing the expansion and generating individual delivery attempts, causing a denial of service for legitimate mail.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.9",
+          "quote": "An important mail facility is a mechanism for multi-destination delivery of a single message, by transforming (or 'expanding' or 'exploding') a pseudo-mailbox address into a list of destination mailbox addresses."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.5.4.1",
+          "quote": "An SMTP client may have a large queue of messages for each unavailable destination host. If all of these messages were retried in every retry cycle, there would be excessive Internet overhead and the sending system would be blocked for a long period."
+        }
+      ],
+      "prerequisites": [
+        "Target server hosts large mailing lists or aliases",
+        "Server lacks limits on list expansion size or recursion depth"
+      ],
+      "entities_involved": [
+        "attacker",
+        "smtp_server",
+        "mailing_list_manager"
+      ],
+      "mitigation": "Limit the maximum number of recipients per expanded list, implement recursion detection for aliases, and throttle outbound delivery rates for list expansions.",
+      "fingerprint": "185b7798371f1b0e54ad8e5459099270e6a9572a459d6e8a9d7206baff51aabd"
+    },
+    {
+      "id": "33ae83e9-24c4-462f-86ae-76009766a6d8",
+      "technique_name": "DATA Command State Confusion via Premature Termination",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker initiates a mail transaction with MAIL FROM and RCPT TO commands. Step 2: Attacker sends the DATA command. Step 3: Instead of sending valid mail data, the attacker immediately sends the end-of-data indicator '<CRLF>.<CRLF>' or malformed data that triggers an early state transition. Step 4: If the server's state machine incorrectly processes the transaction as complete without validating the presence of required headers or data, it may accept an empty or malformed message, bypassing content filters or causing state desynchronization between the client and server. This exploits the lock-step nature of the protocol and the server's responsibility to process stored recipients and data upon receiving the end-of-data indicator.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.3",
+          "quote": "The end of mail data indicator also confirms the mail transaction and tells the SMTP server to now process the stored recipients and mail data."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.1.1.4",
+          "quote": "Receipt of the end of mail data indication requires the server to process the stored mail transaction information. This processing consumes the information in the reverse-path buffer, the forward-path buffer, and the mail data buffer, and on the completion of this command these buffers are cleared."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate a mail transaction",
+        "Server implementation does not strictly validate message content or headers before accepting the transaction"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict validation of message content and headers before accepting the end-of-data indicator. Ensure the state machine transitions to 'Transaction Complete' only after successful validation and processing of all required components.",
+      "fingerprint": "0c3204e170848ebbf268b9e7e1bc627a1dc5494baa993aa2ece0bc9fca0d7903"
+    },
+    {
+      "id": "dc92cc7b-b48d-4059-8c6a-44c67c0abce3",
+      "technique_name": "Sender Address Spoofing via MAIL FROM",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker connects to an SMTP server. Step 2: Attacker initiates a mail transaction using the MAIL FROM command with a forged sender address. Step 3: Since SMTP does not inherently validate the sender address in the MAIL FROM command, the server accepts the transaction. Step 4: Attacker sends the message content, which appears to originate from the spoofed address, bypassing any sender authentication mechanisms.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.1",
+          "quote": "SMTP mail is inherently insecure in that it is feasible for even fairly casual users to negotiate directly with receiving and relaying SMTP servers and create messages that will trick a naive recipient into believing that they came from somewhere else."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.3",
+          "quote": "The transaction starts with a MAIL command that gives the sender identification. (In general, the MAIL command may be sent only when no mail transaction is in progress; see Section 4.1.4.)"
+        }
+      ],
+      "prerequisites": [
+        "SMTP server does not enforce sender address validation",
+        "No SPF/DKIM/DMARC checks in place"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement SPF, DKIM, and DMARC to validate sender addresses. Require SMTP AUTH for mail submission to ensure the sender is authenticated.",
+      "fingerprint": "b93b31fc566e99996884f1e00c92f8666ed05ce97bf8389f1d0bc51a026152c8"
+    },
+    {
+      "id": "12eef2f0-2c0b-4ed0-a848-806c158adad4",
+      "technique_name": "Mail Loop via Missing Return-Path Validation",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker sends a message with a crafted Return-Path or null reverse-path. Step 2: The receiving server fails to validate the return path or detect the loop condition. Step 3: The server generates a bounce message that is sent back to the attacker-controlled address, which forwards it again, creating a mail loop that consumes server resources and bandwidth.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "6.3",
+          "quote": "Simple counting of the number of 'Received:' header fields in a message has proven to be an effective, although rarely optimal, method of detecting loops in mail systems."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.6.3",
+          "quote": "One way to prevent loops in error reporting is to specify a null reverse-path in the MAIL command of a notification message."
+        }
+      ],
+      "prerequisites": [
+        "Server processes bounce messages",
+        "Server lacks loop detection mechanisms (e.g., Received header counting)"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement loop detection by counting Received headers and rejecting messages that exceed a threshold. Validate return paths and use null reverse-paths for bounce messages.",
+      "fingerprint": "96f972d6782403499356dbe579728de7555abb9ef10716ee2ee7e55f1adbaf4b"
+    },
+    {
+      "id": "607cdcfc-b072-4f35-a71d-b3d50bd94207",
+      "technique_name": "SMTP Banner Information Disclosure",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker initiates a TCP connection to the SMTP server on port 25. Step 2: The server responds with a 220 greeting message. Step 3: The greeting message often contains the server's software name, version number, and sometimes the domain name, allowing the attacker to fingerprint the server and identify known vulnerabilities.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.1",
+          "quote": "SMTP server implementations MAY include identification of their software and version information in the connection greeting reply after the 220 code... Implementations MAY make provision for SMTP servers to disable the software and version announcement where it causes security concerns."
+        },
+        {
+          "rfc": 5321,
+          "section": "7.5",
+          "quote": "There has been an ongoing debate about the tradeoffs between the debugging advantages of announcing server type and version... and the disadvantages of exposing information that might be useful in a potential hostile attack."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has network access to the SMTP server"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Configure the SMTP server to suppress software and version information in the 220 greeting message, providing only the domain name.",
+      "fingerprint": "fcafceae12a4329e6d584242edc09778bdd206816cf2dfa9cfb146c8a0d46cf7"
+    },
+    {
+      "id": "83f7203c-e738-449e-b28c-008fe3f8e319",
+      "technique_name": "SMTP Reply Line Oversized Payload",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker triggers a server response that generates a long reply line, or sends a command that causes the server to construct a large reply. Step 2: If the server's reply generation logic or the client's reply parsing logic does not enforce the 512-octet maximum reply line length, it may lead to buffer overflows or resource exhaustion. Step 3: The vulnerability can be exploited to crash the client or server, or to cause denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.5",
+          "quote": "The maximum total length of a reply line including the reply code and the <CRLF> is 512 octets.  More information may be conveyed through multiple-line replies."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can interact with the SMTP server",
+        "Client or server implementation lacks bounds checking on reply lines"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce the 512-octet limit on reply lines. Use multiline replies (with hyphen continuation) for longer messages. Implement robust buffer management in both client and server reply handling code.",
+      "fingerprint": "f01d1cffedb515dfc30981943c60a92b4c33caa87274ed1630b547d6b44234b0"
+    },
+    {
+      "id": "9c5a6173-99ed-498a-8ec6-7692f9d3e8ef",
+      "technique_name": "Case-Sensitivity Ambiguity in Mailbox Local-Parts",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The RFC states that the local-part of a mailbox MUST BE treated as case sensitive. Step 2: However, it also notes that exploiting case sensitivity impedes interoperability and is discouraged, and that some servers require upper case commands. Step 3: This ambiguity can lead to inconsistent address resolution across different MTAs, potentially causing mail delivery failures or allowing attackers to bypass filters by manipulating the case of the local-part (e.g., 'User@domain.com' vs 'user@domain.com').",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "2.4",
+          "quote": "The local-part of a mailbox MUST BE treated as case sensitive. Therefore, SMTP implementations MUST take care to preserve the case of mailbox local-parts."
+        },
+        {
+          "rfc": 5321,
+          "section": "2.4",
+          "quote": "However, exploiting the case sensitivity of mailbox local-parts impedes interoperability and is discouraged."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can control the local-part of the recipient address",
+        "Server and client have inconsistent case-handling policies"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Standardize on case-insensitive local-part handling where possible, or ensure strict case preservation and consistent validation across all relay hops. Document and enforce case-sensitivity policies clearly.",
+      "fingerprint": "76f8012970e70058169fc7ded521c395ccef029bb3a196715a5fd1f67d8c2e35"
+    },
+    {
+      "id": "d6aa3e28-a2ef-4dfe-a95c-f4d184e71968",
+      "technique_name": "State Confusion via Missing Command Sequence Validation",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends SMTP commands out of the expected sequence (e.g., RCPT TO before MAIL FROM, or DATA without recipients). Step 2: The server fails to validate the command sequence against the protocol state machine. Step 3: The server may enter an undefined state, leak information, or crash, potentially allowing the attacker to bypass security controls or cause a denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.1.4",
+          "quote": "If the commands in a transaction are out of order to the degree that they cannot be processed by the server, a 503 failure reply MUST be returned..."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.3",
+          "quote": "Mail transaction commands MUST be used in the order discussed above."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send SMTP commands",
+        "Server implementation does not strictly enforce command sequencing"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement a strict state machine that validates the sequence of SMTP commands. Return a 503 'Bad sequence of commands' error for any out-of-order commands.",
+      "fingerprint": "104b2d5480591f8ad7735662a0016fe4a61e8fbeeeaf8f54bb7af1c00a338198"
+    },
+    {
+      "id": "816e8112-c6a8-445a-b7d9-a4751c5eb965",
+      "technique_name": "Forwarding Address Disclosure via 251/551 Replies",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends an RCPT TO command with an old or alias email address. Step 2: The SMTP server, configured to forward mail, responds with a 251 (User not local; will forward to <forward-path>) or 551 (User not local; please try <forward-path>) reply code. Step 3: The response reveals the new, valid forwarding address, leaking private user information.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.4",
+          "quote": "Servers MAY forward messages when they are aware of an address change. When they do so, they MAY either provide address-updating information with a 251 code... SMTP server implementations that support the 251 and/or 551 reply codes SHOULD provide configuration mechanisms so that sites that conclude that they would undesirably disclose information can disable or restrict their use."
+        },
+        {
+          "rfc": 5321,
+          "section": "7.7",
+          "quote": "As discussed in Section 3.4, use of the 251 or 551 reply codes to identify the replacement address associated with a mailbox may inadvertently disclose sensitive information."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server supports address forwarding",
+        "Server is configured to return 251 or 551 codes with the new address"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Configure the SMTP server to perform silent forwarding (returning 250 OK) instead of 251/551, or disable the disclosure of forwarding addresses in error/success replies.",
+      "fingerprint": "7330a79106e881a00bfb8278751bad1cd08b6327e678423071e6511c50eeb692"
+    },
+    {
+      "id": "7c8709ad-c5ce-47a6-afab-4abf3824e54f",
+      "technique_name": "SMTP Command Injection via Missing Parameter Validation",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends an SMTP command (e.g., MAIL FROM, RCPT TO, or EHLO) with malformed or unexpectedly long parameters. Step 2: The server fails to validate the length or syntax of the parameters against the protocol limits. Step 3: The server may crash, enter an undefined state, or be vulnerable to buffer overflow or command injection attacks.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.1.2",
+          "quote": "SMTP servers that receive a command in which invalid character codes have been employed, and for which there are no other reasons for rejection, MUST reject that command with a 501 response..."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1",
+          "quote": "Every implementation MUST be able to receive objects of at least these sizes. Objects larger than these sizes SHOULD be avoided when possible."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can connect to the SMTP server",
+        "Server implementation lacks robust input validation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict input validation for all SMTP commands, enforcing maximum length limits and rejecting commands with invalid characters or syntax using appropriate 5xx error codes.",
+      "fingerprint": "94d4487bfe889ff95bde701dd478e84d0eb62f18ee1a45b98ca95226a97a68cb"
+    },
+    {
+      "id": "9bf63cac-ea08-4b1f-92bf-da6461b4f156",
+      "technique_name": "Extension Requeue and Fallback Downgrade",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker manipulates DNS or network routing to force an intermediate relay to connect to a malicious or compromised next-hop SMTP server that does not support a critical security extension (e.g., a specific encryption or authentication extension). Step 2: The intermediate relay, following RFC guidelines, queues the message and waits for a timeout. Step 3: After the timeout, the relay falls back to transmitting the message without the required extension (unextended format). Step 4: The message is delivered in a less secure state than originally intended by the sender, bypassing the extension's security guarantees.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "2.2.3",
+          "quote": "In particular, if an extension implies that the delivery path normally supports special features of that extension, and an intermediate SMTP system finds a next hop that does not support the required extension, it MAY choose, based on the specific extension and circumstances, to requeue the message and try later and/or try an alternate MX host. If this strategy is employed, the timeout to fall back to an unextended format (if one is available) SHOULD be less than the normal timeout for bouncing as undeliverable"
+        }
+      ],
+      "prerequisites": [
+        "attacker can influence routing or DNS",
+        "intermediate relay supports fallback to unextended format",
+        "target extension is not strictly enforced as mandatory for delivery"
+      ],
+      "entities_involved": [
+        "client",
+        "intermediate relay",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Configure SMTP extensions as strictly mandatory for specific mail flows. If a required extension is not supported by the next hop, the relay should immediately bounce the message as undeliverable rather than queuing it for a fallback to an unextended format.",
+      "fingerprint": "05c7106ac0735b4d0ff1ec0d83f5d22f23f55161f93a04b240031d7ad0c13de6"
+    },
+    {
+      "id": "540194c4-20e4-4618-aa1f-7e81b4cee533",
+      "technique_name": "VRFY/EXPN State Bypass via Command Sequencing",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker initiates an SMTP connection and sends EHLO to initialize the session state. Step 2: Attacker sends a VRFY or EXPN command. Step 3: If the server implementation incorrectly allows VRFY/EXPN to be processed without a prior EHLO or HELO (violating the state machine requirement that EHLO initializes the session), or if the server fails to reset state tables properly between transactions, the attacker may bypass access controls or state-dependent filtering tied to the EHLO handshake. This exploits the ambiguity in Section 4.1.4 regarding whether non-mail transactions require EHLO initialization.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.1.4",
+          "quote": "A session that will contain mail transactions MUST first be initialized by the use of the EHLO command. An SMTP server SHOULD accept commands for non-mail transactions (e.g., VRFY or EXPN) without this initialization."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.1.1.1",
+          "quote": "These commands, and a '250 OK' reply to one of them, confirm that both the SMTP client and the SMTP server are in the initial state, that is, there is no transaction in progress and all state tables and buffers are cleared."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can connect to the SMTP server",
+        "Server implementation allows VRFY/EXPN without EHLO or fails to enforce state initialization"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce strict state machine transitions requiring EHLO/HELO before processing any commands, including VRFY and EXPN. Ensure state tables are cleared and access controls are applied regardless of command sequence.",
+      "fingerprint": "875d33e397bff7c56e8e0a00fd76102a2a33792a49dc31e6e30e426059a2d4e3"
+    },
+    {
+      "id": "b7c9f44e-f536-4ad2-b242-d9dd6c2fb092",
+      "technique_name": "Connection Exhaustion via Slowloris-style SMTP",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker opens multiple TCP connections to the SMTP server. Step 2: Attacker sends the initial EHLO command and then sends subsequent commands (MAIL FROM, RCPT TO, DATA) extremely slowly, or sends NOOP commands periodically to keep connections alive. Step 3: The server maintains these half-open or idle connections, consuming file descriptors and memory. Step 4: Legitimate clients are unable to establish new connections because the server's connection pool is exhausted.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.5.3.2.7",
+          "quote": "An SMTP server SHOULD have a timeout of at least 5 minutes while it is awaiting the next command from the sender."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.8",
+          "quote": "An SMTP server MUST NOT intentionally close the connection under normal operational circumstances... except... After a timeout, as specified in Section 4.5.3.2, occurs waiting for the client to send a command or data."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish multiple TCP connections",
+        "Server has a high timeout threshold (e.g., 5 minutes) and limited max connections"
+      ],
+      "entities_involved": [
+        "attacker",
+        "smtp_server"
+      ],
+      "mitigation": "Reduce idle connection timeouts where possible, implement per-IP connection limits, use SYN cookies, and deploy reverse proxies to handle connection queuing.",
+      "fingerprint": "7649464a85888c4c3e2e0bbcbec09e84c0cc6a91d63b5956534a425465061c54"
+    },
+    {
+      "id": "66dfd0eb-52a4-4244-afdb-c0dcabb08416",
+      "technique_name": "Ambiguity in VRFY/EXPN Multiline Reply Parsing",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The RFC specifies multiline replies for VRFY/EXPN with specific formats (e.g., '250-User <email>'). Step 2: It allows for free-form text in exceptional circumstances and notes that response interpretation should be careful. Step 3: This ambiguity can lead to parsing vulnerabilities where attackers craft malformed multiline replies to confuse client parsers, potentially causing information disclosure, denial of service, or injection of malicious data into client applications.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.5.1",
+          "quote": "The case of an ambiguous request is discussed above... 553- Ambiguous; Possibilities are..."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.5.2",
+          "quote": "In circumstances exceptional enough to justify violating the intent of this specification, free-form text MAY be returned."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can control the SMTP server response (e.g., via a vulnerable relay or compromised server)",
+        "Client relies on parsing VRFY/EXPN multiline replies"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement robust, strict parsing for multiline SMTP replies. Validate all data against expected formats and reject or sanitize unexpected free-form text. Avoid relying on VRFY/EXPN for critical security decisions.",
+      "fingerprint": "fe4beb026eef65e0b26f93d65bb26798992721491f1260d1e4786a835778473c"
+    },
+    {
+      "id": "3d35745f-5c17-465c-b3f7-3866202dfd3b",
+      "technique_name": "Ambiguous Handling of Source Routes",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The RFC deprecates source routes but states servers MUST be prepared to encounter them. Step 2: It allows servers to ignore routes, decline relaying, or strip them. Step 3: This ambiguity can be exploited by attackers to test server relaying policies or to cause inconsistent routing behavior, potentially leading to mail loops or delivery to unintended hosts if different servers in the path handle source routes differently.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.3",
+          "quote": "Servers MUST be prepared to encounter a list of source routes in the forward-path, but they SHOULD ignore the routes or MAY decline to support the relaying they imply."
+        },
+        {
+          "rfc": 5321,
+          "section": "C",
+          "quote": "A server that is reached by means of a source route... MUST remove its domain name from any forward-paths... and MAY remove all other source routing information."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can inject source routes into the forward-path",
+        "Multiple relays with inconsistent source route handling"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "relay"
+      ],
+      "mitigation": "Configure servers to strictly reject or strip source routes upon receipt. Implement consistent policies across all mail infrastructure to prevent routing ambiguities.",
+      "fingerprint": "d5fc17de7c300abd804e465bdd68f8bb7aad4d0ec58cb425e6a0ad14e12cb1f0"
+    },
+    {
+      "id": "adff413b-8f0b-4b7c-8ccc-d26ab7fa8fa1",
+      "technique_name": "SMTP Recipient Buffer Exhaustion",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends a MAIL FROM command followed by a large number of RCPT TO commands, exceeding the minimum required 100 recipients or the server's configured limit. Step 2: If the server's recipient buffer is not properly bounded or if it allocates excessive resources per recipient, it may lead to memory exhaustion or denial of service. Step 3: The attacker consumes server resources, potentially crashing the mail server or degrading performance for legitimate users.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.8",
+          "quote": "The minimum total number of recipients that MUST be buffered is 100 recipients. ... A server that imposes a limit on the number of recipients MUST behave in an orderly fashion, such as rejecting additional addresses over its limit rather than silently discarding addresses previously accepted."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.5.3.1.10",
+          "quote": "If an SMTP server has an implementation limit on the number of RCPT commands and this limit is exhausted, it MUST use a response code of 452..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can establish an SMTP session",
+        "Server implementation has unbounded recipient buffer or inefficient memory allocation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce a strict limit on the number of RCPT TO commands per transaction. Use dynamic memory allocation with proper bounds checking. Return a 452 reply code when the limit is reached. Implement rate limiting for RCPT commands to prevent rapid resource exhaustion.",
+      "fingerprint": "df2a518df2030b28fb59e6a9d72c8850a1397da836e87fe236617392bad95487"
+    },
+    {
+      "id": "d2a3d59f-a180-46d9-98f2-7a656e819d13",
+      "technique_name": "EHLO State Reset Bypass",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker initiates a session and sends EHLO. Step 2: Attacker begins a mail transaction (MAIL FROM, RCPT TO). Step 3: Attacker sends a second EHLO command in the middle of the transaction. Step 4: According to RFC 5321, the server MUST clear all buffers and reset the state as if a RSET command had been issued. If the server implementation fails to properly reset the state or incorrectly processes the subsequent commands, the attacker may confuse the server's state machine, potentially leading to unauthorized access or message injection. This exploits the state reset behavior of EHLO during an active transaction.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "4.1.4",
+          "quote": "An EHLO command MAY be issued by a client later in the session. If it is issued after the session begins and the EHLO command is acceptable to the SMTP server, the SMTP server MUST clear all buffers and reset the state exactly as if a RSET command had been issued."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send EHLO commands during an active transaction",
+        "Server implementation has a bug in handling EHLO state resets"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure strict adherence to the state reset requirements when EHLO is received during a transaction. Validate that all buffers are cleared and the state machine returns to the initial state before processing any subsequent commands.",
+      "fingerprint": "3daffe74001b09ffd566c7f25e3207698eb798c6496ba557f89caffc88fa5383"
+    },
+    {
+      "id": "696ebdbd-430c-437d-96fb-59e8ad775e14",
+      "technique_name": "VRFY/EXPN Address Harvesting and Resource Drain",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker connects to the SMTP server. Step 2: Attacker sends a high volume of VRFY or EXPN commands to enumerate valid users or mailing list members. Step 3: Each command forces the server to perform database lookups or file reads, consuming CPU and I/O resources. Step 4: The harvested addresses are later used for targeted spam or further attacks, while the initial harvesting degrades server performance.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.3",
+          "quote": "The use of EXPN to 'harvest' addresses has increased as list administrators have installed protections against inappropriate uses of the lists themselves."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.5.3",
+          "quote": "Implementations generally SHOULD be more aggressive about address verification in the case of VRFY than in the case of RCPT, even if it takes a little longer to do so."
+        }
+      ],
+      "prerequisites": [
+        "Server supports VRFY or EXPN commands",
+        "Server does not rate-limit verification commands"
+      ],
+      "entities_involved": [
+        "attacker",
+        "smtp_server"
+      ],
+      "mitigation": "Disable VRFY and EXPN commands entirely (return 252 or 502), or restrict them to authenticated users only. Implement rate limiting for verification requests.",
+      "fingerprint": "ae3175e3b3c2ada127d632a1a8a1efc7b2d038990dc3412fd71b2bbf4a3f97c6"
+    },
+    {
+      "id": "84a58338-7bd5-4650-b57b-c868ca5cfa56",
+      "technique_name": "TOCTOU in Address Verification and Expansion",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker sends a VRFY or EXPN command to verify an address or expand a mailing list. Step 2: The server checks the validity of the address or the contents of the list. Step 3: Between the check and the response, the address or list is modified (e.g., user deleted, list membership changed). Step 4: The server returns a response based on the stale state, potentially leaking information or causing inconsistent behavior.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.5.1",
+          "quote": "SMTP provides commands to verify a user name or obtain the content of a mailing list. This is done with the VRFY and EXPN commands, which have character string arguments."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.5.3",
+          "quote": "A server MUST NOT return a 250 code in response to a VRFY or EXPN command unless it has actually verified the address."
+        }
+      ],
+      "prerequisites": [
+        "Server supports VRFY/EXPN commands",
+        "Concurrent modification of user accounts or mailing lists is possible"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement atomic verification and response generation, or use locking mechanisms to prevent state changes during verification. Alternatively, disable VRFY/EXPN as recommended in Section 7.3.",
+      "fingerprint": "5540dcaaa0dac5a306caa1152ff9e992bce4d7584e1a0f8807d9a77edff6626b"
+    },
+    {
+      "id": "cf5cb722-a77b-4d1f-8b23-f23f2c70654b",
+      "technique_name": "Bypassing Access Controls via Silent Forwarding",
+      "category": "AuthBypass",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker sends a message to a known alias or mailing list address on an SMTP server. Step 2: The server silently forwards the message to the actual recipient address without notifying the sender. Step 3: The attacker bypasses any access controls or restrictions that might be in place for the final recipient address, as the message appears to originate from the alias/list address.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.4",
+          "quote": "Silent forwarding of messages (without server notification to the sender), for security or non-disclosure purposes, is common in the contemporary Internet."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.9.2",
+          "quote": "A mailing list may be said to operate by 'redistribution' rather than by 'forwarding'. To expand a list, the recipient mailer replaces the pseudo-mailbox address in the envelope with each of the expanded addresses in turn."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server supports silent forwarding or mailing list expansion",
+        "No authentication required to send to alias/list addresses"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict access controls for alias and mailing list addresses. Require authentication for sending to sensitive aliases/lists. Monitor and log forwarding activities.",
+      "fingerprint": "43790b04525e628802976ca18c2ee9d3370915367d436ce52b0a9dda173d7e26"
+    },
+    {
+      "id": "7dd720cd-7f85-429d-84eb-36d55c66c24c",
+      "technique_name": "Mailing List Expansion Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: A message is sent to a mailing list address. Step 2: The server begins expanding the list to individual recipients. Step 3: During expansion, the list membership is modified (e.g., members added or removed). Step 4: The server may deliver to a stale set of recipients, either missing new members or delivering to removed members, leading to information leakage or incomplete delivery.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.9",
+          "quote": "An important mail facility is a mechanism for multi-destination delivery of a single message, by transforming (or 'expanding' or 'exploding') a pseudo-mailbox address into a list of destination mailbox addresses."
+        },
+        {
+          "rfc": 5321,
+          "section": "3.9.2",
+          "quote": "To expand a list, the recipient mailer replaces the pseudo-mailbox address in the envelope with each of the expanded addresses in turn."
+        }
+      ],
+      "prerequisites": [
+        "Server supports mailing list expansion",
+        "List membership can be modified concurrently with message processing"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "mailing list manager"
+      ],
+      "mitigation": "Snapshot the mailing list membership at the start of expansion and use the snapshot for delivery. Implement locking to prevent list modifications during active expansion.",
+      "fingerprint": "1eed1c1b3606dd9e601da926b5d7f847d825f7b4e8c83e880173284714c9ea85"
+    },
+    {
+      "id": "94fef35a-5e4a-4800-99dc-1311ade71d86",
+      "technique_name": "Internal Network Topology Disclosure via Received Headers",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker receives an email from a target organization. Step 2: The attacker inspects the Received: header fields in the email. Step 3: The headers reveal internal hostnames, IP addresses, and mail routing paths of the target's internal network, aiding in network mapping and reconnaissance.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.6",
+          "quote": "In some circumstances, such as when mail originates from within a LAN whose hosts are not directly on the public Internet, trace ('Received') header fields produced in conformance with this specification may disclose host names and similar information that would not normally be available."
+        },
+        {
+          "rfc": 5321,
+          "section": "4.4",
+          "quote": "The FROM clause, which MUST be supplied in an SMTP environment, SHOULD contain both (1) the name of the source host as presented in the EHLO command and (2) an address literal containing the IP address of the source, determined from the TCP connection."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can receive emails from the target organization",
+        "SMTP servers include internal hostnames/IPs in Received headers"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "recipient"
+      ],
+      "mitigation": "Configure internal SMTP servers to use generic or external-facing hostnames in Received headers, or strip internal IP addresses before messages leave the organization's network.",
+      "fingerprint": "f32fe0f9e0b4e10a65c3c37a72a5f2247275fe2c49b555e3cc3169d22b877bd5"
+    },
+    {
+      "id": "94fcc060-736d-48a5-b18c-85e7c78bc248",
+      "technique_name": "Blind Copy (BCC) Disclosure via Trace Headers",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker sends an email to multiple recipients, including a BCC recipient. Step 2: The SMTP server processes the message and inserts Received: trace headers. Step 3: If the server incorrectly includes the FOR clause with multiple paths or copies the full set of RCPT arguments into the header section, the BCC recipient's address may be visible to other recipients, violating privacy.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "7.2",
+          "quote": "Especially when more than one RCPT command is present, and in order to avoid defeating some of the purpose of these mechanisms, SMTP clients and servers SHOULD NOT copy the full set of RCPT command arguments into the header section... The popular 'Apparently-to' header field is a violation of this principle as well as a common source of unintended information disclosure and SHOULD NOT be used."
+        },
+        {
+          "rfc": 5321,
+          "section": "7.6",
+          "quote": "Also, the optional FOR clause should be supplied with caution or not at all when multiple recipients are involved lest it inadvertently disclose the identities of 'blind copy' recipients to others."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server misconfigured to leak RCPT arguments into headers",
+        "Use of BCC in email transmission"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "recipient"
+      ],
+      "mitigation": "Ensure SMTP servers do not copy RCPT command arguments into message headers. Avoid using the FOR clause in Received headers when multiple recipients are involved.",
+      "fingerprint": "7f1df81bb8889134049c243747202ae9e0fcbb27e388f1c49eebf836649a6cf7"
+    },
+    {
+      "id": "a899f3ee-7721-4d75-b05c-e963b4e0b7d6",
+      "technique_name": "Inconsistent Handling of 8-bit Content and Extensions",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: The RFC states that unextended SMTP provides 7-bit transport only, and clients MUST NOT transmit 8-bit messages without negotiation. Step 2: However, it allows servers to clear the high-order bit or reject the message, and notes that 8BITMIME SHOULD be supported. Step 3: This can lead to ambiguous behavior where some servers silently corrupt 8-bit data by clearing the high bit, while others reject it, causing inconsistent message delivery and potential data loss or parsing errors downstream.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "2.4",
+          "quote": "If such messages are transmitted in violation of this rule, receiving SMTP servers MAY clear the high-order bit or reject the message as invalid."
+        },
+        {
+          "rfc": 5321,
+          "section": "2.4",
+          "quote": "8BITMIME SHOULD be supported by SMTP servers."
+        }
+      ],
+      "prerequisites": [
+        "Attacker or client sends 8-bit content without proper extension negotiation",
+        "Server implementation varies in handling non-ASCII data"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce 7-bit ASCII for unextended SMTP and require 8BITMIME negotiation for 8-bit content. Reject messages that violate these rules rather than silently modifying them.",
+      "fingerprint": "d23d57354e65ee09dd2f683a6393736504dbbea2882bfca960ce88482c1a813b"
+    },
+    {
+      "id": "9332c1f3-724d-4e60-ae8f-40e641087fba",
+      "technique_name": "Mail Transaction State Race",
+      "category": "RaceCondition",
+      "severity": "low",
+      "confidence": 0.65,
+      "description": "Step 1: A client initiates a mail transaction with MAIL FROM. Step 2: The client sends multiple RCPT TO commands. Step 3: Due to network delays or server processing, the server's state machine might not strictly enforce the sequential nature of commands if pipelining is used without proper synchronization. Step 4: This could lead to a race condition where the server processes RCPT commands before the MAIL FROM is fully validated, potentially accepting mail for invalid senders.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "3.3",
+          "quote": "There are three steps to SMTP mail transactions. The transaction starts with a MAIL command that gives the sender identification. ... A series of one or more RCPT commands follows, giving the receiver information."
+        },
+        {
+          "rfc": 5321,
+          "section": "2.1",
+          "quote": "The dialog is purposely lock-step, one-at-a-time, although this can be modified by mutually agreed upon extension requests such as command pipelining (RFC 2920 [19])."
+        }
+      ],
+      "prerequisites": [
+        "Server supports command pipelining (RFC 2920)",
+        "Server does not properly synchronize state updates across pipelined commands"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure strict state machine enforcement even with pipelining. Validate MAIL FROM before processing any RCPT TO commands in the pipeline.",
+      "fingerprint": "4ec1cdd2fb42e6b3cd42e59b61692321b32329c287e5dbc4f77d2c371a6e3b52"
+    },
+    {
+      "id": "0a565b7c-696d-4d6a-b09c-eb3d925cd383",
+      "technique_name": "Exploiting HELO/EHLO Fallback for Extension Bypass",
+      "category": "AuthBypass",
+      "severity": "low",
+      "confidence": 0.6,
+      "description": "Step 1: Attacker connects to an SMTP server and sends an EHLO command. Step 2: If the server does not support EHLO or returns an error, the attacker falls back to using the HELO command. Step 3: The server processes the HELO command without requiring any service extensions, potentially bypassing security features that rely on EHLO extensions (e.g., SMTP AUTH, STARTTLS). Step 4: Attacker proceeds with mail transaction without authentication or encryption.",
+      "rfc_references": [
+        {
+          "rfc": 5321,
+          "section": "2.2.1",
+          "quote": "Contemporary SMTP implementations MUST support the basic extension mechanisms. For instance, servers MUST support the EHLO command even if they do not implement any specific extensions and clients SHOULD preferentially utilize EHLO rather than HELO. (However, for compatibility with older conforming implementations, SMTP clients and servers MUST support the original HELO mechanisms as a fallback.)"
+        },
+        {
+          "rfc": 5321,
+          "section": "3.2",
+          "quote": "Older SMTP systems that are unable to support service extensions, and contemporary clients that do not require service extensions in the mail session being initiated, MAY use HELO instead of EHLO."
+        }
+      ],
+      "prerequisites": [
+        "SMTP server supports HELO fallback",
+        "Security extensions (e.g., AUTH, STARTTLS) are only negotiated via EHLO"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce the use of EHLO and require security extensions (e.g., STARTTLS, SMTP AUTH) for all sessions. Reject HELO commands if security extensions are mandatory.",
+      "fingerprint": "cb55bb0fe49c818c6596c18921711dbf1240283f61ea6463fc863c72cb9128f4"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T14:56:19.602135+00:00",
+    "model_used": "Qwen3.6-27B-Q4_K_M.gguf",
+    "total_tokens_used": 396137,
+    "analysis_duration_secs": 739.309733333,
+    "run_id": 38,
+    "input_hash": "ff4bf042cd50f7bded4fe90229d0449fbcab0e946ba36f0e826479c0b53943c5",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test novel (no-CVE) TLS 1.3 findings from rfc-analyzer reports.
+Test novel (no-CVE) TLS 1.3 findings from ietf-draft-analyzer reports.
 
 Findings tested:
 1. HRR + early_data confusion — does server accept early_data after HRR?

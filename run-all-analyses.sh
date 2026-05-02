@@ -4,7 +4,7 @@
 #
 # Requires:
 # - OPENAI_API_KEY or DEEPSEEK_API_KEY set in environment
-# - rfc-analyzer.toml configured with LLM endpoint
+# - ietf-draft-analyzer.toml configured with LLM endpoint
 # - cargo build completed
 
 set -euo pipefail

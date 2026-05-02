@@ -3,9 +3,9 @@
 #[tokio::test]
 #[ignore]
 async fn test_fetch_real_rfc_xml() {
-    use rfc_analyzer::config::FetcherConfig;
-    use rfc_analyzer::rfc::fetcher::RfcFetcher;
-    use rfc_analyzer::rfc::parser_xml;
+    use ietf_draft_analyzer::config::FetcherConfig;
+    use ietf_draft_analyzer::rfc::fetcher::RfcFetcher;
+    use ietf_draft_analyzer::rfc::parser_xml;
 
     let config = FetcherConfig::default();
     let fetcher = RfcFetcher::new(config);

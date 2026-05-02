@@ -1,0 +1,188 @@
+[
+  {
+    "caveats": [
+      "Requires a Telnet server that supports LINEMODE (RFC 1184).",
+      "The exact crash behavior depends on the server's implementation and memory layout.",
+      "Firewalls or network filters may block Telnet traffic.",
+      "Some servers may silently drop malformed packets without crashing."
+    ],
+    "description": "Demonstrates a buffer overflow in Telnet LINEMODE FORWARDMASK handling by sending an oversized mask.",
+    "expected_patched": "The target server rejects the malformed FORWARDMASK request, ignores it, or responds with an error without crashing.",
+    "expected_vulnerable": "The target server crashes, hangs, or exhibits undefined behavior due to the buffer overflow when processing the oversized FORWARDMASK data.",
+    "filename": "poc_forwardmask_buffer_overrun.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "156827cec3f0db35201bb3438ec3d3cc579fd3ceb805475b7de27f3e19823a13",
+    "lead_severity": "critical",
+    "lead_technique": "FORWARDMASK Buffer Overrun",
+    "setup": [
+      "Step 1: Ensure a vulnerable Telnet server supporting LINEMODE is running on the target host.",
+      "Step 2: Run this script against the target's IP and port (default: localhost:23)."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the attacker is on-path and can inject/modify Telnet negotiation commands.",
+      "Some Telnet servers may not fully implement RFC 1184 or may have non-standard behavior.",
+      "The script demonstrates the vulnerability but does not exploit it for malicious purposes.",
+      "In practice, an attacker would need to intercept an existing connection or inject commands during the initial negotiation phase.",
+      "Modern systems should use SSH instead of Telnet to prevent this and other protocol-level attacks."
+    ],
+    "description": "Demonstrates Telnet Linemode Downgrade by injecting DONT LINEMODE to force character-at-a-time mode.",
+    "expected_patched": "A properly secured Telnet server would either: 1) Reject unexpected DONT LINEMODE commands after negotiation is complete, 2) Ignore subnegotiations that attempt to clear the EDIT bit without proper authentication, or 3) Use cryptographic authentication of the negotiation phase (as recommended by using SSH instead). The connection would remain in LINEMODE with local editing enabled.",
+    "expected_vulnerable": "The Telnet server accepts the DONT LINEMODE command and/or the MODE=0 subnegotiation, switching to character-at-a-time mode. Subsequent input is processed character-by-character by the server, resulting in increased latency and potential input corruption for applications expecting local line editing. The test command 'whoami' will be processed in this degraded mode.",
+    "filename": "poc_telnet_linemode_downgrade.py",
+    "lead_category": "Downgrade",
+    "lead_fingerprint": "59e3d64f9bc5a92cc48059cb9df34384f494d41b2cfa8da84c5d82d1c3bbb38f",
+    "lead_severity": "high",
+    "lead_technique": "Telnet Linemode Downgrade to Character-at-a-Time",
+    "setup": [
+      "Step 1: Install a Telnet server (e.g., OpenSSH telnetd or inetutils-telnetd) on the target machine.",
+      "Step 2: Ensure the Telnet server is configured to support LINEMODE (RFC 1184) and allows negotiation.",
+      "Step 3: Run the script with the target IP and port as arguments."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the attacker can inject or modify Telnet subnegotiation commands.",
+      "The effectiveness of the race condition depends on network latency and the server's implementation of MODE command processing.",
+      "A vulnerable Telnet server supporting RFC 1184 Linemode is required for testing."
+    ],
+    "description": "Demonstrates a race condition in Telnet Linemode state transitions by rapidly sending conflicting MODE commands to desynchronize client and server states.",
+    "expected_patched": "The server correctly handles the rapid MODE commands, maintaining a synchronized state with the client. The EDIT and TRAPSIG modes remain consistent, and no security bypass occurs.",
+    "expected_vulnerable": "The server and client become desynchronized regarding the EDIT and TRAPSIG modes. This may result in the client ignoring local line editing or signal trapping protections, potentially allowing an attacker to bypass these security features.",
+    "filename": "poc_linemode_state_transition_race.py",
+    "lead_category": "RaceCondition",
+    "lead_fingerprint": "e00808fc02b8442632e72823d0af4c451a28237c3d11c00245b07c65def353eb",
+    "lead_severity": "high",
+    "lead_technique": "Linemode State Transition Race",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Start a vulnerable Telnet server that supports RFC 1184 Linemode (e.g., a custom server or a legacy implementation)."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the attacker can inject packets into the Telnet connection.",
+      "The behavior may vary depending on the Telnet server implementation.",
+      "Some servers may not support LINEMODE or may have additional security measures in place.",
+      "This PoC is for educational purposes only and should not be used against systems without explicit permission."
+    ],
+    "description": "Demonstrates Telnet LINEMODE state desynchronization by injecting a spoofed MODE command to desync client and server state machines.",
+    "expected_patched": "The server rejects the spoofed MODE command or ignores it, maintaining the original negotiated state. No state desynchronization occurs, and the connection remains secure.",
+    "expected_vulnerable": "The server acknowledges the spoofed MODE command, leading to state desynchronization. The client and server may interpret subsequent data and control characters differently, potentially causing command injection, data leakage, or denial of service.",
+    "filename": "poc_linemode_mode_mask_state_desynchronization.py",
+    "lead_category": "StateConfusion",
+    "lead_fingerprint": "c140eb1fec2d404a4b23808e022b3a3e95720daa88efe805fd022f192e2b04c2",
+    "lead_severity": "high",
+    "lead_technique": "Linemode Mode Mask State Desynchronization",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Start a Telnet server that supports LINEMODE negotiation (e.g., OpenBSD telnetd or a custom mock server).",
+      "Step 3: Run the script with the target IP and port: python3 poc_linemode_mode_mask_state_desynchronization.py <target_ip> <target_port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target supports the LINEMODE option",
+      "The specific behavior of a vulnerable target may vary depending on the implementation",
+      "This is a proof-of-concept and should only be used in authorized testing environments"
+    ],
+    "description": "Proof-of-concept for Telnet LINEMODE SLC subnegotiation processing vulnerability",
+    "expected_patched": "The target should ignore the malformed SLC subnegotiation or respond with an appropriate NOSUPPORT response, without crashing or entering an undefined state.",
+    "expected_vulnerable": "The target may crash, enter an undefined state, or incorrectly map a control character when processing the malformed SLC subnegotiation with an invalid function code.",
+    "filename": "poc_malformed_slc_subnegotiation.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "d017db48ca91a3dc8d9c8cdef892f38aa45789bee5577a791068fca5f564b6c4",
+    "lead_severity": "high",
+    "lead_technique": "Malformed SLC Subnegotiation Processing",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed",
+      "Step 2: Start a Telnet server that supports LINEMODE option",
+      "Step 3: Run the script with the target IP and port"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target implements the LINEMODE option (RFC 1184).",
+      "The exact behavior may vary depending on the server's implementation and memory layout.",
+      "Some servers may require initial Telnet negotiation before accepting LINEMODE subnegotiations.",
+      "Firewalls or IDS/IPS may block or alert on the oversized payload."
+    ],
+    "description": "Demonstrates a buffer overflow in Telnet LINEMODE FORWARDMASK by sending an oversized octet list.",
+    "expected_patched": "The target server correctly handles the oversized payload by either truncating it to 32 octets, rejecting the subnegotiation, or safely ignoring the excess data without crashing.",
+    "expected_vulnerable": "The target server crashes, hangs, or resets the connection due to a heap or stack buffer overflow when processing the oversized FORWARDMASK octet list.",
+    "filename": "poc_forwardmask_buffer_overflow.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "a9c5b8c4c531f2485f09fb4b8196b9f603e7b174943ab12bd059c4c09fd71e22",
+    "lead_severity": "high",
+    "lead_technique": "FORWARDMASK Buffer Overflow via Unbounded Octet List",
+    "setup": [
+      "Step 1: Ensure a vulnerable Telnet server implementing RFC 1184 LINEMODE is running on the target host.",
+      "Step 2: Run the script with the target IP and port: python3 poc_forwardmask_buffer_overflow.py <TARGET_IP> <TARGET_PORT>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the attacker is on-path and can inject packets into the Telnet session.",
+      "The target Telnet server must support the LINEMODE option (RFC 1184).",
+      "The Telnet client must accept SLC commands without strict validation of source or sequence.",
+      "The exact behavior may vary depending on the Telnet client implementation.",
+      "This script is for educational purposes only and should not be used against systems without explicit permission."
+    ],
+    "description": "Demonstrates Telnet LINEMODE SLC Special Character Injection via State Confusion by spoofing SLC commands to alter client-side character mappings.",
+    "expected_patched": "The Telnet client either rejects the SLC command because it does not originate from the expected peer (server) or because it violates the negotiated state machine rules. The character mapping remains unchanged, and typing 'a' sends the literal character 'a' to the server.",
+    "expected_vulnerable": "The Telnet client accepts the spoofed SLC command and updates its local character mapping. When the user types the character 'a' (0x61), the client sends an IAC IP (Interrupt Process) command to the server instead of the literal character 'a'. The server processes this as a legitimate signal, potentially interrupting the current process or session.",
+    "filename": "poc_slc_special_character_injection_via_state_confusion.py",
+    "lead_category": "StateConfusion",
+    "lead_fingerprint": "613cc7663c7a0cd331d461165d15debb9a9b818bbb7ee17dc1eeb851411508c0",
+    "lead_severity": "high",
+    "lead_technique": "SLC Special Character Injection via State Confusion",
+    "setup": [
+      "Step 1: Ensure a Telnet server supporting LINEMODE (RFC 1184) is running on the target host.",
+      "Step 2: Ensure the attacker machine is positioned on-path between the Telnet client and server (e.g., via ARP spoofing or network tap).",
+      "Step 3: Run the script with the target IP and port: python3 poc_slc_special_character_injection_via_state_confusion.py <target_ip> <target_port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target supports LINEMODE negotiation. If not, the server may ignore the SB command.",
+      "The exact number of triplets needed to trigger the overflow depends on the target's implementation. Adjust 'num_triplets' as needed.",
+      "Buffer overflows may not always result in a visible crash; they could lead to silent corruption or denial of service.",
+      "Ensure you have explicit permission to test the target system. Unauthorized testing is illegal.",
+      "Some modern Telnet implementations may have additional protections (e.g., ASLR, DEP) that mitigate exploitation."
+    ],
+    "description": "Demonstrates a potential buffer overflow in Telnet LINEMODE SLC subnegotiation by sending an excessive number of octet triplets.",
+    "expected_patched": "A patched implementation will validate the number of triplets against the maximum number of defined SLC functions (e.g., 17). It will either reject the subnegotiation with an error, truncate the list, or ignore the excess triplets. The server will remain stable, and the connection will likely continue normally or send a proper Telnet error response.",
+    "expected_vulnerable": "If the target Telnet server has a fixed-size buffer for parsing SLC triplets and does not validate the number of triplets, sending 100 triplets may cause a buffer overflow. This could result in a server crash, connection reset, or potentially arbitrary code execution. The script will likely observe a connection reset, timeout, or no response.",
+    "filename": "poc_slc_subnegotiation_buffer_overflow.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "56050e3e96409fe6123a1138877a3065ea47218b6239ae4d3c28c6f71a1bd094",
+    "lead_severity": "high",
+    "lead_technique": "SLC Subnegotiation Buffer Overflow via Excessive Triplets",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target Telnet server that supports LINEMODE negotiation (e.g., for testing purposes, a local vulnerable service or a test lab environment).",
+      "Step 3: Run the script with the target IP and port: python3 poc_slc_subnegotiation_buffer_overflow.py <target_ip> <target_port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the server supports LINEMODE and implements FORWARDMASK buffering as described in RFC 1184.",
+      "The impact depends on the server's implementation of buffer allocation and memory limits.",
+      "Some servers may ignore or reject large FORWARDMASK subnegotiations, mitigating the attack.",
+      "The script uses a fixed number of lines and mask characters; adjust these values to test different scenarios."
+    ],
+    "description": "Demonstrates Telnet LINEMODE FORWARDMASK buffer exhaustion by negotiating a large mask and sending matching data to trigger excessive memory allocation.",
+    "expected_patched": "The server limits the size of the FORWARDMASK buffer or validates the mask to prevent excessive memory allocation. Memory usage remains stable, and the server continues to operate normally.",
+    "expected_vulnerable": "The server allocates excessive memory to buffer incoming data based on the FORWARDMASK rules. Memory usage increases significantly, potentially leading to a denial of service if repeated or if the mask is large enough.",
+    "filename": "poc_FORWARDMASK_Buffer_Exhaustion.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "45dfe43b055b1c9ae9f21c6bf9c92a0b3503f4184c11ad5ebc8924addfae5016",
+    "lead_severity": "high",
+    "lead_technique": "FORWARDMASK Buffer Exhaustion",
+    "setup": [
+      "Step 1: Ensure a vulnerable Telnet server is running that supports LINEMODE and implements FORWARDMASK buffering.",
+      "Step 2: Run the script against the target server IP and port (default: localhost:23)."
+    ]
+  }
+]

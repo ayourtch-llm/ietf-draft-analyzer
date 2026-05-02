@@ -1,0 +1,313 @@
+[
+  {
+    "caveats": [
+      "This script is for educational and authorized testing purposes only.",
+      "Ensure you have explicit permission to test the target SMTP server.",
+      "Some servers may use greylisting or rate limiting, which could affect results.",
+      "The script uses a dummy external domain; do not use real domains to avoid spam complaints."
+    ],
+    "description": "Demonstrates SMTP Open Relay vulnerability by attempting to relay mail to an external domain without authentication.",
+    "expected_patched": "The server rejects the RCPT TO command for an external domain with a 550 error (e.g., '550 5.7.1 Relaying denied'), indicating that relay policy validation is properly enforced.",
+    "expected_vulnerable": "The server accepts the RCPT TO command for an external domain with a 250 OK response, allowing the attacker to send the DATA command and complete the email transaction. This indicates the server is an open relay.",
+    "filename": "poc_open_relay_via_missing_relay_policy_validation.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "9ffbf243fdce83ab5223938cddc4f2e2c1dbae2ff62a0d6b1e43562a1bb2759b",
+    "lead_severity": "critical",
+    "lead_technique": "Open Relay via Missing Relay Policy Validation",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server suspected of being an open relay (e.g., on port 25).",
+      "Step 3: Run the script with the target server's IP address and port."
+    ]
+  },
+  {
+    "caveats": [
+      "This script is for authorized testing only. Unauthorized use against third-party systems is illegal.",
+      "Some servers may implement rate limiting or temporary blocks after failed relay attempts.",
+      "The test uses a spoofed sender address; ensure compliance with local laws regarding email spoofing.",
+      "Results may vary based on server configuration, IP reputation, and network policies."
+    ],
+    "description": "Demonstrates SMTP Open Relay vulnerability by attempting to relay mail to an external domain without authentication.",
+    "expected_patched": "The server rejects the RCPT TO command for an external recipient with a 550 error (e.g., '550 Relay not allowed' or '550 Access denied'), indicating proper relay restrictions are in place.",
+    "expected_vulnerable": "The server accepts the RCPT TO command for an external recipient and successfully relays the message, returning 250 OK responses for MAIL FROM, RCPT TO, and DATA commands.",
+    "filename": "poc_smtp_open_relay.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "f7e89bd7346fe156c0af9908dd669e45f02b6939e97dc24e78a4fa332b3e8b0d",
+    "lead_severity": "critical",
+    "lead_technique": "SMTP Open Relay via Misconfigured MX/Relay Logic",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server suspected of being an open relay.",
+      "Step 3: Run the script with the target server's IP/hostname and port."
+    ]
+  },
+  {
+    "caveats": [
+      "This is a simulation using local sockets. In a real attack, the attacker would need to be on-path between the client and server.",
+      "The client's fallback behavior depends on its implementation of RFC 5321 Section 3.2.",
+      "Modern clients may have stricter fallback policies or enforce TLS, mitigating this attack."
+    ],
+    "description": "Demonstrates the EHLO-to-HELO downgrade attack in SMTP by simulating an on-path attacker that drops EHLO commands, forcing the client to fall back to the legacy HELO command and bypass security extensions.",
+    "expected_patched": "If the server is configured to reject HELO commands or enforce TLS (e.g., SMTP TLS Mandatory), it will either reject the HELO command or refuse to proceed with mail transactions, preventing the downgrade.",
+    "expected_vulnerable": "The client sends EHLO, but the attacker drops it. The client times out and falls back to HELO. The server responds to HELO without advertising STARTTLS or other extensions, effectively bypassing security features.",
+    "filename": "poc_ehlo_to_helo_downgrade.py",
+    "lead_category": "Downgrade",
+    "lead_fingerprint": "fb6e216fe76c9f2a74f6e525a40425948b92f3f2f05b54b9a53dd1f36e35da57",
+    "lead_severity": "high",
+    "lead_technique": "EHLO to HELO Downgrade",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Run the script. It will start a mock SMTP server and a mock SMTP client on localhost.",
+      "Step 3: The script simulates an on-path attacker by intercepting the client's EHLO command and dropping it, triggering the client's fallback to HELO."
+    ]
+  },
+  {
+    "caveats": [
+      "Many modern SMTP servers disable VRFY/EXPN by default to prevent address harvesting.",
+      "Some servers may return a 250 response for all queries to avoid leaking information, which is a mitigation technique but violates strict RFC compliance if not handled carefully.",
+      "Firewalls or IDS/IPS may block or alert on these commands.",
+      "This script is for educational and authorized testing purposes only."
+    ],
+    "description": "Demonstrates SMTP VRFY/EXPN address harvesting by querying a target server for valid usernames and mailing list members.",
+    "expected_patched": "The server responds with a 252 code ('552 2.2.2 VRFY command disabled') or a 502/550 error, indicating the command is disabled for security reasons. No user information is disclosed.",
+    "expected_vulnerable": "The server responds with a 250 status code containing the verified mailbox address or a list of mailing list members. For example: '250 John Doe <john@example.com>' or a multiline list of addresses for EXPN.",
+    "filename": "poc_vrfy_expn_address_harvesting.py",
+    "lead_category": "InformationLeak",
+    "lead_fingerprint": "8c37e48055ff0db89f2e4fd43aabd054907553008fd7ee9f32e73d17332443e7",
+    "lead_severity": "high",
+    "lead_technique": "VRFY/EXPN Address Harvesting",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server that supports VRFY/EXPN (e.g., a legacy server or a local test instance like Postfix with `smtpd_vrfy_command` enabled).",
+      "Step 3: Run the script with the target IP/hostname and optional target username/list name."
+    ]
+  },
+  {
+    "caveats": [
+      "This script is for educational and authorized testing purposes only.",
+      "Ensure you have explicit permission to test the target SMTP server.",
+      "Some servers may silently drop connections or implement anti-automation measures."
+    ],
+    "description": "Demonstrates SMTP Command Flooding / Resource Exhaustion via RCPT TO by sending a high volume of recipient commands to test server resilience.",
+    "expected_patched": "The server enforces rate limiting or recipient limits, rejecting excess RCPT TO commands with 5xx errors or closing the connection after a threshold is reached, as recommended in RFC 5321 Section 7.8.",
+    "expected_vulnerable": "The server accepts all RCPT TO commands without rate limiting, potentially consuming significant CPU/memory resources during validation. The server may become slow or unresponsive to subsequent commands like DATA.",
+    "filename": "poc_smtp_rcpt_flood.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "2873b86b99a67588cbb47c35d26a6f89b0bc684ab2a2123bb2486c54d45e021b",
+    "lead_severity": "high",
+    "lead_technique": "SMTP Command Flooding / Resource Exhaustion via RCPT TO",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server (e.g., localhost:25) for testing purposes.",
+      "Step 3: Run the script with the target IP and port."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target is an SMTP server listening on the specified port.",
+      "Some servers may have additional protections or rate limiting that could affect the test.",
+      "Always ensure you have explicit permission to test the target system."
+    ],
+    "description": "Demonstrates SMTP command line overflow by sending a payload exceeding the 512-octet limit defined in RFC 5321.",
+    "expected_patched": "The server correctly rejects the oversized command with a '500 Line too long' or '501 Path too long' response, as specified in RFC 5321 Section 4.5.3.1.9.",
+    "expected_vulnerable": "The server may crash, hang, or respond unexpectedly due to buffer overflow or improper handling of the oversized command line. If the server does not enforce the 512-octet limit, it might process the command or return an unexpected response.",
+    "filename": "poc_smtp_command_line_oversized_payload.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "809a8532760b337391f110fa096563c9a482083cacb45f53eb94c5f3e70f9657",
+    "lead_severity": "high",
+    "lead_technique": "SMTP Command Line Oversized Payload",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server (e.g., localhost:25 or a test server).",
+      "Step 3: Run the script with the target IP and port: python3 poc_smtp_command_line_oversized_payload.py <target_ip> <target_port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target server allows VRFY/EXPN commands.",
+      "Timing side-channels may be affected by network latency and server load.",
+      "Some servers may implement rate limiting or other protections against enumeration attempts."
+    ],
+    "description": "Demonstrates VRFY/EXPN information disclosure via ambiguous reply codes and timing side-channels.",
+    "expected_patched": "The server consistently returns a 252 response for all VRFY/EXPN queries, with no significant timing differences, preventing address enumeration.",
+    "expected_vulnerable": "The server returns different reply codes (e.g., 250 for valid, 550 for invalid) or shows significant timing differences between valid and invalid addresses, allowing enumeration of valid addresses.",
+    "filename": "poc_vrfy_expn_info_disclosure.py",
+    "lead_category": "ImplementationAmbiguity",
+    "lead_fingerprint": "f669c532a2f92ce2fe79f46749e68f3bfbc4f7f68a8ae478b76846c01a7d7335",
+    "lead_severity": "high",
+    "lead_technique": "VRFY/EXPN Information Disclosure via Ambiguous Reply Codes",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server that supports VRFY/EXPN commands.",
+      "Step 3: Run the script with the target server's hostname or IP address."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes a standard SMTP conversation flow. Some servers may require authentication before allowing DATA.",
+      "The PAYLOAD_SIZE can be adjusted via command line argument to test different thresholds.",
+      "Running this against production systems may cause service disruption and should only be done in authorized testing environments."
+    ],
+    "description": "Demonstrates SMTP Message Content Oversized Payload vulnerability by sending a message body exceeding server limits to trigger resource exhaustion or improper error handling.",
+    "expected_patched": "The server immediately rejects the oversized message with a '552 Too much mail data' response code, as specified in RFC 5321 Section 4.5.3.1.9, preventing resource exhaustion.",
+    "expected_vulnerable": "The server either accepts the oversized message (returning 250 OK), crashes/reset the connection, or hangs/times out while processing the large payload, indicating a lack of proper size enforcement or buffer management.",
+    "filename": "poc_smtp_oversized_payload.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "7449d1c27e1ba5591c43207e5c2b304f112d14b92dabdb2c3fecc9ca378b852c",
+    "lead_severity": "high",
+    "lead_technique": "SMTP Message Content Oversized Payload",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Set up a target SMTP server (e.g., Postfix, Exim, or a test server like `aiosmtpd`)."
+    ]
+  },
+  {
+    "caveats": [
+      "This script is for educational and authorized testing purposes only.",
+      "Some SMTP servers may rate-limit or block connections after repeated VRFY/EXPN attempts.",
+      "The script uses a hardcoded list of test users and mailing lists; real-world attacks would use larger wordlists.",
+      "Modern SMTP servers often disable VRFY/EXPN by default due to well-known security risks.",
+      "Network firewalls or IDS/IPS systems may detect and block these commands."
+    ],
+    "description": "Proof-of-concept script to demonstrate SMTP VRFY/EXPN information disclosure by querying user existence and mailing list contents.",
+    "expected_patched": "When the target SMTP server is properly secured, it will either disable the VRFY and EXPN commands entirely (responding with '502 Command not implemented' or '500 Syntax error') or return a '252' response code as specified in RFC 5321 Section 7.3. A '252' response indicates that the server cannot verify the address or expand the list without revealing information, effectively neutralizing the enumeration attempt.",
+    "expected_vulnerable": "When the target SMTP server is vulnerable, it will respond with a '250' status code to VRFY or EXPN commands. For VRFY, the response will include the verified mailbox address (e.g., '250 User Name <user@domain>'). For EXPN, the response will be a multiline list of email addresses belonging to the mailing list (e.g., '250-Name1 <addr1>\\n250 Name2 <addr2>'). This allows an attacker to confirm valid users and harvest email addresses.",
+    "filename": "poc_vrfy_expn_information_disclosure.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "4f081e4d33c3c3fd6f8b48e81bab218db171d74f95b756438a45f5435daa95db",
+    "lead_severity": "high",
+    "lead_technique": "VRFY/EXPN Information Disclosure via Missing Validation",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server that supports VRFY/EXPN commands (often legacy or misconfigured servers).",
+      "Step 3: Run the script with the target IP/hostname and optional port (default 25)."
+    ]
+  },
+  {
+    "caveats": [
+      "This script is for educational and testing purposes only.",
+      "Ensure you have explicit permission to test the target SMTP server.",
+      "The behavior may vary depending on the server's configuration and loop detection mechanisms.",
+      "Some servers may silently drop messages or rate-limit connections, affecting the outcome."
+    ],
+    "description": "Demonstrates SMTP Mail Loop / Bounce Storm DoS by sending a message with a forged return path to trigger recursive bounce notifications.",
+    "expected_patched": "The SMTP server either rejects the message with a forged return path, enforces a null reverse-path (MAIL FROM:<>) for bounce messages, or detects and stops the loop by counting 'Received:' headers, preventing the bounce storm.",
+    "expected_vulnerable": "The SMTP server accepts the message with the forged return path. If delivery fails, the server generates a bounce notification to the forged return path. If the return path points to another server that also bounces, or if the attacker controls the return path to reflect back, a loop is created, leading to exponential growth of bounce messages and potential DoS.",
+    "filename": "poc_mail_loop_bounce_storm.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "8823a1af9364bb5b6b33cac44ec692b0669f003fcc3cd36ef289db7b564445c5",
+    "lead_severity": "high",
+    "lead_technique": "Mail Loop / Bounce Storm DoS",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server that generates bounce messages and lacks robust loop detection or null reverse-path enforcement.",
+      "Step 3: Run the script with the target server's address and port."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target SMTP server is accessible and listening on the specified port.",
+      "Some servers may not advertise VRFY/EXPN in the EHLO response but still support them; the script tests regardless.",
+      "The script uses a hardcoded list of common usernames and mailing lists; in a real attack, an attacker might use a larger dictionary.",
+      "The script does not handle TLS/SSL connections; for secure SMTP servers, additional logic would be needed to wrap the socket with SSL.",
+      "Be cautious when running this script against production servers, as it may trigger security alerts or be considered unauthorized access."
+    ],
+    "description": "Demonstrates SMTP user enumeration and mailing list harvesting via VRFY and EXPN commands.",
+    "expected_patched": "The server will respond with a 252 code for both VRFY and EXPN commands, indicating that verification/expansion is not possible or disabled. Alternatively, it may return a 502 or 550 code, indicating the command is not supported or denied. No user or mailing list information will be disclosed.",
+    "expected_vulnerable": "The script will connect to the SMTP server and send VRFY commands for various usernames. If the server is vulnerable, it will respond with a 250 code for valid users, confirming their existence. Similarly, EXPN commands will return a 250 code with the list of members for valid mailing lists, allowing the attacker to harvest email addresses.",
+    "filename": "poc_address_verification_vrfy_expn.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "39ece17ede405574ca596f84a3985f4d377f4224dca0cb8c6e763e7013178eb8",
+    "lead_severity": "high",
+    "lead_technique": "Address Verification via VRFY/EXPN Commands",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify an SMTP server that supports VRFY/EXPN (e.g., a legacy Postfix or Exchange server, or a local test server like `smtpd` with debug enabled).",
+      "Step 3: Run the script with the target SMTP server's IP/hostname and port."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target SMTP server is configured to accept connections from the attacker's IP.",
+      "The script does not handle all possible SMTP server responses or edge cases.",
+      "Running this script against unauthorized targets may be illegal. Only use against systems you own or have explicit permission to test."
+    ],
+    "description": "Demonstrates SMTP DATA command state confusion by sending an empty message body and immediately terminating with the end-of-data indicator.",
+    "expected_patched": "The server rejects the empty message or returns an error response (e.g., '554 Transaction failed' or '503 Bad sequence of commands'), indicating that it properly validates message content before accepting the end-of-data indicator.",
+    "expected_vulnerable": "The server accepts the empty message and returns a '250 OK' response, indicating that the state machine incorrectly processed the transaction as complete without validating the presence of required headers or data.",
+    "filename": "poc_data_command_state_confusion.py",
+    "lead_category": "StateConfusion",
+    "lead_fingerprint": "0c3204e170848ebbf268b9e7e1bc627a1dc5494baa993aa2ece0bc9fca0d7903",
+    "lead_severity": "high",
+    "lead_technique": "DATA Command State Confusion via Premature Termination",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Set up a vulnerable SMTP server for testing (e.g., a custom server or a misconfigured mail server that accepts empty messages).",
+      "Step 3: Run the script against the target SMTP server."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC requires a target server with a large mailing list or alias configured.",
+      "The impact depends on the size of the list and the server's configuration.",
+      "Running this against a production server without authorization is illegal and unethical.",
+      "Some servers may silently drop or bounce messages from unknown senders, reducing the PoC's effectiveness.",
+      "The script uses standard SMTP commands; advanced evasion techniques are not included."
+    ],
+    "description": "Demonstrates SMTP Mailing List Explosion / Alias Expansion DoS by sending a message to a list address and observing resource exhaustion.",
+    "expected_patched": "The server accepts the message and either limits the expansion size, throttles the delivery rate, or rejects the message if it exceeds configured limits. Resource usage remains stable, and the mail queue does not fill up unexpectedly.",
+    "expected_vulnerable": "The server accepts the message quickly but then experiences a significant delay or resource spike as it expands the list. The mail queue fills with thousands of individual delivery attempts, CPU and memory usage increase dramatically, and legitimate mail delivery is delayed or fails.",
+    "filename": "poc_mailing_list_explosion_dos.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "185b7798371f1b0e54ad8e5459099270e6a9572a459d6e8a9d7206baff51aabd",
+    "lead_severity": "high",
+    "lead_technique": "Mailing List Explosion / Alias Expansion DoS",
+    "setup": [
+      "Step 1: Ensure Python 3 and the `smtplib` library are available (standard library).",
+      "Step 2: Identify a target SMTP server that hosts large mailing lists or aliases without expansion limits.",
+      "Step 3: (Optional) Set up a local mail server for safe testing, e.g., Postfix with a large alias map."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target server is misconfigured and lacks proper loop detection mechanisms.",
+      "Sending crafted SMTP messages may be detected by intrusion detection systems or flagged as malicious activity.",
+      "Ensure you have explicit permission to test against the target server to avoid legal issues.",
+      "The effectiveness of the PoC depends on the server's configuration and the presence of loop detection mechanisms as described in RFC 5321."
+    ],
+    "description": "Demonstrates a mail loop vulnerability by sending a crafted message with a null reverse-path to a server lacking proper loop detection.",
+    "expected_patched": "The server detects the null reverse-path or the loop condition and rejects the message, preventing the mail loop. The server logs should show a rejection notice or an error indicating loop detection.",
+    "expected_vulnerable": "The server accepts the message with the null reverse-path and generates a bounce message. Since the return path is null or attacker-controlled, the bounce is sent back to the attacker's address, which may forward it again, creating a mail loop that consumes server resources and bandwidth.",
+    "filename": "poc_mail_loop_via_missing_return_path_validation.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "96f972d6782403499356dbe579728de7555abb9ef10716ee2ee7e55f1adbaf4b",
+    "lead_severity": "high",
+    "lead_technique": "Mail Loop via Missing Return-Path Validation",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Set up a vulnerable SMTP server for testing (e.g., a misconfigured Postfix or Exim instance that lacks loop detection or null reverse-path validation).",
+      "Step 3: Configure the script with the target server's IP address and port."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target SMTP server allows unauthenticated mail submission or open relay.",
+      "Modern email servers often implement SPF, DKIM, and DMARC to detect and reject spoofed emails, which may cause the email to be marked as spam or rejected by the recipient's server.",
+      "Using this script against systems without explicit permission is illegal and unethical. It is intended for educational and authorized security testing purposes only.",
+      "The script uses smtplib for simplicity. In a real-world scenario, an attacker might use raw sockets to bypass any client-side checks or to craft custom SMTP extensions."
+    ],
+    "description": "Demonstrates SMTP sender address spoofing by forging the MAIL FROM command without authentication.",
+    "expected_patched": "The SMTP server rejects the MAIL FROM command with a '550' or '553' error code, indicating that the sender address is not allowed or requires authentication. Alternatively, the server may require SMTP AUTH before allowing the mail transaction to proceed.",
+    "expected_vulnerable": "The SMTP server accepts the MAIL FROM command with the forged sender address and returns a '250 OK' response. The email is successfully delivered to the recipient, appearing to originate from the spoofed address. The debug output will show the server accepting the transaction without authentication.",
+    "filename": "poc_sender_address_spoofing_via_mail_from.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "b93b31fc566e99996884f1e00c92f8666ed05ce97bf8389f1d0bc51a026152c8",
+    "lead_severity": "high",
+    "lead_technique": "Sender Address Spoofing via MAIL FROM",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target SMTP server that allows open relay or does not enforce SPF/DKIM/DMARC on the MAIL FROM address.",
+      "Step 3: Run the script with the target server's IP/hostname and port."
+    ]
+  }
+]

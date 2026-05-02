@@ -937,6 +937,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "ietf-draft-analyzer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert-json-diff",
+ "chrono",
+ "clap",
+ "insta",
+ "petgraph",
+ "quick-xml",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-rusqlite",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wiremock",
+ "zstd",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1395,36 +1425,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
-]
-
-[[package]]
-name = "rfc-analyzer"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert-json-diff",
- "chrono",
- "clap",
- "insta",
- "petgraph",
- "quick-xml",
- "regex",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-rusqlite",
- "tokio-util",
- "toml",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "wiremock",
- "zstd",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HTTP/2 security probe — tests novel (no-CVE) findings from rfc-analyzer.
+HTTP/2 security probe — tests novel (no-CVE) findings from ietf-draft-analyzer.
 
 Findings tested:
   1. GOAWAY last stream ID confusion

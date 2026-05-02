@@ -1,0 +1,811 @@
+{
+  "protocol_name": "ssh-extended",
+  "rfcs_analyzed": [
+    4256,
+    4344,
+    5656,
+    6668
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 4,
+    "total_edges": 0,
+    "connected_components": 4,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 9,
+  "security_leads": [
+    {
+      "id": "527fd7b3-4f79-40bb-bfa8-f26efbe185a8",
+      "technique_name": "Unvalidated Elliptic Curve Public Key",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker sends a malicious SSH connection request using ECDH or ECMQV key exchange. Step 2: The attacker provides an elliptic curve public key that is not on the curve, is the point at infinity, or has a small order. Step 3: If the implementation fails to validate the received public key before computing the shared secret, it may lead to small subgroup attacks, revealing information about the attacker's private key or causing protocol failure. Step 4: The RFC explicitly mandates validation, but implementations often miss this, leading to CVEs.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "4",
+          "quote": "All elliptic curve public keys MUST be validated after they are received. An example of a validation algorithm can be found in Section 3.2.2 of [SEC1]. If a key fails validation, the key exchange MUST fail."
+        },
+        {
+          "rfc": 5656,
+          "section": "5",
+          "quote": "All elliptic curve public keys MUST be validated after they are received. An example of a validation algorithm can be found in Section 3.2.2 of [SEC1]. If a key fails validation, the key exchange MUST fail."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate SSH key exchange",
+        "Implementation uses ECDH or ECMQV"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict validation of all received elliptic curve public keys according to SEC1 Section 3.2.2 before performing any cryptographic operations. Ensure keys are on the curve, not the point at infinity, and have the correct order.",
+      "fingerprint": "89237072489c06d23d47f60d249ceaf93a4e320d9a6cc482ef63596a4a514866"
+    },
+    {
+      "id": "c9e71257-f6b1-4f1a-b2e4-f43a6224477c",
+      "technique_name": "Ephemeral Key Leakage via Improper RNG",
+      "category": "InformationLeak",
+      "severity": "critical",
+      "confidence": 0.9,
+      "description": "Step 1: An SSH implementation generates ephemeral private keys or random values (e.g., ECDSA nonce k, ECDH ephemeral keys) using a weak or improperly seeded pseudorandom number generator. Step 2: The generated values are predictable or repeatable. Step 3: An adversary can recover the private keys or signing nonces, leading to full compromise of the session and potential long-term key recovery.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "9",
+          "quote": "Implementers SHOULD ensure that any ephemeral private keys or random values -- including the value k used in ECDSA signature generation and the ephemeral private key values in ECDH and ECMQV -- are generated from a random number generator or a properly seeded pseudorandom number generator, are protected from leakage, are not reused outside of the context of the protocol in this document, and are erased from memory when no longer needed."
+        }
+      ],
+      "prerequisites": [
+        "Implementation uses weak RNG or fails to seed properly",
+        "Attacker can observe protocol messages or has side-channel access"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use a cryptographically secure random number generator properly seeded with sufficient entropy. Ensure ephemeral keys are never reused and are securely erased from memory after use.",
+      "fingerprint": "fe223e08adfd54672cf92346131403a55c36070625cdb0835ae0eb3b18a470cc"
+    },
+    {
+      "id": "ff2f9ecd-7a5e-4eca-a30c-4d9b215b58be",
+      "technique_name": "Keystream Reuse via Counter Wraparound in SDCTR Mode",
+      "category": "ReplayAttack",
+      "severity": "critical",
+      "confidence": 0.85,
+      "description": "Step 1: SSH uses Stateful-Decryption Counter (SDCTR) mode for encryption, relying on an internal L-bit counter. Step 2: If an implementation encrypts more than 2^L blocks with the same key, the counter wraps around. Step 3: The attacker captures ciphertexts encrypted with the reused keystream. Step 4: The attacker XORs the captured ciphertexts to cancel out the keystream, revealing the XOR of the plaintexts. Step 5: Using known plaintext or statistical analysis, the attacker recovers the original messages, effectively replaying or manipulating data.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "Additionally, recommendation (2) is designed to protect an encryptor from encrypting more than 2**L blocks with the same key. The motivation here is that, if an encryptor were to use SDCTR mode to encrypt more than 2**L blocks with the same key, then the encryptor would reuse keystream, and the reuse of keystream can lead to serious privacy attacks."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can capture traffic",
+        "Implementation fails to rekey before 2^L blocks are encrypted",
+        "Block cipher has a small block size (e.g., 64-bit) increasing wraparound risk"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Adhere to RFC 4344 Section 3.2 recommendations: rekey before encrypting more than 2^(L/4) blocks for L>=128, or every gigabyte for older ciphers. Use ciphers with large block sizes (e.g., AES-128/256).",
+      "fingerprint": "c5117bf26581311aaba8a072942f6b8b3413565a783dfd80bb277e8d0e5e13b2"
+    },
+    {
+      "id": "0ec1649b-03fb-40f8-89b9-9a274ffc849b",
+      "technique_name": "Keystream Reuse DoS via SDCTR Misuse",
+      "category": "DenialOfService",
+      "severity": "critical",
+      "confidence": 0.7,
+      "description": "Step 1: An attacker forces the encryption of more than 2^L blocks with the same key in SDCTR mode (where L is the block size). Step 2: The counter X wraps around, causing keystream reuse. Step 3: Keystream reuse allows an attacker to XOR two ciphertexts to obtain the XOR of the two plaintexts, potentially leading to decryption of sensitive data or injection of malicious data, disrupting the service integrity and confidentiality.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "The motivation here is that, if an encryptor were to use SDCTR mode to encrypt more than 2**L blocks with the same key, then the encryptor would reuse keystream, and the reuse of keystream can lead to serious privacy attacks."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can generate massive amounts of traffic.",
+        "SSH implementation fails to rekey before 2^L blocks."
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce rekeying limits based on block count (2^(L/4) blocks as per RFC 4344 Section 3.2) to prevent keystream reuse.",
+      "fingerprint": "616f240cafa9302c8c69934239f5df4ace0c08a544cce3ead0fd65b72208d151"
+    },
+    {
+      "id": "936fc055-00e2-4d88-982a-1c135e742fbb",
+      "technique_name": "Keystream Reuse Privacy Attack",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An SSH implementation encrypts more than 2^L blocks (where L is the block cipher length) using the same key in SDCTR mode. Step 2: The counter wraps around, causing the encryptor to reuse the same keystream for different plaintext blocks. Step 3: An adversary observing the ciphertext can XOR the reused keystream blocks to recover information about the plaintext, leading to serious privacy attacks.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "Additionally, recommendation (2) is designed to protect an encryptor from encrypting more than 2**L blocks with the same key. The motivation here is that, if an encryptor were to use SDCTR mode to encrypt more than 2**L blocks with the same key, then the encryptor would reuse keystream, and the reuse of keystream can lead to serious privacy attacks [SCHNEIER]."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can observe network traffic",
+        "Implementation fails to rekey before encrypting 2^L blocks"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Ensure implementations rekey before encrypting more than 2^(L/4) blocks for ciphers with L >= 128, or follow the 1GB rekeying recommendation for older ciphers as per RFC 4344 Section 3.2.",
+      "fingerprint": "c75391c196772000210a2db3259daeebdf45e163932bbcbe8a3a745e305b7c04"
+    },
+    {
+      "id": "1477b354-5e42-4d59-abd8-278114782e8b",
+      "technique_name": "MAC Collision Replay Attack via Sequence Number Wraparound",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The SSH Transport Protocol uses a 32-bit sequence number for MACing packets. Step 2: An attacker monitors the connection until the sequence number wraps around (after 2^32 packets). Step 3: The attacker captures a valid packet and its MAC. Step 4: Once the sequence number wraps and reaches the same value, the attacker replays the captured packet. Step 5: The receiver accepts the replayed packet because the sequence number and MAC match, potentially causing information leakage or protocol disruption.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If more than 2**32 packets are encrypted and MACed by the SSH Transport Protocol between rekeyings, then the SSH Transport Protocol may become vulnerable to replay and re-ordering attacks. This means that an adversary may be able to convince the receiver to accept the same message more than once or to accept messages out of order."
+        }
+      ],
+      "prerequisites": [
+        "Attacker is on-path or can monitor traffic",
+        "Connection lasts long enough to transmit >2^32 packets without rekeying",
+        "Implementation fails to rekey as recommended"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Implement strict rekeying policies as recommended in RFC 4344 Section 3.1 (rekey at least once every 2^32 outgoing packets) to prevent sequence number wraparound and MAC collisions.",
+      "fingerprint": "90646f1fb23b3d7f890bd8171143ae8ca8d9b34a25265276113b7fd6c2940036"
+    },
+    {
+      "id": "3724b8be-cf8c-4787-9588-f2fc32dd02b8",
+      "technique_name": "Missing Rekeying Validation",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An SSH session is established and data is transmitted. Step 2: The implementation fails to track the number of packets or blocks encrypted with the current key. Step 3: Without proper validation and enforcement of rekeying thresholds, the session continues using the same keys beyond safe limits. Step 4: This can lead to MAC collisions, keystream reuse, and information leakage, compromising confidentiality and integrity.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "Because of possible information leakage through the MAC tag, SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        },
+        {
+          "rfc": 4344,
+          "section": "3.2",
+          "quote": "Because of a birthday property of block ciphers and some modes of operation, implementations must be careful not to encrypt too many blocks with the same encryption key."
+        },
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If more than 2**32 packets are encrypted and MACed by the SSH Transport Protocol between rekeyings, then the SSH Transport Protocol may become vulnerable to replay and re-ordering attacks."
+        }
+      ],
+      "prerequisites": [
+        "Long-lived SSH session",
+        "High volume of data transfer"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict counters for packets and blocks encrypted. Enforce rekeying thresholds as specified in RFC 4344. Validate that rekeying occurs before limits are reached to prevent cryptographic degradation.",
+      "fingerprint": "51edefd9b3024ce34f4cb9c8a46a977bc5c1feda7dbf8dded94953d5c94bf01f"
+    },
+    {
+      "id": "3212bf38-9bae-4609-8fb4-380aa7d6be34",
+      "technique_name": "Rekeying Counter Race Condition",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.75,
+      "description": "Step 1: SSH encryption modes (SDCTR) and rekeying recommendations rely on internal packet counters to prevent keystream reuse and MAC collisions. The specification mandates rekeying after 2^32 packets or 2^(L/4) blocks. Step 2: In high-throughput or multi-threaded SSH implementations, the packet counter and block counter are shared resources incremented concurrently as packets are encrypted/decrypted. Step 3: If the counter increment and the rekeying trigger check are not atomic or properly synchronized, a race condition can occur where multiple threads read the counter before it is incremented, potentially exceeding the 2^32 packet limit or the block limit before the rekeying process is initiated. This can lead to keystream reuse or MAC collisions, compromising confidentiality and integrity.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "SSH implementations SHOULD rekey at least once every 2**32 outgoing packets. More explicitly, after a key exchange, an SSH implementation SHOULD NOT send more than 2**32 packets before rekeying again."
+        },
+        {
+          "rfc": 4344,
+          "section": "4",
+          "quote": "In stateful-decryption counter mode, both the sender and the receiver maintain an internal L-bit counter X. ... The counter X is then incremented, and the process is repeated for each subsequent block..."
+        },
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If more than 2**32 packets are encrypted and MACed by the SSH Transport Protocol between rekeyings, then the SSH Transport Protocol may become vulnerable to replay and re-ordering attacks."
+        }
+      ],
+      "prerequisites": [
+        "Multi-threaded or asynchronous SSH implementation",
+        "High packet throughput approaching rekeying limits",
+        "Non-atomic counter increment and limit check"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use atomic operations or mutex locks for incrementing packet and block counters. Implement the rekeying trigger check within the same critical section as the counter increment to ensure the limit is never exceeded before the rekeying process is initiated.",
+      "fingerprint": "cde09fd18e366168c04a224936e840a622df5a8cfcb9e4bf964fe4578efa5a42"
+    },
+    {
+      "id": "f6b4533b-b06e-42c6-b1d7-7a707a251da8",
+      "technique_name": "Rekeying Exhaustion / MAC Collision DoS",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker forces a high volume of traffic over an SSH connection without triggering rekeying. Step 2: After 2^32 packets, the 32-bit sequence number wraps around. Step 3: The SSH implementation may become vulnerable to replay/reordering attacks or MAC collisions, potentially allowing an attacker to disrupt the connection or cause the receiver to reject valid packets, leading to a denial of service. Additionally, failing to rekey can lead to keystream reuse in SDCTR mode, compromising confidentiality and potentially integrity.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        },
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "If more than 2**32 packets are encrypted and MACed by the SSH Transport Protocol between rekeyings, then the SSH Transport Protocol may become vulnerable to replay and re-ordering attacks."
+        },
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "Additionally, the underlying MAC may begin to leak information about the protocol's payload data."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can generate or influence high-volume traffic on the SSH connection.",
+        "SSH implementation does not enforce rekeying limits."
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict rekeying policies as recommended in RFC 4344 (rekey every 2^32 packets or 2^(L/4) blocks). Monitor packet counts and force rekeying before limits are reached.",
+      "fingerprint": "968c0aeb381a3e01db4aed773510e44a8ff7630b91e376b305cbb332f0f851ad"
+    },
+    {
+      "id": "e95cd002-cd62-405e-b2e5-31cd3de7d645",
+      "technique_name": "MAC Collision Information Leakage",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An adversary observes SSH traffic over a long session without rekeying. Step 2: The adversary collects MAC tags associated with packets that share the same 32-bit sequence number (after wrapping). Step 3: If a MAC collision is found between two packets with the same sequence number, the adversary can infer that the payload data for those two ciphertexts is identical, leaking information about the protocol's payload.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "6.1",
+          "quote": "Additionally, the underlying MAC may begin to leak information about the protocol's payload data. In more detail, an adversary looks for a collision between the MACs associated to two packets that were MACed with the same 32-bit sequence number... If a collision is found, then the payload data associated with those two ciphertexts is probably identical."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can observe network traffic",
+        "Session exceeds 2^32 packets without rekeying"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Implement strict rekeying policies to rekey at least once every 2^32 outgoing packets as recommended in RFC 4344 Section 3.1.",
+      "fingerprint": "fe014b2c581a5c847c97b0b7dab8ab87ba89abc36e4e7861aabdb17fd8b9099a"
+    },
+    {
+      "id": "0566f256-555f-406c-83db-46f4f7d90e27",
+      "technique_name": "SSH Keyboard-Interactive Authentication Oversized Prompt/Name/Instruction Fields",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The SSH server sends an SSH_MSG_USERAUTH_INFO_REQUEST message containing 'name', 'instruction', and 'prompt' fields. Step 2: The server crafts these fields with excessively large payloads (e.g., millions of bytes). Step 3: The client, upon receiving the request, attempts to allocate memory or render the oversized strings, potentially causing a denial of service (DoS) via resource exhaustion or memory allocation failure.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "The server SHOULD take into consideration that some clients may not be able to properly display a long name or prompt field (see next section), and limit the lengths of those fields if possible."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.3",
+          "quote": "They SHOULD also be able to display at least 30 characters for the name and prompts. If the server presents names or prompts longer than 30 characters, the client MAY truncate these fields to the length it can display."
+        }
+      ],
+      "prerequisites": [
+        "Attacker controls or compromises the SSH server",
+        "Client implements keyboard-interactive authentication"
+      ],
+      "entities_involved": [
+        "server",
+        "client"
+      ],
+      "mitigation": "Implement strict maximum length limits for 'name', 'instruction', and 'prompt' fields on both the server (when sending) and client (when receiving). Validate and truncate or reject oversized payloads before processing or rendering.",
+      "fingerprint": "9a687d09a3feed1dcb7f4c3a0653f1d454ba69d5e64e4f096b9374efae707754"
+    },
+    {
+      "id": "050c9f60-2d2c-4a6d-98c2-8d7c08f50180",
+      "technique_name": "Excessive Authentication Prompts",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The SSH server sends an SSH_MSG_USERAUTH_INFO_REQUEST message with a large number of prompts (num-prompts). Step 2: The client must process and display each prompt to the user, consuming client-side resources (CPU, memory, UI). Step 3: If the server repeatedly sends requests with excessive prompts or the server forces many rounds of authentication, it can degrade client performance or cause the client to become unresponsive, effectively denying service to the user.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "The server may send as many requests as are necessary to authenticate the client; the client MUST be prepared to handle multiple exchanges."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "The server SHOULD take into consideration that some clients may not be able to properly display a long name or prompt field... and limit the lengths of those fields if possible."
+        }
+      ],
+      "prerequisites": [
+        "Attacker controls the SSH server or can influence the authentication backend (e.g., PAM)."
+      ],
+      "entities_involved": [
+        "server",
+        "client"
+      ],
+      "mitigation": "Implement limits on the number of prompts per request and the total number of authentication rounds. Validate and truncate excessively long prompt strings on the client side.",
+      "fingerprint": "553abca329170fc6a299adf8b1f61521e848638cb0904f1ffcb05c2119111285"
+    },
+    {
+      "id": "27538f59-4ac6-4d7e-bce3-80b0e5660d39",
+      "technique_name": "Submethod Hint Manipulation",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The SSH keyboard-interactive authentication protocol allows the client to send a 'submethods' field containing a comma-separated list of preferred authentication submethods. Step 2: The RFC states that 'Server interpretation of the submethods field is implementation-dependent' and that the server 'ignores this field' or treats it as a 'hint'. Step 3: An attacker or malicious client could send crafted submethod hints to probe server configuration, trigger specific authentication backends, or cause unexpected behavior in implementations that parse or act upon these hints differently, potentially leading to information leakage or authentication bypass if the server's implementation is flawed.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.1",
+          "quote": "Server interpretation of the submethods field is implementation-dependent. One possible implementation strategy of the submethods field on the server is that, unless the user may use multiple different submethods, the server ignores this field."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate SSH keyboard-interactive authentication",
+        "Server implementation parses or acts upon the submethods field"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers should strictly ignore the submethods field or treat it only as a non-binding preference without altering authentication logic or revealing backend configuration details based on its contents.",
+      "fingerprint": "7486d882bd03ca6ba76dfaf35134b1367dd748653151e96dd0cb41b47bdafb74"
+    },
+    {
+      "id": "4e8f8f97-f4ad-4e03-87be-513bcb995681",
+      "technique_name": "Unvalidated Keyboard-Interactive Prompts",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker controls the SSH server or acts as a man-in-the-middle. Step 2: The server sends SSH_MSG_USERAUTH_INFO_REQUEST with maliciously crafted 'name', 'instruction', or 'prompt' fields containing terminal control characters or excessively long strings. Step 3: If the client fails to validate and sanitize these fields, it may lead to buffer overflows, denial of service, or social engineering attacks via crafted prompts. Step 4: The RFC recommends control character filtering and length handling, but leaves it to the implementation.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.3",
+          "quote": "Clients SHOULD use control character filtering, as discussed in [SSH-ARCH], to avoid attacks by including terminal control characters in the fields to be displayed."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.3",
+          "quote": "All clients MUST properly handle an instruction field with embedded newlines. They SHOULD also be able to display at least 30 characters for the name and prompts. If the server presents names or prompts longer than 30 characters, the client MAY truncate these fields to the length it can display."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can influence server prompts or is on-path",
+        "Client implementation lacks input sanitization"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict validation and sanitization of all prompt fields. Filter out terminal control characters, enforce maximum length limits, and handle embedded newlines safely. Use secure string handling functions to prevent buffer overflows.",
+      "fingerprint": "46dfb7c6b41896a963c6c7faae9e08955170a13c790e75834406623a29cb86e9"
+    },
+    {
+      "id": "7c0dabfe-f3c5-4935-b9f1-088837006f39",
+      "technique_name": "Rekeying Timing Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: RFC 4344 provides recommendations for rekeying in SSH, suggesting rekeying after 2^32 packets or 2^(L/4) blocks. Step 2: The RFC uses 'SHOULD' language and notes that 'depending on the block length... and the length of the encrypted packets, the first recommendation may supersede the second recommendation, or vice versa'. Step 3: This ambiguity can lead to implementations choosing different rekeying thresholds, potentially resulting in interoperability issues or security weaknesses if one party rekeys too infrequently, increasing the risk of cryptographic attacks like birthday attacks or MAC collisions.",
+      "rfc_references": [
+        {
+          "rfc": 4344,
+          "section": "3.1",
+          "quote": "SSH implementations SHOULD rekey at least once every 2**32 outgoing packets."
+        },
+        {
+          "rfc": 4344,
+          "section": "3.2",
+          "quote": "If L is at least 128, then, after rekeying, an SSH implementation SHOULD NOT encrypt more than 2**(L/4) blocks before rekeying again."
+        },
+        {
+          "rfc": 4344,
+          "section": "3",
+          "quote": "Note that, depending on the block length of the underlying block cipher and the length of the encrypted packets, the first recommendation may supersede the second recommendation, or vice versa."
+        }
+      ],
+      "prerequisites": [
+        "Long-lived SSH sessions",
+        "High data throughput"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should clearly document their rekeying policy and ensure it adheres to the stricter of the two recommendations based on the negotiated cipher and typical packet sizes.",
+      "fingerprint": "539ea5da1062c5c086af1dd36c47fa5166bb4dfc0c6d08822c831a85bb8e5976"
+    },
+    {
+      "id": "c044c330-29d8-467e-a70b-8554eea3aa23",
+      "technique_name": "Resource Exhaustion via Large Prompts/Instructions",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The SSH server sends an SSH_MSG_USERAUTH_INFO_REQUEST message containing extremely large 'name', 'instruction', or 'prompt' strings. Step 2: The client allocates memory to store and render these strings. Step 3: Repeated requests with large strings can exhaust client memory or cause rendering delays, leading to a denial of service for the SSH client application.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "The server SHOULD take into consideration that some clients may not be able to properly display a long name or prompt field... and limit the lengths of those fields if possible."
+        }
+      ],
+      "prerequisites": [
+        "Attacker controls the SSH server or authentication backend."
+      ],
+      "entities_involved": [
+        "server",
+        "client"
+      ],
+      "mitigation": "Clients should enforce strict maximum length limits for name, instruction, and prompt fields. Servers should adhere to reasonable size limits for these fields.",
+      "fingerprint": "90bc048ee95dde770fa0f3952177d8aa098a0ba2562dc72427a3278c4b2409e6"
+    },
+    {
+      "id": "0c3624b8-e12e-4ad6-8294-27282030b0be",
+      "technique_name": "Authentication Prompt Race Condition",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The SSH keyboard-interactive authentication protocol relies on a strict request-response sequence where the server sends an SSH_MSG_USERAUTH_INFO_REQUEST and waits for an SSH_MSG_USERAUTH_INFO_RESPONSE. Step 2: The specification explicitly states 'the server MUST NOT ever have more than one SSH_MSG_USERAUTH_INFO_REQUEST message outstanding' and 'may not send another request before the client has answered'. Step 3: If a server implementation fails to properly serialize request handling or if a client sends a response out-of-band or prematurely due to a race in its internal state machine, the server may process a response intended for a previous prompt against a newly generated prompt, or vice versa. This can lead to authentication bypass or incorrect credential validation if the server's state machine races between generating a new challenge and validating the incoming response.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "However, the server MUST NOT ever have more than one SSH_MSG_USERAUTH_INFO_REQUEST message outstanding. That is, it may not send another request before the client has answered."
+        },
+        {
+          "rfc": 4256,
+          "section": "3",
+          "quote": "The server MUST NOT send another SSH_MSG_USERAUTH_INFO_REQUEST before it has received the answer from the client."
+        }
+      ],
+      "prerequisites": [
+        "Server implementation has a bug in request serialization",
+        "Client sends responses asynchronously or out of order",
+        "Multiple authentication prompts are used in sequence"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict state machine enforcement on the server to reject any SSH_MSG_USERAUTH_INFO_RESPONSE that does not match the currently outstanding request sequence. Ensure client implementations buffer responses and only send them when explicitly prompted, avoiding asynchronous dispatch of authentication data.",
+      "fingerprint": "457d10a6ce5f1bc0f05f6d86f226808dbdddafc70a6fdb9a84b7c949cd10f101"
+    },
+    {
+      "id": "ec7fe782-2e0c-402c-83bf-400535402923",
+      "technique_name": "SSH Keyboard-Interactive Authentication Oversized Response Fields",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The client sends an SSH_MSG_USERAUTH_INFO_RESPONSE message containing 'response' fields. Step 2: The client (potentially malicious or compromised) crafts these response fields with excessively large payloads. Step 3: The server, upon receiving the response, attempts to process, store, or validate the oversized strings, potentially causing a denial of service (DoS) via resource exhaustion or memory allocation failure.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.4",
+          "quote": "The format of the SSH_MSG_USERAUTH_INFO_RESPONSE message is as follows: ... string response[1] (ISO-10646 UTF-8) ... string response[num-responses] (ISO-10646 UTF-8)"
+        }
+      ],
+      "prerequisites": [
+        "Attacker controls or compromises the SSH client",
+        "Server implements keyboard-interactive authentication"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict maximum length limits for 'response' fields on both the client (when sending) and server (when receiving). Validate and reject oversized payloads before processing or storing.",
+      "fingerprint": "d787c37cb42061738c201981ac265bbedfc9a79e4405f1587888517aca35a3e1"
+    },
+    {
+      "id": "56abc92b-d884-4cb2-a054-bbd696f2dca7",
+      "technique_name": "SSH Keyboard-Interactive Authentication Oversized num-prompts/num-responses",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: The server sends an SSH_MSG_USERAUTH_INFO_REQUEST message with an excessively large 'num-prompts' value. Step 2: The client attempts to allocate memory or process the specified number of prompts, potentially causing a denial of service (DoS) via resource exhaustion. Alternatively, the client sends an SSH_MSG_USERAUTH_INFO_RESPONSE message with an excessively large 'num-responses' value, causing the server to exhaust resources.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "int num-prompts ... string prompt[1] (ISO-10646 UTF-8) ... string prompt[num-prompts] (ISO-10646 UTF-8)"
+        },
+        {
+          "rfc": 4256,
+          "section": "3.4",
+          "quote": "int num-responses ... string response[1] (ISO-10646 UTF-8) ... string response[num-responses] (ISO-10646 UTF-8)"
+        }
+      ],
+      "prerequisites": [
+        "Attacker controls or compromises the SSH server or client",
+        "Implementation does not validate the 'num-prompts' or 'num-responses' fields against reasonable limits"
+      ],
+      "entities_involved": [
+        "server",
+        "client"
+      ],
+      "mitigation": "Implement strict maximum limits for 'num-prompts' and 'num-responses' fields. Validate these values against reasonable thresholds before allocating memory or processing the associated arrays.",
+      "fingerprint": "c83e744622e26a83d46cb6075611781cfe8a95f6a4d85ed2626fa91c42f6c99d"
+    },
+    {
+      "id": "97a4dc24-7e35-4f63-88b8-b7141270ab48",
+      "technique_name": "Ephemeral Key Generation Race Condition",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.65,
+      "description": "Step 1: SSH ECC key exchange (ECDH/ECMQV) requires the generation of ephemeral private keys and random values (e.g., k in ECDSA) for each session. Step 2: The specification mandates these values be generated from a secure random number generator and must not be reused. Step 3: In implementations that pre-generate or cache ephemeral keys for performance, or where multiple connection threads share a single RNG instance without proper synchronization, a race condition can occur. If the RNG state is read concurrently or if cached keys are dispatched to multiple sessions simultaneously, the same ephemeral key or nonce may be reused across different sessions or packets. This can lead to private key recovery attacks, especially in ECDSA where nonce reuse is catastrophic.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "9",
+          "quote": "Implementers SHOULD ensure that any ephemeral private keys or random values -- including the value k used in ECDSA signature generation and the ephemeral private key values in ECDH and ECMQV -- are generated from a random number generator or a properly seeded pseudorandom number generator, are protected from leakage, are not reused outside of the context of the protocol in this document, and are erased from memory when no longer needed."
+        },
+        {
+          "rfc": 5656,
+          "section": "4",
+          "quote": "The Elliptic Curve Diffie-Hellman (ECDH) key exchange method generates a shared secret from an ephemeral local elliptic curve private key and ephemeral remote elliptic curve public key."
+        }
+      ],
+      "prerequisites": [
+        "Shared RNG instance across multiple threads/connections",
+        "Caching or pre-generation of ephemeral keys",
+        "Lack of thread-safety in key generation routines"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure each ephemeral key generation request uses a thread-safe, cryptographically secure RNG. Avoid caching or reusing ephemeral keys across sessions. Implement proper locking or use per-thread RNG instances to prevent concurrent access issues.",
+      "fingerprint": "13ad8385c372873bd80ab04757f84ab9aaa9db6891ead29c49ec6f0495d69b3f"
+    },
+    {
+      "id": "759ea6b2-91fa-4e6c-b3fb-2912468bb0a2",
+      "technique_name": "Authentication Exchange Count Enumeration",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.85,
+      "description": "Step 1: An observer monitors the number of client-server exchanges required to complete a keyboard-interactive authentication. Step 2: The observer notes that the number of exchanges can vary based on the authentication state (e.g., password expiration). Step 3: By counting the exchanges, the observer can infer sensitive account information, such as whether a user's password has expired or the site's password lifetime policy.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "6",
+          "quote": "The number of client-server exchanges required to complete an authentication using this method may be variable. It is possible that an observer may gain valuable information simply by counting that number. For example, an observer may guess that a user's password has expired, and with further observation may be able to determine the password lifetime imposed by a site's password expiration policy."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can observe authentication traffic",
+        "Server uses variable number of prompts based on account state"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use a constant number of authentication exchanges regardless of the underlying account state, or pad exchanges to a fixed length to prevent timing/count-based inference.",
+      "fingerprint": "701721dd83507ed6c7577526d161eaa05a6d52e9ffeb01be2f88748ce8faaeb8"
+    },
+    {
+      "id": "8e2860f6-a348-4f6d-a716-bc59cb0ad87e",
+      "technique_name": "Truncation Indication Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.8,
+      "description": "Step 1: The SSH keyboard-interactive protocol allows servers to send 'name', 'instruction', and 'prompt' fields to the client. Step 2: The RFC states that if a client truncates these fields due to display limitations, 'there MUST be an obvious indication that such truncation has occurred'. Step 3: The definition of 'obvious indication' is left to the implementation, which could lead to inconsistent user interfaces where truncation is not clearly communicated, potentially causing users to miss critical authentication instructions or prompts.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.3",
+          "quote": "If the client does truncate any fields, there MUST be an obvious indication that such truncation has occurred."
+        }
+      ],
+      "prerequisites": [
+        "Server sends long name, instruction, or prompt fields",
+        "Client has display limitations"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should use a standardized and visually distinct method to indicate truncation, such as appending '...' or displaying a tooltip with the full text.",
+      "fingerprint": "5bce4dfa2277dc51ee8da42a687058bfdc14a451e6f0c127211a787f5f0334f3"
+    },
+    {
+      "id": "8720649d-50a9-4e72-a1ad-c214cc5a512e",
+      "technique_name": "Failure Message Delay Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 4256 states that if the server intends to respond with a failure message, it 'MAY delay for an implementation-dependent time before sending it to the client'. Step 2: The RFC suggests a default of 2 seconds but notes that 'implementations are likely to make the time delay configurable'. Step 3: This variability can be exploited for timing side-channel attacks, where an attacker measures the response time to infer whether the failure was due to an invalid username, invalid password, or other reasons, potentially aiding in user enumeration or credential stuffing attacks.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.4",
+          "quote": "If the server intends to respond with a failure message, it MAY delay for an implementation-dependent time before sending it to the client. It is suspected that implementations are likely to make the time delay configurable; a suggested default is 2 seconds."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can measure network latency accurately",
+        "Server uses variable delay based on failure reason"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Servers should use a constant delay for all authentication failures to prevent timing-based information leakage.",
+      "fingerprint": "50510e76a59d3b5ac02550b82205cbb930408aa81e348ec493e179f38df5a65d"
+    },
+    {
+      "id": "38489170-7636-4c03-92da-7caacac7ef9a",
+      "technique_name": "Unvalidated Language Tag Handling",
+      "category": "MissingValidation",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: A client sends an SSH_MSG_USERAUTH_REQUEST with a non-empty language tag. Step 2: The server receives the language tag and attempts to use it for message localization. Step 3: If the server does not validate the language tag format or check for supported languages, it may lead to unexpected behavior, resource exhaustion, or injection attacks if the tag is used in string formatting. Step 4: The RFC states the language tag is deprecated and implementation-dependent if unsupported.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.1",
+          "quote": "If the server does not support the requested language, the language to be used is implementation-dependent."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "The language tag is deprecated and SHOULD be the empty string. It may be removed in a future revision of this specification."
+        }
+      ],
+      "prerequisites": [
+        "Server supports language negotiation",
+        "Implementation lacks input validation for language tags"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Validate language tags against RFC 3066 format. Implement a whitelist of supported languages. Default to a safe language if the tag is invalid or unsupported. Deprecate and ignore the language tag as recommended.",
+      "fingerprint": "60747590db873f26fe4d78abfa0efb1f8f9763e5c0dd97d909fc0e331e836a80"
+    },
+    {
+      "id": "2ae207f3-0569-4ca1-b7e0-e3fcbc4fdfdc",
+      "technique_name": "Language Tag Fallback Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: The SSH keyboard-interactive protocol includes a deprecated 'language tag' field in the initial request and info request messages. Step 2: The RFC states that if the server does not support the requested language, 'the language to be used is implementation-dependent'. Step 3: This ambiguity can lead to inconsistent user experiences, potential confusion during authentication prompts, or even security issues if error messages or prompts are displayed in an unexpected language that the user does not understand, potentially leading to user error or phishing susceptibility.",
+      "rfc_references": [
+        {
+          "rfc": 4256,
+          "section": "3.1",
+          "quote": "If the server does not support the requested language, the language to be used is implementation-dependent."
+        },
+        {
+          "rfc": 4256,
+          "section": "3.2",
+          "quote": "If the server does not support the requested language, the language to be used is implementation-dependent."
+        }
+      ],
+      "prerequisites": [
+        "Client sends a non-empty language tag",
+        "Server does not support the requested language"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should define a clear fallback mechanism for language selection, such as defaulting to English or the system's default locale, and document this behavior.",
+      "fingerprint": "8c2c9b515056c593081e4008d74f340ae75da7803aeca010895c3abab0ee9d47"
+    },
+    {
+      "id": "aa5d18f1-2cbb-430d-868e-32154838326c",
+      "technique_name": "Elliptic Curve Point Compression Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: RFC 5656 specifies that for ECDSA keys and ECDH/ECMQV key exchanges, 'point compression MAY be used'. Step 2: The RFC does not mandate whether compression must be consistent between sender and receiver or how to handle mismatches. Step 3: If one implementation sends compressed points and another expects uncompressed points (or vice versa), it could lead to interoperability failures or, in a worst-case scenario, subtle cryptographic weaknesses if the decompression is not handled correctly according to the curve parameters.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "3.1",
+          "quote": "Q is the public key encoded from an elliptic curve point into an octet string as defined in Section 2.3.3 of [SEC1]; point compression MAY be used."
+        },
+        {
+          "rfc": 5656,
+          "section": "4",
+          "quote": "The transformation between elliptic curve points and octet strings is specified in Sections 2.3.3 and 2.3.4 of [SEC1]; point compression MAY be used."
+        }
+      ],
+      "prerequisites": [
+        "SSH connection using ECC algorithms",
+        "Mismatched point compression preferences between client and server"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should support both compressed and uncompressed point formats and clearly document their preference or default behavior.",
+      "fingerprint": "325441eda0e76401feb0932e4b37c8dc46019c8415922e4687fc3f11bbc07cf1"
+    },
+    {
+      "id": "e3660686-fd8f-447c-8344-0650ccea03b6",
+      "technique_name": "Elliptic Curve Parameter Exhaustion",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.6,
+      "description": "Step 1: An attacker negotiates the use of weak or non-standard elliptic curves that are susceptible to efficient attacks (e.g., Weil descent). Step 2: The attacker performs a computational attack to derive the private key or disrupt the key exchange. Step 3: While primarily a confidentiality/integrity issue, the computational burden on the victim to detect or mitigate such attacks, or the disruption caused by failed key exchanges, can contribute to a denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 5656,
+          "section": "9",
+          "quote": "Certain types of curves can be more susceptible to known attacks than others. For example, curves over finite fields GF(2^m), where m is composite, may be susceptible to an attack based on the Weil descent."
+        },
+        {
+          "rfc": 5656,
+          "section": "9",
+          "quote": "System administrators should be cautious when enabling curves other than the ones specified in Section 10..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can influence curve negotiation.",
+        "Server/Client supports weak or non-standard curves."
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Restrict supported elliptic curves to the REQUIRED and RECOMMENDED sets defined in RFC 5656 Section 10. Disable support for curves over GF(2^m) with composite m.",
+      "fingerprint": "98e3055b90d0723da604ac0a117524e72d9b07fde4e40e5b13aadb949cca3fa2"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T14:16:59.151757+00:00",
+    "model_used": "Qwen3.6-27B-Q4_K_M.gguf",
+    "total_tokens_used": 152773,
+    "analysis_duration_secs": 403.531366125,
+    "run_id": 34,
+    "input_hash": "8c474dfb840bd45bcacafb90ac103b9c8c31dcbda9b1614bcf0022b758eb6f06",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

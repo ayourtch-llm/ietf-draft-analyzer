@@ -1,0 +1,216 @@
+[
+  {
+    "caveats": [
+      "This PoC assumes the target is a BGP speaker listening on the default port 179.",
+      "The script sends a single malicious message. In a real attack, an attacker might send multiple messages to exhaust resources.",
+      "Some BGP implementations may silently drop invalid packets without sending a NOTIFICATION, which is a deviation from RFC 4271 but not necessarily a crash vulnerability.",
+      "Ensure you have explicit permission to test the target system. Unauthorized testing is illegal."
+    ],
+    "description": "Demonstrates BGP Message Header Length Field Manipulation by sending a BGP message with a Length field exceeding the RFC 4271 maximum of 4096 octets.",
+    "expected_patched": "The target BGP speaker correctly validates the Length field upon receipt. It detects that 4097 > 4096 and immediately sends a BGP NOTIFICATION message with Error Code 1 (Message Header Error) and Error Subcode 2 (Bad Message Length), then closes the TCP connection.",
+    "expected_vulnerable": "The target BGP speaker may crash, hang, or reset the connection without sending a proper NOTIFICATION message. Alternatively, it may allocate a large buffer based on the Length field (4097 bytes) before validation, leading to resource exhaustion or out-of-bounds read/write if it attempts to read that much data from the TCP stream.",
+    "filename": "poc_bgp_header_length_manipulation.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "e51f9d7d95414cfa0766bfcaff9828351bce5cc4983a34030d06fae1b6a480e2",
+    "lead_severity": "critical",
+    "lead_technique": "BGP Message Header Length Field Manipulation",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify the IP address and port (default 179) of the target BGP speaker.",
+      "Step 3: Run the script with the target's IP address as an argument."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target is reachable and listening on port 179.",
+      "Some firewalls or IDS/IPS systems may block unauthorized BGP connections regardless of MD5 status.",
+      "The script uses a fake AS number and BGP ID; a real attack would use values that might be more likely to be accepted by the target's policy.",
+      "TCP MD5 is a legacy mechanism; modern deployments may use IPsec or BGPsec instead."
+    ],
+    "description": "Demonstrates BGP session establishment without TCP MD5 authentication, confirming the absence of transport-layer security.",
+    "expected_patched": "The TCP connection to port 179 is either refused, reset, or times out immediately. This indicates that the target requires TCP MD5 authentication (RFC 2385) and rejects connections that do not provide a valid MD5 signature in the TCP options.",
+    "expected_vulnerable": "The script successfully establishes a TCP connection to port 179, sends a BGP OPEN message, and receives a valid BGP OPEN or KEEPALIVE response. This confirms that the target does not enforce TCP MD5 authentication, allowing an unauthenticated peer to establish a BGP session.",
+    "filename": "poc_tcp_md5_absence.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "ef7047deee7f248a5595370b9858860250577e56c82fb803c4e047f00e463965",
+    "lead_severity": "critical",
+    "lead_technique": "TCP MD5 Absence / Lack of Transport Authentication",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target BGP speaker IP address that is reachable.",
+      "Step 3: Run the script with the target IP as an argument: python3 poc_tcp_md5_absence.py <TARGET_IP>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC simulates the capture of a BGP OPEN message. In a real attack, the attacker would need to capture a valid OPEN message from a legitimate peer using packet capture tools.",
+      "The script assumes the attacker can initiate a TCP connection to the target BGP speaker on port 179.",
+      "The script does not handle BGP session maintenance (KEEPALIVE messages) after the initial OPEN exchange.",
+      "The script does not implement IP spoofing. If the target validates the source IP address, the attacker must be on-path or able to spoof the IP.",
+      "The script assumes TCP MD5 authentication is disabled on the target BGP speaker."
+    ],
+    "description": "Demonstrates BGP Session Hijacking via OPEN Replay by capturing a valid OPEN message and replaying it to establish a session.",
+    "expected_patched": "The target BGP speaker rejects the replayed OPEN message, sending a NOTIFICATION message with an appropriate error code (e.g., Bad BGP Identifier, Bad Peer AS, or Unacceptable Hold Time) or simply closing the TCP connection.",
+    "expected_vulnerable": "The target BGP speaker accepts the replayed OPEN message and responds with a KEEPALIVE, establishing a BGP session with the attacker. This allows the attacker to send malicious UPDATE messages to hijack traffic.",
+    "filename": "poc_bgp_open_replay.py",
+    "lead_category": "ReplayAttack",
+    "lead_fingerprint": "fb88468f4dd153194c1eedd6f15de075ed21bf5cef59442023fb703151ac9779",
+    "lead_severity": "critical",
+    "lead_technique": "BGP Session Hijacking via OPEN Replay",
+    "setup": [
+      "Step 1: Ensure you have root privileges to create raw sockets or bind to privileged ports if necessary.",
+      "Step 2: Set up a BGP speaker (e.g., FRRouting, Quagga, or a router) configured to accept BGP sessions from the attacker's IP.",
+      "Step 3: Ensure TCP MD5 authentication is disabled on the target BGP speaker.",
+      "Step 4: Run the script with the target IP and the IP of the legitimate peer whose OPEN message will be captured."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target router is configured to accept BGP peering from the attacker's IP.",
+      "The script uses a fixed number of prefixes (10,000) for demonstration purposes. In a real attack, the number of prefixes would be much higher to cause significant impact.",
+      "The script does not handle all possible BGP error conditions or edge cases.",
+      "Running this script against a target without proper authorization is illegal and unethical."
+    ],
+    "description": "Demonstrates BGP Route Table Overflow (Prefix Flooding) by establishing a BGP session and flooding the target with unique IP prefixes.",
+    "expected_patched": "The target router will enforce a maximum prefix limit and either discard new prefixes or terminate the BGP session with a NOTIFICATION message (Error Code Cease) once the limit is reached. The router will not experience memory exhaustion or CPU overload, and legitimate traffic will continue to be processed normally.",
+    "expected_vulnerable": "The target router will allocate memory for each advertised prefix in its Adj-RIB-In and Loc-RIB. As the number of prefixes increases, the router may experience memory exhaustion or CPU overload, leading to a Denial of Service for legitimate traffic or BGP sessions. The router may also terminate the BGP session by sending a NOTIFICATION message with Error Code Cease if a maximum prefix limit is configured and reached.",
+    "filename": "poc_bgp_route_table_overflow.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "6699646928b2b1e9a44f7e3c7f5b068af321dca072abd0dd17908655f415cdcd",
+    "lead_severity": "high",
+    "lead_technique": "BGP Route Table Overflow (Prefix Flooding)",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Ensure the target router is configured to accept BGP peering from the attacker's IP.",
+      "Step 3: Run the script with the target router's IP address as an argument."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires a vulnerable BGP implementation that does not validate the Withdrawn Routes Length against the message bounds.",
+      "May require root privileges to send raw BGP packets on some systems.",
+      "The target BGP speaker must be configured to accept connections from the attacker's IP."
+    ],
+    "description": "Demonstrates BGP UPDATE message Withdrawn Routes Length field overflow by sending an oversized length value.",
+    "expected_patched": "The target BGP speaker should detect the malformed message and send a NOTIFICATION message with Error Code 3 (UPDATE Message Error) and Error Subcode 2 (Malformed Attribute List), then close the connection.",
+    "expected_vulnerable": "The target BGP speaker may crash, hang, or leak memory due to out-of-bounds read when parsing the Withdrawn Routes field based on the oversized length.",
+    "filename": "poc_bgp_update_withdrawn_routes_overflow.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "c07a4e338b85e6cd35b7b0da988b4aa230587a490e12da60fc7a9ec4da2521c7",
+    "lead_severity": "high",
+    "lead_technique": "BGP UPDATE Message Withdrawn Routes Overflow",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Run the script with appropriate target IP and port (default: 127.0.0.1, 179).",
+      "Step 3: Ensure a BGP speaker is listening on the target port."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes a BGP session is already established or that the target accepts unsolicited UPDATE messages (which is non-standard but possible in vulnerable implementations).",
+      "Raw socket usage may require root/administrator privileges.",
+      "The inflated length value (4000) is chosen to be significant but within typical buffer limits; adjust based on target architecture.",
+      "Some firewalls or IDS may block malformed BGP packets before they reach the target."
+    ],
+    "description": "Demonstrates BGP UPDATE message parsing vulnerability by sending a message with an inflated Total Path Attribute Length field.",
+    "expected_patched": "The target BGP speaker correctly validates the Total Path Attribute Length against the message boundaries and responds with a BGP NOTIFICATION message (Error Code: 2, Subcode: 1 - Malformed Attribute List), then closes the session.",
+    "expected_vulnerable": "The target BGP speaker may crash, hang, or become unresponsive due to an out-of-bounds read or memory allocation error triggered by the inflated length field. Alternatively, it might process the message incorrectly, leading to undefined behavior or information leaks.",
+    "filename": "poc_bgp_update_path_attr_overflow.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "3f27035feddbc1c5ad314ee1f305d6a198cc6713fdc75a9d4518f7fbfb7bad9c",
+    "lead_severity": "high",
+    "lead_technique": "BGP UPDATE Message Path Attribute Overflow",
+    "setup": [
+      "Step 1: Ensure you have Python 3 installed.",
+      "Step 2: Run the script with appropriate network privileges (may require root for raw sockets).",
+      "Step 3: Point the script to a vulnerable BGP speaker IP address."
+    ]
+  },
+  {
+    "caveats": [
+      "This script requires root privileges to create raw sockets and capture traffic.",
+      "The capture function is simplified and may not work on all network interfaces or operating systems.",
+      "The script assumes that the attacker is on-path or can inject packets into the BGP session.",
+      "The script does not handle all BGP message types or edge cases.",
+      "This script is for educational and security research purposes only. Unauthorized use is illegal."
+    ],
+    "description": "Demonstrates a BGP Session Replay Attack by capturing and replaying BGP OPEN and UPDATE messages to hijack a session without TCP MD5 authentication.",
+    "expected_patched": "When the target BGP speaker has TCP MD5 authentication enabled (as per RFC 2385), the replayed messages will be rejected because they lack the correct TCP MD5 signature. The target will send a NOTIFICATION message and close the connection, preventing the replay attack.",
+    "expected_vulnerable": "When the target BGP speaker does not have TCP MD5 authentication enabled, the replayed OPEN message will be accepted, and the session will be re-established. The replayed UPDATE messages will be processed, potentially injecting stale or malicious routing information into the target's routing table. This can lead to traffic diversion or blackholing.",
+    "filename": "poc_bgp_session_replay_attack.py",
+    "lead_category": "ReplayAttack",
+    "lead_fingerprint": "37d0426222df1812b0d666412cddce1e8df15aa490a0f5a54a7b196eba909e54",
+    "lead_severity": "high",
+    "lead_technique": "BGP Session Replay Attack",
+    "setup": [
+      "Step 1: Ensure you have root privileges to create raw sockets and bind to privileged ports.",
+      "Step 2: Set up a test environment with two BGP speakers (e.g., using FRRouting, Quagga, or Cisco IOSv) configured without TCP MD5 authentication.",
+      "Step 3: Run the script on a machine that can intercept traffic between the BGP peers (on-path) or has the ability to inject packets into the session."
+    ]
+  },
+  {
+    "caveats": [
+      "This script requires root privileges to send raw packets.",
+      "The target router must be configured to accept connections from the spoofed IP address.",
+      "Network filters (e.g., BCP38) may prevent the spoofed packets from reaching the target.",
+      "This is a proof-of-concept and should only be used in authorized testing environments."
+    ],
+    "description": "Demonstrates BGP session impersonation by spoofing a legitimate peer's IP and BGP Identifier to bypass authentication.",
+    "expected_patched": "The target router rejects the connection or the OPEN message because it validates the source IP against a list of authorized peers or uses TCP MD5 to verify the peer's identity.",
+    "expected_vulnerable": "The target router accepts the BGP OPEN message and establishes a session, believing it is communicating with the legitimate peer. The attacker can then send UPDATE messages to manipulate routing tables.",
+    "filename": "poc_bgp_session_impersonation.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "9c03a4a1dda09dbfb70071ed683067574475827d71acfdcd0d4af76991092969",
+    "lead_severity": "high",
+    "lead_technique": "BGP Session Impersonation via IP Spoofing",
+    "setup": [
+      "Step 1: Ensure you have root privileges to create raw sockets for IP spoofing.",
+      "Step 2: Configure a target BGP router to accept connections from the spoofed IP address.",
+      "Step 3: Run the script with the target IP, spoofed source IP, and legitimate peer's BGP Identifier."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC requires root privileges to bind to low ports and manipulate TCP sockets.",
+      "The target BGP peer must be configured to support multiple BGP versions for the downgrade to succeed.",
+      "Modern BGP implementations may strictly enforce version 4 and reject lower versions, mitigating this attack.",
+      "This script acts as a transparent proxy; the BGP client must be configured to connect to the proxy's IP and port instead of the target directly.",
+      "BGP sessions are typically long-lived; this PoC focuses on the initial OPEN message exchange."
+    ],
+    "description": "Demonstrates a BGP Version Downgrade Attack by intercepting and modifying the BGP OPEN message version field.",
+    "expected_patched": "The target BGP peer rejects the downgraded OPEN message by sending a NOTIFICATION message with Error Code 'OPEN Message Error' and Error Subcode 'Unsupported Version Number'. The script will show the target's response, and the BGP session will not be established with the downgraded version.",
+    "expected_vulnerable": "The target BGP peer accepts the downgraded OPEN message with Version 3. The script prints 'SUCCESS: Target accepted downgraded BGP version!' and the BGP session proceeds using BGP-3, potentially lacking modern security features or capabilities.",
+    "filename": "poc_bgp_version_downgrade.py",
+    "lead_category": "Downgrade",
+    "lead_fingerprint": "278d39bc77db5bc58feab6b60d98d908ed22e935aad4c8e572aa5da854e1723a",
+    "lead_severity": "high",
+    "lead_technique": "BGP Version Downgrade Attack",
+    "setup": [
+      "Step 1: Ensure you have root privileges to bind to port 179 and manipulate raw TCP sockets.",
+      "Step 2: Set up a test BGP peer (e.g., using FRRouting, Quagga, or a router) configured to support BGP version 4.",
+      "Step 3: Run the script with the target BGP peer's IP address and the local IP to bind the proxy."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target BGP speaker is listening on the default port 179.",
+      "The BGP Identifiers used in the PoC are arbitrary and may need to be adjusted based on the target's configuration.",
+      "The delay between the two connections is set to 0.5 seconds, which may need to be tuned to reliably trigger the collision state confusion.",
+      "The PoC does not handle all possible BGP message types or error conditions, and may fail if the target sends unexpected messages.",
+      "Running this PoC against a production BGP speaker may cause network disruptions and should only be done in a controlled environment."
+    ],
+    "description": "Demonstrates BGP OPEN Message Collision State Confusion by manipulating BGP Identifiers across simultaneous TCP connections to trigger inconsistent FSM states.",
+    "expected_patched": "If the target BGP implementation is patched, it will correctly handle the collision detection logic. It will compare the BGP Identifiers, retain the connection with the higher-valued BGP Identifier, and close the other connection with a NOTIFICATION message (Cease error code). The FSM will transition cleanly to the Idle state for the closed connection and remain in the Established state for the retained connection, without any inconsistent state or DoS.",
+    "expected_vulnerable": "If the target BGP implementation is vulnerable, it may enter an inconsistent FSM state due to the collision detection logic being triggered while processing the second OPEN message. This could result in the target dropping the legitimate connection, failing to transition to the Established state, or entering an undefined state, leading to a Denial of Service (DoS). The target might send a NOTIFICATION message with a Cease error code or simply close the connection without proper state transition.",
+    "filename": "poc_bgp_open_collision_state_confusion.py",
+    "lead_category": "StateConfusion",
+    "lead_fingerprint": "55f0305b56e91707508c89b12e5969f26f1a569025cd3fae0f687456dbaaf6e6",
+    "lead_severity": "high",
+    "lead_technique": "BGP OPEN Message Collision State Confusion",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Identify a target BGP speaker (e.g., a router or BGP simulator) listening on TCP port 179.",
+      "Step 3: Run the script with the target IP address as an argument: python3 poc_bgp_open_collision_state_confusion.py <TARGET_IP>"
+    ]
+  }
+]

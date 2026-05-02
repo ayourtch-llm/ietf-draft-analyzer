@@ -1,0 +1,254 @@
+[
+  {
+    "caveats": [
+      "Requires root privileges to send raw packets.",
+      "The target must support IPv6 and have a stateful firewall that inspects fragments before reassembly.",
+      "The script assumes a simple network environment without additional security measures like IPS/IDS."
+    ],
+    "description": "Demonstrates IPv6 Overlapping Fragment Firewall Bypass by sending overlapping fragments with modified TCP flags.",
+    "expected_patched": "The firewall or destination host detects the overlapping fragments and discards the entire datagram, preventing the connection initiation.",
+    "expected_vulnerable": "The firewall allows the first fragment due to the SYN+ACK flags, and the second fragment overlaps to change the flags to SYN only. The destination reassembles the packet and sees a SYN-only packet, initiating a new connection.",
+    "filename": "poc_ipv6_overlapping_fragment_firewall_bypass.py",
+    "lead_category": "StateConfusion",
+    "lead_fingerprint": "5aba1a18472c74d3fd6fc646afc05aa9789a5e5e2958065da7f86d56ad1efaa0",
+    "lead_severity": "critical",
+    "lead_technique": "IPv6 Overlapping Fragment Firewall Bypass",
+    "setup": [
+      "Step 1: Ensure you have root privileges to send raw packets.",
+      "Step 2: Ensure the target network supports IPv6 and has a stateful firewall that inspects fragments before reassembly.",
+      "Step 3: Run the script with the target IPv6 address and port as arguments."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires raw socket privileges (root).",
+      "Modern systems and firewalls implement RFC 8200 and discard overlapping fragments.",
+      "The exact offset and payload size may need adjustment based on the target's MTU and firewall inspection depth."
+    ],
+    "description": "Demonstrates the IPv6 Overlapping Fragment Firewall Bypass (RFC 5722) by sending a first fragment with benign TCP flags and a second overlapping fragment that overwrites them with malicious flags.",
+    "expected_patched": "The destination host or firewall detects the overlapping fragments and silently discards the entire datagram, preventing the bypass.",
+    "expected_vulnerable": "The destination host receives both fragments, reassembles them, and the overlapping second fragment overwrites the TCP flags in the first fragment. The resulting packet has SYN flags, initiating a connection that the firewall allowed based on the initial SYN+ACK flags.",
+    "filename": "poc_ipv6_overlapping_fragment_bypass.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "f0bcca97538a20452fe7df85f05aa98a2e25527cd12af45416f4063c7ebcd7f1",
+    "lead_severity": "critical",
+    "lead_technique": "IPv6 Overlapping Fragment Firewall Bypass",
+    "setup": [
+      "Step 1: Ensure you have root privileges to send raw packets.",
+      "Step 2: Install scapy: pip install scapy",
+      "Step 3: Run the script targeting a vulnerable firewall/host setup."
+    ]
+  },
+  {
+    "caveats": [
+      "This script uses the loopback interface for simplicity and safety. In a real network, an attacker would need to be on the same network segment or have routing control to intercept packets.",
+      "Raw socket operations require root privileges on most systems.",
+      "This is not a vulnerability in the IPv6 protocol itself, but a demonstration of the need for encryption when transmitting sensitive data over untrusted networks.",
+      "The script is for educational purposes only and should not be used to intercept traffic on networks without explicit permission."
+    ],
+    "description": "Demonstrates that unencrypted IPv6 packets can be read by an on-path observer.",
+    "expected_patched": "If the communication were encrypted (e.g., using TLS or IPsec), the eavesdropper would still capture the packet, but the payload would appear as ciphertext. The eavesdropper would not be able to read the sensitive information without the decryption keys.",
+    "expected_vulnerable": "The eavesdropper thread successfully captures the IPv6 packet sent by the sender thread. The payload, which contains sensitive plaintext data, is printed to the console, demonstrating that an on-path observer can read the contents of unencrypted IPv6 packets.",
+    "filename": "poc_eavesdropping_on_ipv6_packets.py",
+    "lead_category": "InformationLeak",
+    "lead_fingerprint": "1188b68a826462bed3998d6939c869f330d15984dfb82ff59fa2d0099ced1186",
+    "lead_severity": "high",
+    "lead_technique": "Eavesdropping on IPv6 Packets",
+    "setup": [
+      "Step 1: Ensure you have root privileges to create raw sockets.",
+      "Step 2: Run the script on a machine that can act as both sender and receiver (loopback) or on a shared network segment.",
+      "Step 3: The script will send a plaintext message over IPv6 and simultaneously capture it to demonstrate eavesdropping."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires root privileges to send raw packets.",
+      "Assumes the firewall performs stateful inspection on the first fragment only.",
+      "Assumes the destination node does not strictly validate overlapping fragments during reassembly.",
+      "The script uses a fixed identification value for simplicity; in a real attack, this should be randomized."
+    ],
+    "description": "Demonstrates IPv6 overlapping fragment firewall bypass by sending two fragments with conflicting TCP flags.",
+    "expected_patched": "The destination node detects the overlapping fragments during reassembly and silently discards the entire datagram, preventing the firewall bypass.",
+    "expected_vulnerable": "The firewall inspects the first fragment, sees SYN-ACK flags, and allows it. The destination node reassembles the packet, sees the overlapping second fragment with SYN flags, and treats it as a connection request, bypassing the firewall's access control rules.",
+    "filename": "poc_ipv6_overlapping_fragment_firewall_bypass_4.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "f709f57c3bb4a0e61d098001a91fd0933d1f645842f67176d6f6092e03632a85",
+    "lead_severity": "high",
+    "lead_technique": "IPv6 Overlapping Fragment Firewall Bypass",
+    "setup": [
+      "Step 1: Ensure you have root privileges to send raw packets.",
+      "Step 2: Identify a target IPv6 address and a firewall that performs stateful inspection on the first fragment only.",
+      "Step 3: Run the script with the target IPv6 address and destination port as arguments."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires root privileges to send raw packets.",
+      "Assumes the target does not implement strict anti-replay mechanisms.",
+      "Fragment ID must be predictable or reused for the replay to be effective.",
+      "Network interface must support IPv6 and allow raw socket operations."
+    ],
+    "description": "Demonstrates an IPv6 Fragment Replay Attack by capturing and replaying fragmented IPv6 packets to bypass stateful inspection or trigger duplicate processing.",
+    "expected_patched": "The target or firewall detects the duplicate Fragment ID within the reassembly window and discards the replayed fragments, preventing unauthorized processing.",
+    "expected_vulnerable": "The target reassembles the replayed fragments and processes the packet again, potentially causing duplicate actions, bypassing rate limits, or triggering stateful inspection bypass if the firewall does not track fragment IDs.",
+    "filename": "poc_ipv6_fragment_replay.py",
+    "lead_category": "ReplayAttack",
+    "lead_fingerprint": "0fd409b055634bf035ceebf0ee826d1ff5a4b38d66f046d319c34401fec4690f",
+    "lead_severity": "high",
+    "lead_technique": "IPv6 Fragment Replay Attack",
+    "setup": [
+      "Step 1: Ensure you have root privileges to create raw sockets.",
+      "Step 2: Set up a target IPv6 service that processes fragmented packets without strict anti-replay checks.",
+      "Step 3: Run the script on a network interface where you can sniff and inject traffic."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires root privileges to create raw sockets.",
+      "The target must support IPv6 and implement fragment reassembly.",
+      "Some modern OSes have built-in protections against this specific attack (e.g., limits on reassembly contexts).",
+      "The ICMPv6 checksum in the payload is simplified for demonstration; some strict implementations may drop packets with invalid checksums before reassembly.",
+      "Network interfaces or firewalls may drop fragmented packets by default."
+    ],
+    "description": "Proof-of-concept script demonstrating IPv6 Fragment Reassembly Resource Exhaustion by sending incomplete fragments with unique IDs.",
+    "expected_patched": "The target node implements strict limits on the number of concurrent reassembly contexts per source IP or globally. It may also use randomized timeouts or rate-limit fragment reception. As a result, the target discards excess fragments early, preventing resource exhaustion.",
+    "expected_vulnerable": "The target node allocates a reassembly buffer for each unique Fragment Identification value. Since the script never sends the final fragment (M=0) or subsequent fragments, the target holds these buffers for the maximum reassembly timeout (typically 60 seconds per RFC 8200). High volume leads to memory exhaustion and increased CPU usage for timer management, resulting in a Denial of Service.",
+    "filename": "poc_ipv6_fragment_reassembly_exhaustion.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "016b252f6a995895015b1e19a8a1e17fa3c72422d4706130e838509fe8205ef2",
+    "lead_severity": "high",
+    "lead_technique": "IPv6 Fragment Reassembly Resource Exhaustion",
+    "setup": [
+      "Step 1: Ensure the script is run with root privileges (required for raw sockets).",
+      "Step 2: Identify the target IPv6 address and a valid source IPv6 address on the same network segment.",
+      "Step 3: Run the script with the target address as an argument: python3 poc_ipv6_fragment_reassembly_exhaustion.py <TARGET_IPv6>"
+    ]
+  },
+  {
+    "caveats": [
+      "Requires raw socket privileges (root/admin).",
+      "IPv6 must be enabled and reachable on the target network.",
+      "The race condition depends on the specific implementation of the firewall/IDS and the OS reassembly buffer.",
+      "Modern firewalls often perform full reassembly before inspection, mitigating this specific attack vector."
+    ],
+    "description": "Demonstrates the IPv6 Overlapping Fragment Reassembly Race (RFC 5722) by sending a benign first fragment followed by a malicious overlapping second fragment to bypass firewall inspection.",
+    "expected_patched": "The destination host or an inline firewall detects that the second fragment overlaps with the first fragment's region. Per RFC 5722 and RFC 8200, the entire datagram is discarded immediately, and no connection is established. An ICMP error may or may not be generated depending on implementation.",
+    "expected_vulnerable": "The firewall inspects the first fragment, sees a SYN-ACK, and allows it through as a legitimate response. The second overlapping fragment arrives and overwrites the TCP header with a SYN flag. The destination host reassembles the packet and sees a SYN request, initiating a connection that bypassed the firewall's stateful inspection rules.",
+    "filename": "poc_ipv6_overlapping_fragment_race.py",
+    "lead_category": "RaceCondition",
+    "lead_fingerprint": "99294c8a52e2c84b299e7965f76599695a6942cf9df8457147958b1626e71c7f",
+    "lead_severity": "high",
+    "lead_technique": "IPv6 Overlapping Fragment Reassembly Race",
+    "setup": [
+      "Step 1: Install Scapy: pip install scapy",
+      "Step 2: Run with root privileges: sudo python3 poc_ipv6_overlapping_fragment_race.py",
+      "Step 3: Ensure the target IPv6 address is reachable and a firewall/IDS is inspecting fragments before reassembly."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires root privileges to send raw IPv6 packets.",
+      "Firewalls or intermediate devices may drop fragmented packets or ICMP error messages.",
+      "The source IP must be routable or valid for the target to send ICMP errors back.",
+      "Some operating systems may have different default behaviors for fragment reassembly timeouts or buffer sizes."
+    ],
+    "description": "Demonstrates IPv6 Fragment Offset Manipulation to trigger oversized reassembly buffer overflows or DoS.",
+    "expected_patched": "The target node correctly implements RFC 8200 Section 4.5. Upon receiving the second fragment, it calculates the potential reassembled size (Offset * 8 + Payload Length). Since this exceeds 65,535 octets, it discards the fragment and sends an ICMPv6 Parameter Problem (Code 0) message back to the source, pointing to the Fragment Offset field.",
+    "expected_vulnerable": "The target node fails to validate the reassembled packet size against the 65,535 octet limit. It may allocate a buffer based on the first fragment's size or fail to check bounds, leading to a heap overflow, memory corruption, or denial of service (crash/hang) when processing the oversized reassembled packet.",
+    "filename": "poc_ipv6_fragment_offset_manipulation.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "723af7152b4c4c802f78a3bba7fa2847fb6d43384c4e353a954b5a07d9a37031",
+    "lead_severity": "high",
+    "lead_technique": "IPv6 Fragment Offset Manipulation for Oversized Reassembly",
+    "setup": [
+      "Step 1: Ensure you have root privileges to send raw IPv6 packets.",
+      "Step 2: Identify the target IPv6 address and ensure network connectivity.",
+      "Step 3: Run the script with the target IPv6 address as an argument."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires root privileges or CAP_NET_RAW to send raw IPv6 packets.",
+      "Firewalls may drop fragmented packets by default, which could mask the vulnerability.",
+      "The script assumes the target supports ICMPv6 Echo Reply. If ICMP is blocked, the lack of response is ambiguous.",
+      "Some systems may have aggressive fragment dropping policies that mitigate this issue without fixing the underlying state confusion."
+    ],
+    "description": "Demonstrates IPv6 Atomic Fragment State Confusion by sending a fragmented packet with Offset=0 and M=0 to test reassembly handling.",
+    "expected_patched": "The target host correctly identifies the atomic fragment (Offset=0, M=0) as a complete packet. It processes it immediately, strips the Fragment header, and sends an ICMP Echo Reply. No reassembly state is created.",
+    "expected_vulnerable": "The target host enters a reassembly wait state for the atomic fragment, consuming memory resources. No ICMP Echo Reply is sent because the host is waiting for more fragments that will never arrive. If many such packets are sent, it can lead to denial of service by exhausting reassembly buffers.",
+    "filename": "poc_ipv6_atomic_fragment_state_confusion.py",
+    "lead_category": "StateConfusion",
+    "lead_fingerprint": "632b10195360a8460f26bdca3303a5363fa3a621bd4b69b135171810c18b0957",
+    "lead_severity": "high",
+    "lead_technique": "IPv6 Atomic Fragment State Confusion",
+    "setup": [
+      "Step 1: Ensure the host has IPv6 connectivity and a raw socket capability (run as root or with CAP_NET_RAW).",
+      "Step 2: Identify a target IPv6 address that supports ICMPv6 Echo Reply (e.g., a local router or host).",
+      "Step 3: Run the script with the target IPv6 address as an argument."
+    ]
+  },
+  {
+    "caveats": [
+      "This script requires root privileges to create raw sockets.",
+      "The target must support IPv6.",
+      "The effectiveness of the attack depends on the firewall's implementation of IPv6 fragment inspection.",
+      "This is a proof-of-concept and should only be used in authorized testing environments."
+    ],
+    "description": "Demonstrates IPv6 Fragmentation Header Manipulation to bypass firewall access controls by splitting headers across fragments.",
+    "expected_patched": "The firewall or destination host detects that the first fragment does not contain all headers through the first upper-layer header (UDP). According to RFC 8200 Section 4.5, this is a violation. The firewall drops the packet or the destination host discards the fragment and sends an ICMP Parameter Problem message.",
+    "expected_vulnerable": "The firewall inspects only the first fragment, sees a benign Fragment header with Next Header 44, and allows the packet. The second fragment, containing the malicious UDP payload, bypasses the firewall and reaches the destination host. The destination reassembles the packet and processes the malicious payload.",
+    "filename": "poc_ipv6_fragmentation_header_manipulation.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "2f1492178a1aa91fe35c368921fd9819fc8228d39b663915b6d3fc5cf429ba9f",
+    "lead_severity": "high",
+    "lead_technique": "IPv6 Fragmentation Header Manipulation for Access Control Bypass",
+    "setup": [
+      "Step 1: Ensure the script is run with root privileges (required for raw sockets).",
+      "Step 2: Configure a target IPv6 address and a firewall that inspects only the first fragment or lacks deep packet inspection for fragmented IPv6 traffic.",
+      "Step 3: Run the script with the target IPv6 address as an argument."
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC requires root privileges to send raw IPv6 packets.",
+      "The target must support IPv6 and have a service listening on the destination port (UDP 8080 in this example).",
+      "Firewall behavior may vary significantly depending on the vendor and configuration.",
+      "The script assumes a local or directly reachable IPv6 target. Adjust src_ipv6 and target_ipv6 as needed for your environment.",
+      "Some operating systems may have built-in protections against fragment attacks that could interfere with the test."
+    ],
+    "description": "Demonstrates IPv6 fragment reassembly ambiguity by injecting exact duplicate fragments to test inconsistent handling between firewalls and end-hosts.",
+    "expected_patched": "Both the firewall and the end-host treat the duplicate fragment as an overlapping fragment and silently discard the entire datagram, resulting in no packet processing at the end-host and consistent behavior across network devices.",
+    "expected_vulnerable": "The end-host successfully reassembles the packet and processes the UDP payload, while a strict firewall in the path may drop the entire datagram due to the overlapping fragment. This leads to a state desynchronization where the firewall believes the packet was dropped, but the end-host processes it, potentially bypassing security controls or causing inconsistent logging.",
+    "filename": "poc_fragment_reassembly_ambiguity.py",
+    "lead_category": "ImplementationAmbiguity",
+    "lead_fingerprint": "9e6555c2b260d44903574fd00544d166602ce3b56bf37d0bb81ca8fd98392287",
+    "lead_severity": "high",
+    "lead_technique": "Fragment Reassembly Ambiguity in Overlap Handling",
+    "setup": [
+      "Step 1: Ensure you have root privileges to send raw packets.",
+      "Step 2: Configure a target IPv6 address (e.g., a local interface or a test server).",
+      "Step 3: Run the script with the target IPv6 address as an argument: python3 poc_fragment_reassembly_ambiguity.py <TARGET_IPV6>"
+    ]
+  },
+  {
+    "caveats": [
+      "Requires root privileges to send raw packets.",
+      "Target must support IPv6 fragmentation.",
+      "Results may vary depending on the target's implementation of fragment reassembly.",
+      "This is a proof-of-concept and should only be used in authorized testing environments."
+    ],
+    "description": "Demonstrates IPv6 Fragment Identification Reuse Ambiguity by sending crafted fragments with predictable/reused IDs to test reassembly behavior.",
+    "expected_patched": "The target correctly handles fragment reassembly, discarding fragments with reused IDs or implementing robust Identification generation as per RFC 7739. No incorrect reassembly occurs.",
+    "expected_vulnerable": "The target reassembles fragments with the reused/predictable Identification value, potentially accepting injected fragments or misinterpreting the reassembled packet. This could lead to security bypasses or denial of service.",
+    "filename": "poc_fragment_id_reuse.py",
+    "lead_category": "ImplementationAmbiguity",
+    "lead_fingerprint": "06b172736e62f3c2f7d0bab016a10fc7855b574537e8a3272c551a4b72d2f4c8",
+    "lead_severity": "high",
+    "lead_technique": "Fragment Identification Reuse Ambiguity",
+    "setup": [
+      "Step 1: Ensure you have root privileges to send raw packets.",
+      "Step 2: Install scapy: pip install scapy",
+      "Step 3: Run the script targeting a local IPv6 interface or a test VM."
+    ]
+  }
+]

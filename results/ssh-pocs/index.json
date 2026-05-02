@@ -1,0 +1,275 @@
+[
+  {
+    "caveats": [
+      "Requires a running SSH server on the target host.",
+      "Valid credentials must be provided for the connection to succeed.",
+      "This PoC demonstrates the client-side vulnerability; a real MitM attack would require network positioning.",
+      "The script uses paramiko for simplicity; raw socket implementation would be more complex but follow the same logic."
+    ],
+    "description": "Demonstrates SSH Host Key Verification Bypass by simulating a client that accepts an unverified host key, enabling a MitM scenario.",
+    "expected_patched": "The secure client simulation will reject the connection if the host key is not pre-verified, demonstrating the patched behavior. The vulnerable simulation will still connect, highlighting the risk of defaulting to AutoAddPolicy.",
+    "expected_vulnerable": "The script successfully connects to the SSH server and executes a command, demonstrating that the client accepted the host key without prior verification. This mimics the vulnerable behavior where a MitM attacker could inject their own host key.",
+    "filename": "poc_host_key_verification_bypass.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "8772332d8da7a2ea7dc9fecea8e8ed6e537f32f4cbd29cc771532f8211fd3784",
+    "lead_severity": "critical",
+    "lead_technique": "Host Key Verification Bypass",
+    "setup": [
+      "Step 1: Install paramiko: pip install paramiko",
+      "Step 2: Ensure an SSH server is running on localhost (or modify TARGET_HOST/TARGET_PORT)",
+      "Step 3: Run the script to simulate a vulnerable client connection"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the attacker is on-path and can intercept TCP connections.",
+      "The target SSH server must have compatibility mode enabled for the downgrade to succeed.",
+      "The client must support SSH 1.x protocol for the downgrade to be effective.",
+      "This is a simplified relay and may not handle all SSH protocol nuances.",
+      "Ensure proper authorization before testing on any system."
+    ],
+    "description": "Demonstrates SSH protocol version downgrade via 1.99 compatibility mode interception",
+    "expected_patched": "When the target SSH server does not support compatibility mode (1.99 disabled), the attacker's proxy cannot force a downgrade. The client will continue negotiating using SSH 2.0 protocol, and the connection will proceed with modern security features intact.",
+    "expected_vulnerable": "When the target SSH server has compatibility mode enabled (supports 1.99), the attacker's proxy intercepts the connection, detects the 1.99 version string, and forces the client to negotiate using SSH 1.x protocol. The client will reconnect or continue using the older, insecure protocol, bypassing SSH 2.0 security features.",
+    "filename": "poc_protocol_version_downgrade_via_compatibility_mode.py",
+    "lead_category": "Downgrade",
+    "lead_fingerprint": "c6a66296874871f56e500fa14a8ec2ef9fa6f2bdd7bfed7fb3532d1a277299af",
+    "lead_severity": "high",
+    "lead_technique": "Protocol Version Downgrade via Compatibility Mode",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed with standard libraries (socket, struct, threading)",
+      "Step 2: Start a vulnerable SSH server with compatibility mode enabled (e.g., OpenSSH with Protocol 1,2)",
+      "Step 3: Run the PoC script pointing to the target SSH server"
+    ]
+  },
+  {
+    "caveats": [
+      "This script is for educational purposes only and should only be used on systems you own or have explicit permission to test.",
+      "The effectiveness of the attack depends on the server's configuration and the number of connections initiated.",
+      "Some SSH servers may have built-in protections against this type of attack, such as rate limiting or connection throttling.",
+      "The script uses simplified SSH message payloads for demonstration purposes and may not work with all SSH server implementations."
+    ],
+    "description": "Demonstrates SSH pre-authentication key exchange exhaustion by initiating multiple connections and forcing CPU-intensive DH operations.",
+    "expected_patched": "The SSH server will implement rate limiting or connection throttling for unauthenticated clients, preventing resource exhaustion. Connections may be dropped or delayed, and the server will maintain normal performance for legitimate users.",
+    "expected_vulnerable": "The SSH server will experience high CPU and memory usage due to performing CPU-intensive Diffie-Hellman key exchange operations for each connection before authentication. Legitimate users may experience slow response times or connection failures.",
+    "filename": "poc_pre_auth_kex_exhaustion.py",
+    "lead_category": "DenialOfService",
+    "lead_fingerprint": "b93f8aa96583923f199d8f2ae70fa909b6360bdd1b5df4afcb920d6c9467b54e",
+    "lead_severity": "high",
+    "lead_technique": "Pre-Authentication Key Exchange Exhaustion",
+    "setup": [
+      "Step 1: Ensure Python 3 and the 'paramiko' library are installed (pip install paramiko).",
+      "Step 2: Set up a target SSH server (e.g., OpenSSH) without rate limiting or connection throttling for unauthenticated clients.",
+      "Step 3: Verify network access to the target SSH server port (default 22)."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the client is configured to accept unverified host keys on first connection.",
+      "The script uses a dummy user and key for authentication with the real server, which may not work in all environments.",
+      "The script is for educational purposes only and should not be used for malicious activities."
+    ],
+    "description": "Demonstrates SSH Host Key Verification Bypass on first connection by simulating a MitM proxy that presents a fake host key.",
+    "expected_patched": "The client connects to the MitM proxy on port 2222. The proxy presents a fake host key. If the client is configured to strictly verify host keys, it will reject the fake key and terminate the connection, preventing the MitM attack.",
+    "expected_vulnerable": "The client connects to the MitM proxy on port 2222. The proxy presents a fake host key. If the client is configured to accept unverified host keys on first connection, it will accept the fake key and establish a session. The attacker can then decrypt and manipulate all subsequent traffic.",
+    "filename": "poc_host_key_verification_bypass_4.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "9fb5c93c182cab822d5a2178072a20a64801c34a196968399f26d8858671401b",
+    "lead_severity": "high",
+    "lead_technique": "Host Key Verification Bypass (First Connection)",
+    "setup": [
+      "Step 1: Install dependencies: pip install paramiko",
+      "Step 2: Ensure an SSH server is running on the target machine (e.g., sshd on port 22).",
+      "Step 3: Run the script with the target IP and port: python poc_host_key_verification_bypass.py <target_ip> <target_port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target SSH server does not strictly enforce the 35000 byte packet size limit.",
+      "Some servers may drop the connection immediately upon receiving an oversized packet.",
+      "MAC calculation is omitted for simplicity; vulnerable implementations may still process the packet before MAC verification.",
+      "Ensure you have authorization to test the target system."
+    ],
+    "description": "Demonstrates SSH Transport Layer Oversized Packet vulnerability by sending a packet exceeding the 35000 byte limit.",
+    "expected_patched": "The server rejects the oversized packet, closes the connection, or logs a warning without crashing, adhering to RFC 4253 limits.",
+    "expected_vulnerable": "The server may crash, hang, or become unresponsive due to memory exhaustion or buffer overflow when attempting to allocate space for the oversized packet.",
+    "filename": "poc_ssh_transport_oversized_packet.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "2dd8210462fa1b29acc54d3a9284ecb6be686912f3277118e3297fed5a0ca717",
+    "lead_severity": "high",
+    "lead_technique": "SSH Transport Layer Oversized Packet",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Start a vulnerable SSH server on the target host (e.g., default port 22).",
+      "Step 3: Run the script with the target IP and port: python3 poc_ssh_transport_oversized_packet.py <target_ip> <port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target server supports 'none' for encryption and MAC algorithms.",
+      "Modern SSH implementations (e.g., OpenSSH 7.0+) disable 'none' by default, making this attack ineffective against up-to-date systems.",
+      "The script does not handle key exchange or authentication, as the goal is to demonstrate the algorithm negotiation downgrade.",
+      "Running this script against systems you do not own or have explicit permission to test may be illegal."
+    ],
+    "description": "Demonstrates SSH Algorithm Negotiation Downgrade by intercepting and modifying KEXINIT messages to force 'none' encryption/MAC.",
+    "expected_patched": "The server either disconnects with SSH_MSG_DISCONNECT or ignores the 'none' algorithms, falling back to a secure algorithm. Modern SSH implementations typically disable 'none' by default, making this attack ineffective.",
+    "expected_vulnerable": "The server accepts the modified KEXINIT message and responds with SSH_MSG_NEWKEYS, indicating that it has agreed to use 'none' for encryption and MAC. The connection is now unencrypted and unauthenticated, allowing an attacker to intercept and modify traffic.",
+    "filename": "poc_algorithm_negotiation_downgrade.py",
+    "lead_category": "Downgrade",
+    "lead_fingerprint": "877331887a49d49c04c8befb81f0c83aa6346e3cdc62bb6478cd5df761331dc3",
+    "lead_severity": "high",
+    "lead_technique": "Algorithm Negotiation Downgrade (Cipher/MAC/Compression)",
+    "setup": [
+      "Step 1: Install dependencies (none required, uses standard library)",
+      "Step 2: Start a vulnerable SSH server that supports 'none' cipher/MAC (e.g., OpenSSH with -oCiphers=none -oMACs=none)",
+      "Step 3: Run the script with target IP and port: python3 poc_algorithm_negotiation_downgrade.py <target_ip> <target_port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC demonstrates the client-side vulnerability concept rather than performing an actual MitM attack",
+      "Real exploitation requires the attacker to be on-path or able to perform DNS spoofing",
+      "The script uses paramiko for SSH client simulation; actual exploitation would target real SSH clients",
+      "Results may vary depending on the specific SSH client implementation and its default configuration",
+      "Some modern SSH clients have moved towards stricter defaults, reducing the prevalence of this vulnerability"
+    ],
+    "description": "Demonstrates how SSH clients with permissive default host key verification policies can be tricked into accepting a malicious server's key, enabling a Man-in-the-Middle attack.",
+    "expected_patched": "When the target SSH client is configured with a strict default policy (reject unknown host keys), it will refuse to establish a connection to a server with an unknown or unverified host key. The client will either prompt the user for explicit verification or reject the connection entirely, preventing MitM attacks.",
+    "expected_vulnerable": "When the target SSH client is configured with a permissive default policy (auto-accept unknown host keys), it will establish a connection to a server without verifying the host key. This allows a Man-in-the-Middle attacker to present their own host key and intercept the connection without the client raising an alert.",
+    "filename": "poc_ambiguous_host_key_verification.py",
+    "lead_category": "ImplementationAmbiguity",
+    "lead_fingerprint": "b3bd3096a0aab98e0da395117fe3e159cc0d4de4a3cbbff0def384aa65e90a92",
+    "lead_severity": "high",
+    "lead_technique": "Ambiguous Host Key Verification Policy",
+    "setup": [
+      "Step 1: Install dependencies: pip install paramiko",
+      "Step 2: Ensure you have a test SSH server or use a local mock for demonstration",
+      "Step 3: Run the script with appropriate target configuration"
+    ]
+  },
+  {
+    "caveats": [
+      "This PoC assumes the target SSH server parses the string field without proper length validation.",
+      "The exact behavior may vary depending on the server implementation and its error handling.",
+      "This script is for educational purposes only and should not be used against systems without explicit permission."
+    ],
+    "description": "PoC for SSH String Data Type Buffer Overflow by sending an oversized length field",
+    "expected_patched": "The target SSH server should reject the malformed message, close the connection, or log an error without crashing, as it validates the string length against the actual packet boundaries.",
+    "expected_vulnerable": "The target SSH server may crash, hang, or exhibit unexpected behavior due to a heap buffer overflow or out-of-bounds read when processing the oversized string length field.",
+    "filename": "poc_ssh_string_buffer_overflow.py",
+    "lead_category": "OversizedPayload",
+    "lead_fingerprint": "eb82db2a6d4159498e8a5b8884e5af4874b41a49eca290923720906f53001df5",
+    "lead_severity": "high",
+    "lead_technique": "SSH String Data Type Buffer Overflow",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Start a vulnerable SSH server or use a test server that parses SSH string fields without strict length validation.",
+      "Step 3: Run the script with the target IP and port: python3 poc_ssh_string_buffer_overflow.py <target_ip> <target_port>"
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target server allows the 'none' authentication method for testing purposes.",
+      "The race condition may not be reproducible on all servers due to differences in implementation and timing.",
+      "Ensure you have permission to test the target server to avoid unauthorized access issues.",
+      "The script uses raw sockets and may not handle all SSH protocol nuances, such as key exchange, which are omitted for simplicity."
+    ],
+    "description": "Demonstrates the SSH Authentication State Flush Race condition by sending concurrent authentication requests with changing usernames to trigger state corruption or bypass.",
+    "expected_patched": "If the server is patched, it will properly serialize authentication requests and flush states atomically. All requests will be processed in order, and you will see consistent FAILURE or DISCONNECT messages for invalid users, with no race condition effects.",
+    "expected_vulnerable": "If the server is vulnerable, it may accept authentication for an unauthorized user, disconnect unexpectedly, or exhibit inconsistent behavior due to race conditions in state flushing. You might see SUCCESS messages for users that should be rejected, or DISCONNECT messages indicating state corruption.",
+    "filename": "poc_authentication_state_flush_race.py",
+    "lead_category": "RaceCondition",
+    "lead_fingerprint": "0ba79fddf1650840ca5d9bcb994ff7e1977dd145621b5e2d1670962936842594",
+    "lead_severity": "high",
+    "lead_technique": "Authentication State Flush Race",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Have a target SSH server running that is potentially vulnerable to asynchronous auth processing (e.g., a custom or legacy implementation).",
+      "Step 3: Run the script pointing to the target server's IP and port."
+    ]
+  },
+  {
+    "caveats": [
+      "This script only demonstrates the algorithm negotiation phase. It does not complete the full SSH handshake or authentication.",
+      "The target server must be configured to accept the weak algorithms for the vulnerability to be demonstrated. Modern SSH servers typically reject 'none' and weak ciphers by default.",
+      "Network firewalls or IDS/IPS systems may block or alert on the crafted packets.",
+      "The script assumes the server responds with an SSH_MSG_KEXINIT packet. If the server disconnects immediately, it may indicate strict policy enforcement."
+    ],
+    "description": "Demonstrates SSH algorithm downgrade by sending a crafted KEXINIT packet requesting weak or 'none' algorithms.",
+    "expected_patched": "The server responds with an SSH_MSG_KEXINIT packet that only includes strong, modern algorithms (e.g., 'chacha20-poly1305@openssh.com', 'aes256-gcm@openssh.com', 'umac-128-etm@openssh.com'). The script will report that the server rejected weak algorithms or negotiated strong ones, indicating proper validation.",
+    "expected_vulnerable": "The server responds with an SSH_MSG_KEXINIT packet that includes 'none' or weak algorithms (e.g., '3des-cbc', 'arcfour', 'hmac-md5') in its algorithm lists. The script will report that the server accepted weak algorithms, indicating a vulnerability to algorithm downgrade attacks.",
+    "filename": "poc_algorithm_downgrade_via_missing_validation.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "5d7041210095bc84bfc7b7c8b1b4efd519cae7783c503d2193fa27ff2caf2605",
+    "lead_severity": "high",
+    "lead_technique": "Algorithm Downgrade via Missing Validation",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Start a vulnerable SSH server or use a test server configured to accept weak algorithms (e.g., 'none', '3des-cbc', 'arcfour').",
+      "Step 3: Run the script with the target IP and port: python3 poc_algorithm_downgrade_via_missing_validation.py <TARGET_IP> <TARGET_PORT>"
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target SSH server is listening on the specified IP and port.",
+      "The script uses minimal payloads for SSH messages, which may not be fully compliant with all SSH implementations.",
+      "Some servers may have additional security measures that could affect the outcome.",
+      "This PoC is for educational purposes only and should not be used against systems without explicit permission."
+    ],
+    "description": "Demonstrates SSH authentication state bypass by injecting connection protocol messages (>=80) before authentication completes.",
+    "expected_patched": "The server detects the premature connection protocol message (type >= 80) during the authentication phase and responds with SSH_MSG_DISCONNECT (type 94), terminating the connection as required by RFC 4252.",
+    "expected_vulnerable": "The server processes the injected SSH_MSG_CHANNEL_OPEN (type 90) and responds with SSH_MSG_CHANNEL_OPEN_CONFIRMATION (type 91), indicating that it established a channel without completing authentication. This demonstrates a bypass of the authentication state.",
+    "filename": "poc_authentication_state_bypass_via_premature_connection_protocol_messages.py",
+    "lead_category": "StateConfusion",
+    "lead_fingerprint": "2f095408654139ccec47a6484f2dd7f280c4944f8364f15efdb0af40e31d7e63",
+    "lead_severity": "high",
+    "lead_technique": "Authentication State Bypass via Premature Connection Protocol Messages",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Start a vulnerable SSH server (e.g., an older OpenSSH version or a custom implementation that does not strictly enforce RFC 4252 Section 6)."
+    ]
+  },
+  {
+    "caveats": [
+      "This script assumes the target SSH server is vulnerable to the Authentication State Flush Bypass.",
+      "The script may not work against all SSH server implementations, as some may have additional security measures.",
+      "Ensure you have proper authorization before testing this script on any system."
+    ],
+    "description": "Demonstrates the Authentication State Flush Bypass vulnerability in SSH servers by changing the username mid-authentication to test if the server properly flushes accumulated authentication states.",
+    "expected_patched": "The server properly flushes the authentication state and rejects the request, sending an SSH_MSG_USERAUTH_FAILURE message.",
+    "expected_vulnerable": "The server does not flush the authentication state when the username changes, potentially allowing the attacker to inherit partial authentication progress or bypass multi-factor authentication.",
+    "filename": "poc_authentication_state_flush_bypass.py",
+    "lead_category": "MissingValidation",
+    "lead_fingerprint": "b1954d3c69d048c228b7ba3d47c299ba6d08ce2cadb17b8583a2b154fe75c30e",
+    "lead_severity": "high",
+    "lead_technique": "Authentication State Flush Bypass",
+    "setup": [
+      "Step 1: Ensure Python 3 is installed.",
+      "Step 2: Install the `paramiko` library: `pip install paramiko`.",
+      "Step 3: Set up a vulnerable SSH server for testing (e.g., a custom SSH server implementation that does not properly flush authentication states upon username/service name changes)."
+    ]
+  },
+  {
+    "caveats": [
+      "Requires a misconfigured SSH server with HostbasedAuthentication enabled.",
+      "The attacker must possess the private host key of a trusted client.",
+      "The server must be configured to trust the impersonated hostname (via shosts.equiv or similar).",
+      "Network-level checks (like IP-to-hostname verification) on the server may block the exploit if the attacker's IP doesn't match the trusted host's IP.",
+      "This PoC uses paramiko for simplicity; real-world exploitation may require raw socket manipulation to bypass client-side checks."
+    ],
+    "description": "Demonstrates SSH Host-Based Authentication Trust Exploitation by impersonating a trusted host using a compromised host key.",
+    "expected_patched": "The server rejects the authentication attempt, raising a paramiko.AuthenticationException. This happens if host-based authentication is disabled, the host key is not trusted, or additional authentication methods are required.",
+    "expected_vulnerable": "The script successfully authenticates to the SSH server using only the host key, bypassing password or user public key authentication. It prints 'SUCCESS: Host-based authentication bypassed!' and executes commands as the target user.",
+    "filename": "poc_hostbased_auth_exploit.py",
+    "lead_category": "AuthBypass",
+    "lead_fingerprint": "230505ea55ea33dd8c416a621fcbf442309c12a5ad8a205feb3a54b326dcc80e",
+    "lead_severity": "high",
+    "lead_technique": "Host-Based Authentication Trust Exploitation",
+    "setup": [
+      "Step 1: Install paramiko: pip install paramiko",
+      "Step 2: Generate a host key pair for the attacker to use: ssh-keygen -t rsa -b 2048 -f attacker_host_key -N ''",
+      "Step 3: Configure a vulnerable SSH server to enable hostbased authentication and add the attacker's public key to ~/.ssh/shosts.equiv or /etc/ssh/shosts.equiv on the server, mapping the trusted hostname to the allowed username.",
+      "Step 4: Ensure the server's sshd_config has 'HostbasedAuthentication yes' and 'IgnoreRhosts no'."
+    ]
+  }
+]

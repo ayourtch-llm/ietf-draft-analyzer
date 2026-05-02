@@ -1,0 +1,804 @@
+{
+  "protocol_name": "telnet",
+  "rfcs_analyzed": [
+    854,
+    855,
+    857,
+    858,
+    1184
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 5,
+    "total_edges": 0,
+    "connected_components": 5,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 5,
+  "security_leads": [
+    {
+      "id": "55fd98d8-13dd-453a-8f5d-a1426b26cee1",
+      "technique_name": "FORWARDMASK Buffer Overrun",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker sends a LINEMODE subnegotiation requesting FORWARDMASK with a malformed or excessively long mask. Step 2: The implementation parses the FORWARDMASK bytes without validating the length or structure of the mask data. Step 3: The implementation writes the mask data into a fixed-size buffer, causing a buffer overflow, potentially leading to remote code execution or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.6",
+          "quote": "The SLC_FORW1 and SLC_FORW2 allow for the setting of two additional characters on which to forward buffered input data... If the server side sent a FORWARDMASK that asked for data to be forwarded on the first 20 control characters... the client side could validly accept the FORWARDMASK"
+        },
+        {
+          "rfc": 1184,
+          "section": "5.7",
+          "quote": "At no time should \"SB LINEMODE DO/DONT FORWARDMASK\", be sent unless \"DO LINEMODE\" has been previously negotiated."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send Telnet commands to the target",
+        "Target supports LINEMODE and FORWARDMASK options"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Validate the length and structure of FORWARDMASK data before processing. Ensure that the mask size does not exceed the allocated buffer size. Reject malformed FORWARDMASK requests with an appropriate error or ignore them.",
+      "fingerprint": "156827cec3f0db35201bb3438ec3d3cc579fd3ceb805475b7de27f3e19823a13"
+    },
+    {
+      "id": "0a578a8a-5949-4995-ab5b-9784a71432e9",
+      "technique_name": "Telnet Linemode Downgrade to Character-at-a-Time",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An on-path attacker intercepts the Telnet negotiation between client and server. Step 2: The attacker injects or modifies the negotiation to force the server to send 'DONT LINEMODE' or the client to send 'WONT LINEMODE', or forces the MODE mask to clear the EDIT bit. Step 3: The connection falls back to character-at-a-time mode (Remote Line Editing), where the server processes all input. This degrades performance over high-latency links and can interfere with applications expecting local line editing, potentially causing input corruption or denial of service for interactive applications relying on local editing features.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.1",
+          "quote": "IAC DONT LINEMODE: The sender of this command DEMANDS that the remote side not begin sub-negotiation of the editing/signaling status."
+        },
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "EDIT: When set, the client side of the connection should process all input lines... When unset, client side should not process any input from the user, and the server side should take care of all character processing..."
+        },
+        {
+          "rfc": 1184,
+          "section": "3",
+          "quote": "The default specification for this option is WONT LINEMODE DONT LINEMODE meaning there will not be any subnegotiation of the mode of the connection."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "Telnet connection is unencrypted (inherently true for Telnet)"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use SSH instead of Telnet to encrypt the control channel and prevent negotiation manipulation. If Telnet must be used, implement strict negotiation policies that reject unexpected mode changes or require cryptographic authentication of the negotiation phase.",
+      "fingerprint": "59e3d64f9bc5a92cc48059cb9df34384f494d41b2cfa8da84c5d82d1c3bbb38f"
+    },
+    {
+      "id": "4b5c0272-e533-46f1-9278-1662053953b8",
+      "technique_name": "Malformed SLC Subnegotiation Processing",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends a Telnet LINEMODE subnegotiation (IAC SB LINEMODE SLC ...) containing an invalid or unexpected SLC function code or value. Step 2: The implementation processes the SLC command without validating that the function code corresponds to a supported or defined special character. Step 3: The implementation may crash, enter an undefined state, or incorrectly map a control character, leading to denial of service or unexpected command execution.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "When an SLC command is received, the action taken should be: 1) Ignore it if it is the same as the current settings. 2) If the SLC_LEVELBITS are the same as the current level bits, but the value is different and the SLC_ACK bit is set, no reply is generated."
+        },
+        {
+          "rfc": 1184,
+          "section": "5.9",
+          "quote": "Receive f,SLC_DEFAULT,x Response f,SLC_VALUE,v f,SLC_CANTCHANGE,v f,SLC_NOSUPPORT,x"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send Telnet commands to the target",
+        "Target supports LINEMODE option"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations must validate all SLC function codes against a whitelist of supported characters. Invalid or unsupported function codes should be rejected or ignored with an appropriate NOSUPPORT response. Input values must be bounds-checked to ensure they fall within valid ASCII/control character ranges.",
+      "fingerprint": "d017db48ca91a3dc8d9c8cdef892f38aa45789bee5577a791068fca5f564b6c4"
+    },
+    {
+      "id": "1f7cb869-35cb-4d88-b6fc-88518b6c6fd4",
+      "technique_name": "LINEMODE Option Negotiation Replay",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker captures a valid LINEMODE subnegotiation sequence (e.g., IAC SB LINEMODE MODE mask IAC SE) during an active Telnet session. Step 2: Attacker replays the captured MODE command to the client or server at a later time or in a new session. Step 3: The receiving side processes the replayed command, forcing the connection into a specific mode (e.g., disabling EDIT or TRAPSIG), which can disrupt line editing, signal handling, or echo functionality without user consent.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "The sender of this command CONFIRMS, or REQUESTS permission for, a switch to the mode defined by \"mask\"."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or can capture and inject packets",
+        "target connection supports LINEMODE option",
+        "no external replay protection (e.g., TLS) is used"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use SSH or TLS to encrypt and authenticate the Telnet session, preventing packet capture and injection. Implement sequence numbers or nonces in option negotiation if native Telnet must be used.",
+      "fingerprint": "fa873d9a0a59b9b999c9ab400e14b17c6a274ef4a1bc16b46f0d0c1fc7870bc5"
+    },
+    {
+      "id": "688ed60c-01d9-45df-9af4-32b448eab409",
+      "technique_name": "FORWARDMASK Buffer Overflow via Unbounded Octet List",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends 'IAC SB LINEMODE DO FORWARDMASK' followed by a maliciously crafted list of octets. Step 2: The RFC states 'The mask is up to 32 octets long' but also says 'The mask list may be terminated before the end of the list'. Step 3: If an implementation allocates a fixed 32-byte buffer but fails to strictly enforce the 32-octet limit before copying, or if it relies on a terminator that can be bypassed, an attacker can send >32 octets to trigger a heap/stack buffer overflow.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.3",
+          "quote": "The mask is up to 32 octets long. Each octet represents 8 ASCII character codes... The mask list may be terminated before the end of the list..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate or hijack Telnet connection",
+        "Target implements LINEMODE option"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict length validation for the FORWARDMASK subnegotiation, ensuring exactly 32 octets are parsed or rejecting payloads exceeding 32 octets before buffer allocation/copying.",
+      "fingerprint": "a9c5b8c4c531f2485f09fb4b8196b9f603e7b174943ab12bd059c4c09fd71e22"
+    },
+    {
+      "id": "a1e214e5-d8f9-4a66-9d01-559e0dd3e887",
+      "technique_name": "Linemode Mode Mask State Desynchronization",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker on-path intercepts a Telnet connection where LINEMODE is negotiated. Step 2: The attacker injects a spoofed 'IAC SB LINEMODE MODE <mask>' subnegotiation command with a malicious mode mask (e.g., clearing the EDIT or TRAPSIG bits) directed at the client. Step 3: The client processes the spoofed MODE command, updates its local state machine to reflect the new mode (e.g., switching from local line editing to character-at-a-time mode), and sends a MODE_ACK response. Step 4: The server, unaware of the spoofed command, continues to operate under the assumption that the original mode is active. Step 5: This state desynchronization causes the client and server to interpret subsequent data and control characters differently, potentially leading to command injection, data leakage, or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "The sender of this command CONFIRMS, or REQUESTS permission for, a switch to the mode defined by 'mask'."
+        },
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "When a MODE command is received with the MODE_ACK bit set, and the mode is different that what the current mode is, the client will ignore the new mode, and the server will switch to the new mode."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "LINEMODE option is negotiated",
+        "client and server state machines are not cryptographically authenticated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement cryptographic authentication for Telnet subnegotiation commands (e.g., via SSH or TLS). Ensure strict state machine validation and reject unexpected MODE commands that do not align with the expected negotiation flow.",
+      "fingerprint": "c140eb1fec2d404a4b23808e022b3a3e95720daa88efe805fd022f192e2b04c2"
+    },
+    {
+      "id": "e60c6170-5714-4213-af9b-60d79afec075",
+      "technique_name": "Linemode State Transition Race",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The protocol specifies that when a MODE command is received, the client MUST agree with at least the state of the EDIT and TRAPSIG bits. Step 2: If a MODE command is received with a mode mask that is currently in use, it is ignored. Step 3: An attacker can rapidly send conflicting MODE commands or manipulate the timing of MODE_ACK responses to force the client and server into desynchronized states regarding EDIT/TRAPSIG modes, potentially bypassing local line editing or signal trapping protections.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "When the client side of a connection receives a MODE command, it MUST agree with at least the state of the EDIT and TRAPSIG bits. If a MODE command is received with a mode mask that is currently in use (ignoring the MODE_ACK bit), the MODE command is ignored."
+        }
+      ],
+      "prerequisites": [
+        "attacker can inject or modify Telnet subnegotiation commands",
+        "network latency allows for command interleaving"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict sequence numbering for MODE commands and enforce state machine locks during mode transitions to prevent concurrent updates.",
+      "fingerprint": "e00808fc02b8442632e72823d0af4c451a28237c3d11c00245b07c65def353eb"
+    },
+    {
+      "id": "c2b0d6b8-5517-45e4-bb6a-0d1014cbc6bb",
+      "technique_name": "SLC Special Character Injection via State Confusion",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker on-path intercepts a Telnet session utilizing LINEMODE. Step 2: The attacker injects a spoofed 'IAC SB LINEMODE SLC <triplets>' command to redefine critical special characters (e.g., SLC_IP, SLC_EOF, SLC_SUSP) on the client side. Step 3: The client updates its local character mapping state based on the spoofed SLC command, potentially mapping benign characters to dangerous functions or vice versa. Step 4: The server remains unaware of the client's altered character mappings. Step 5: When the user types a character that the client now interprets as a special function (e.g., Interrupt Process), the client sends the corresponding Telnet command (e.g., IAC IP) to the server, which processes it as a legitimate signal, leading to unauthorized process interruption or command execution.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "The sender of this command REQUESTS that the list of octet triplets be used to set the local character to be used to send to perform the specified function."
+        },
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "When an SLC command is received, the action taken should be: ... 3) If we agree with the new setting, we switch to it and reply with the same value, but also set the SLC_ACK bit."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "LINEMODE option is negotiated",
+        "client accepts SLC commands without strict validation of source or sequence"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use encrypted transport (SSH/TLS) to prevent on-path manipulation. Implement strict validation of SLC commands, ensuring they only originate from the expected peer and follow the negotiated state machine rules.",
+      "fingerprint": "613cc7663c7a0cd331d461165d15debb9a9b818bbb7ee17dc1eeb851411508c0"
+    },
+    {
+      "id": "4c2a5a08-b022-4b45-b44a-230a230097bd",
+      "technique_name": "SLC Subnegotiation Buffer Overflow via Excessive Triplets",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends 'IAC SB LINEMODE SLC' followed by a long list of octet triplets. Step 2: The RFC defines SLC as 'a list of octet triplets' but does not explicitly define a maximum list length in the command syntax description, only listing specific function codes. Step 3: An implementation expecting a fixed number of triplets (e.g., one per defined SLC function) may allocate a small buffer. Sending hundreds of triplets can overflow this buffer if the parser does not validate the list length against the number of defined functions.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "The SLC suboption uses a list of octet triplets. The first octet specifies the function, the second octet specifies modifiers to the function, and the third octet specifies the ASCII character for the function."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate or hijack Telnet connection",
+        "Target implements LINEMODE SLC subnegotiation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Validate the number of triplets in the SLC subnegotiation against the maximum number of defined SLC functions. Reject or truncate lists exceeding this count.",
+      "fingerprint": "56050e3e96409fe6123a1138877a3065ea47218b6239ae4d3c28c6f71a1bd094"
+    },
+    {
+      "id": "60cb2116-90c9-41ae-a137-7c4943b22809",
+      "technique_name": "FORWARDMASK Buffer Exhaustion",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker negotiates LINEMODE and sends a DO FORWARDMASK subnegotiation. Step 2: Attacker includes a FORWARDMASK with a large number of characters or a mask that forces the client to forward data frequently. Step 3: If the server implementation buffers incoming data based on FORWARDMASK rules, the attacker can send data that matches the mask, causing the server to allocate excessive memory for buffering. Step 4: Repeated connections with large FORWARDMASKs can exhaust server memory, leading to a denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.6",
+          "quote": "The SLC_FORW1 and SLC_FORW2 allow for the setting of two additional characters on which to forward buffered input data."
+        },
+        {
+          "rfc": 1184,
+          "section": "5.6",
+          "quote": "If the server side sent a FORWARDMASK that asked for data to be forwarded on the first 20 control characters..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has established a Telnet connection with LINEMODE negotiated",
+        "Server implementation buffers data based on FORWARDMASK settings"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Limit the size of the FORWARDMASK buffer. Implement a maximum limit on the number of characters that can be specified in a FORWARDMASK. Validate FORWARDMASK requests to ensure they do not exceed reasonable bounds.",
+      "fingerprint": "45dfe43b055b1c9ae9f21c6bf9c92a0b3503f4184c11ad5ebc8924addfae5016"
+    },
+    {
+      "id": "630c6ee5-ed17-42a9-b754-b40dd6f00faa",
+      "technique_name": "State Machine Bypass via Premature FORWARDMASK",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker sends a FORWARDMASK subnegotiation command before the LINEMODE option has been successfully negotiated. Step 2: The implementation processes the FORWARDMASK command without verifying that the LINEMODE state machine has reached the 'LINEMODE Negotiated' state. Step 3: The implementation may enter an inconsistent state, crash, or apply the mask incorrectly, leading to unexpected behavior or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.7",
+          "quote": "At no time should \"SB LINEMODE DO/DONT FORWARDMASK\", be sent unless \"DO LINEMODE\" has been previously negotiated. At no time should \"SB LINEMODE WILL/WONT FORWARDMASK\", be sent unless \"WILL LINEMODE\" has been previously negotiated."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send Telnet commands to the target",
+        "Target supports LINEMODE option"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly enforce the state machine rules. Reject or ignore any FORWARDMASK subnegotiation commands if the LINEMODE option has not been successfully negotiated in the appropriate direction (DO/WILL). Maintain a clear state flag to track negotiation progress.",
+      "fingerprint": "4f5fe1359597fd1d91b34578a055fdf16838f5f11fdded0e6bb85007928bfbe6"
+    },
+    {
+      "id": "3d84f960-3081-45ba-a529-fb9b99ce11e1",
+      "technique_name": "Special Character Negotiation Loop",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a LINEMODE SLC subnegotiation request with a new special character value. Step 2: Server responds with a different value at a lower level (disagreement). Step 3: Attacker immediately sends another SLC request with yet another value, forcing the server to continuously process and respond to SLC negotiations. Step 4: This continuous negotiation loop consumes CPU and network resources on the server, preventing it from handling legitimate connections.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "If we don't agree, we send a response with what we think the value should be. The SLC_ACK bit is NOT set in this case. You may only disagree with a value by sending a different value at a lower level."
+        },
+        {
+          "rfc": 1184,
+          "section": "5.9",
+          "quote": "State diagram for SLC ... Send SPC1 ... Do we agree? ... No ... Send SPC1"
+        }
+      ],
+      "prerequisites": [
+        "Attacker has established a Telnet connection with LINEMODE negotiated",
+        "Server implements SLC negotiation as specified in RFC 1184"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement rate limiting on SLC subnegotiation messages. Set a maximum number of SLC negotiation attempts per connection. Ignore repeated SLC requests that do not progress towards an ACK state.",
+      "fingerprint": "0c4e81338217ac30fe21aee7e861b5dfac669fba79c92a301357c68dab8370c0"
+    },
+    {
+      "id": "5ec6bde4-4297-4935-b755-fc90c9bd9716",
+      "technique_name": "Telnet Signal Trapping Downgrade",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An on-path attacker intercepts the Linemode MODE negotiation. Step 2: The attacker forces the TRAPSIG bit to be cleared in the MODE mask sent by the server. Step 3: The client stops translating local interrupt/signal characters (like Ctrl-C) into Telnet commands (IAC IP, IAC ABORT, etc.) and instead sends them as raw ASCII. This can cause the remote application to misinterpret control sequences, potentially leading to unexpected behavior, input injection, or failure to properly handle signals, effectively downgrading the reliability and security of signal handling.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "TRAPSIG: When set, the client side should translate appropriate interrupts/signals to their Telnet equivalent... When unset, the client should pass interrupts/signals as their normal ASCII values."
+        },
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "The only exception is that if the server receives a MODE with either the EDIT or TRAPSIG bits not set, it may set the EDIT and TRAPSIG bits in the response, and if the client receives a MODE with the EDIT or TRAPSIG bits set, it may not clear them in the response."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "Server implementation does not strictly enforce TRAPSIG bit setting as per RFC recommendation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure Telnet implementations strictly follow RFC 1184 Section 2.2, where the server MUST set the TRAPSIG bit if the client requests it, and the client MUST NOT clear it if the server sets it. Use SSH to prevent negotiation tampering.",
+      "fingerprint": "35e10eb2b981910e227dc3d9f730be7290740f6b9ab7bc31d57fb3160af79bdc"
+    },
+    {
+      "id": "fba671d6-6a34-48f6-b8c9-7c45b6ca91cf",
+      "technique_name": "Ambiguous Coupling of SUPPRESS-GO-AHEAD and ECHO",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: RFC 1184 Section 4 notes that some implementations infer local line editing mode based on the state of the ECHO and SUPPRESS-GO-AHEAD options. Step 2: The RFC states 'The reverse reading of this is that without the ECHO option or the SUPPRESS-GO-AHEAD option, you are in line at a time mode, implying local line editing.' Step 3: This creates an implementation ambiguity where the state of the connection (local vs remote line editing) depends on the combination of two separate options rather than a single explicit mode. An attacker could manipulate the negotiation of ECHO and SUPPRESS-GO-AHEAD to force an unintended line editing mode, potentially causing input processing errors, denial of service, or bypassing local input sanitization.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "4",
+          "quote": "The usage of the SUPRESS-GO-AHEAD comes from reading into RFC 858... The reverse reading of this is that without the ECHO option or the SUPPRESS-GO-AHEAD option, you are in line at a time mode, implying local line editing."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can influence Telnet option negotiation",
+        "Implementation uses ECHO/SGA state to infer line mode"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement explicit LINEMODE negotiation (RFC 1184) rather than inferring line editing mode from the state of ECHO and SUPPRESS-GO-AHEAD options.",
+      "fingerprint": "4c0b5b44e83ee899ba44d3bdde32e90ba9f2d97e64c312b128b2079f221dcf94"
+    },
+    {
+      "id": "6fb1037b-a162-40d7-a126-b403ef083977",
+      "technique_name": "SLC Level Validation Bypass",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker sends an SLC command with a manipulated SLC_LEVELBITS value that does not match the expected hierarchy (DEFAULT, VALUE, CANT_CHANGE, NOSUPPORT). Step 2: The implementation fails to validate the level bits against the current state or the allowed transitions. Step 3: The implementation may incorrectly accept a lower-level setting as a higher-level override, or vice versa, leading to incorrect special character mapping and potential command injection or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "You may only disagree with a value by sending a different value at a lower level."
+        },
+        {
+          "rfc": 1184,
+          "section": "5.9",
+          "quote": "Levels: DEFAULT, VALUE, CANT_CHANGE, NOSUPPORT"
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send Telnet commands to the target",
+        "Target supports LINEMODE option"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Validate SLC_LEVELBITS against the defined hierarchy. Ensure that responses and updates adhere to the level constraints (e.g., a VALUE response cannot override a DEFAULT request unless explicitly allowed). Reject malformed level bits.",
+      "fingerprint": "20f7f35ccdd26078881b3dd831deb356b52ed28bf5aa53f2b99ba716736b7309"
+    },
+    {
+      "id": "977b063a-9b19-4ada-8392-6188ded10d50",
+      "technique_name": "Ambiguous SLC Default Values",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 1184 Section 3 states 'Character values for SLC default to SLC_NOSUPPORT.' Step 2: However, it does not explicitly define the behavior when a client receives an SLC subnegotiation for a character it does not support, nor does it specify if 'NOSUPPORT' implies the character should be treated as a regular data character or if it should trigger an error/reset. Step 3: This ambiguity can lead to inconsistent handling of special characters (e.g., interrupt, erase, EOF). An attacker could send crafted SLC subnegotiations to force the peer into an undefined state, potentially causing the client to misinterpret data as control commands or vice versa, leading to command injection or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "3",
+          "quote": "Character values for SLC default to SLC_NOSUPPORT."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send Telnet subnegotiation commands",
+        "Implementation does not strictly validate SLC support flags"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Explicitly define the behavior for SLC_NOSUPPORT, ensuring that unsupported special characters are treated as regular data and do not trigger control actions.",
+      "fingerprint": "0e31a190bb9322f7e3f4e8820003a1bd9af2a0f0a33d507eaadb245f0d144ad5"
+    },
+    {
+      "id": "2211c08b-dffc-4eab-844a-ce6adb4a18cf",
+      "technique_name": "SLC (Set Local Characters) Replay",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker captures an SLC subnegotiation command (IAC SB LINEMODE SLC <list> IAC SE) that configures special characters like IP, BRK, or EOF. Step 2: Attacker replays the SLC command to alter the special character mappings on the client or server. Step 3: The target applies the new character settings, potentially causing unexpected behavior when the user types specific keys, such as triggering an interrupt or abort when a normal character is typed.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "The sender of this command REQUESTS that the list of octet triplets be used to set the local character to be used to send to perform the specified function."
+        }
+      ],
+      "prerequisites": [
+        "attacker can capture and inject Telnet option packets",
+        "LINEMODE option is negotiated",
+        "target implementation does not validate SLC commands against current session state"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Encrypt the Telnet session using SSH or TLS. Implement strict state validation for SLC commands to ensure they match the expected negotiation flow.",
+      "fingerprint": "9fd16c63b1ff97fa28ff1ac8ef2ecceb01b2fcabbfc44ea985134cbc8022ce62"
+    },
+    {
+      "id": "13206ca1-1c63-483a-947b-d6a98a70c89d",
+      "technique_name": "Telnet Special Character (SLC) Downgrade/Manipulation",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An on-path attacker intercepts the SLC (Set Local Characters) subnegotiation. Step 2: The attacker modifies or injects SLC commands to force the client to use default or unsupported special characters (SLC_DEFAULT or SLC_NOSUPPORT) for critical functions like ERASE, KILL, or INTERRUPT. Step 3: The client's local line editing behavior is altered, potentially causing input corruption, inability to erase sensitive data (like passwords) from the local screen buffer, or misinterpretation of control characters. This downgrades the reliability and security of the local input processing.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "If the SLC_LEVELBITS in the second octet are equal to SLC_DEFAULT, then this particular function should use the system default on the other side of the connection."
+        },
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "If the SLC_LEVELBITS in the second octet are equal to SLC_NOSUPPORT, then this particular function is not supported and should be disabled by the other side."
+        },
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "When LINEMODE is negotiated, the client must either export the local character settings to the server, or send a request (SLC 0 SLC_DEFAULT 0) to import the servers special characters."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "Client accepts SLC changes from server without strict validation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should validate SLC changes against a whitelist of acceptable characters and reject unexpected changes to critical functions. Use SSH to prevent negotiation manipulation. Implement strict state machines for SLC negotiation as outlined in RFC 1184 Section 5.9.",
+      "fingerprint": "d90b4a2b8c78301199dd9ca34e728d1aa14a1a9f5bf0a72de03cd55c78d366e7"
+    },
+    {
+      "id": "443c4621-559f-4bdf-bf82-cadaed84e1e5",
+      "technique_name": "SUPPRESS-GO-AHEAD Negotiation Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: RFC 858 states that SUPPRESS-GO-AHEAD must be suppressed in both directions independently. Step 2: The protocol relies on WILL/WONT/DO/DONT negotiations to establish this state. Step 3: An attacker can race the negotiation by sending conflicting DO/DONT SUPPRESS-GO-AHEAD commands simultaneously with legitimate traffic, potentially forcing one side to suppress GO-AHEAD while the other expects it, leading to data stream corruption or denial of service due to half-duplex/full-duplex mismatch.",
+      "rfc_references": [
+        {
+          "rfc": 858,
+          "section": "5",
+          "quote": "It seems probable that the parties to the TELNET connection will suppress GO AHEAD in both directions of the TELNET connection if GO AHEAD is suppressed at all; but, nonetheless, it must be suppressed in both directions independently."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or can inject Telnet option negotiation commands",
+        "implementation does not lock option negotiation state"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use atomic state transitions for option negotiations and validate that both directions agree before applying the SUPPRESS-GO-AHEAD state.",
+      "fingerprint": "45fda41791c5ab49743b31cb4ecc4c21046b59caef662358e9f148e8f6c0c17b"
+    },
+    {
+      "id": "d005c7da-1581-4260-b73d-98b51346c20e",
+      "technique_name": "SUPPRESS-GO-AHEAD State Desynchronization",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker on-path intercepts a Telnet connection. Step 2: The attacker injects spoofed 'IAC WILL/WONT/DO/DONT SUPPRESS-GO-AHEAD' commands to alter the GO-AHEAD suppression state on one side of the connection without the other side's knowledge. Step 3: One peer begins suppressing GO-AHEAD characters while the other expects them, or vice versa. Step 4: This state mismatch can cause data flow control issues, leading to data loss, connection hangs, or unexpected behavior in half-duplex simulations, effectively creating a denial of service or data corruption scenario.",
+      "rfc_references": [
+        {
+          "rfc": 858,
+          "section": "2",
+          "quote": "The sender of this command requests permission to begin suppressing transmission of the TELNET GO AHEAD (GA) character..."
+        },
+        {
+          "rfc": 858,
+          "section": "5",
+          "quote": "It seems probable that the parties to the TELNET connection will suppress GO AHEAD in both directions of the TELNET connection if GO AHEAD is suppressed at all; but, nonetheless, it must be suppressed in both directions independently."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "SUPPRESS-GO-AHEAD option is negotiated or can be negotiated",
+        "lack of cryptographic authentication for option negotiations"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Migrate to secure protocols like SSH that do not rely on GO-AHEAD mechanisms. If Telnet must be used, employ TLS wrapping and strictly validate option negotiation sequences.",
+      "fingerprint": "f22a80fa14a04c43da4b83ea9e3032ce248e842f7d8f93ea853a4806d2fbaeb7"
+    },
+    {
+      "id": "c83e4ec4-f6a3-4b71-974a-81c5ce1e60fa",
+      "technique_name": "MODE Mask Integer Overflow/Logic Bypass",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker sends 'IAC SB LINEMODE MODE' with a malformed or oversized mask value. Step 2: The RFC defines the mask as a 'bit mask of various modes'. Step 3: If the implementation uses a fixed-size integer (e.g., 8-bit) for the mask but the parser reads more bytes or interprets a larger integer type without bounds checking, it could lead to unexpected state transitions or memory corruption if the mask value is used as an index or size parameter in internal logic.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "The 'mask' is a bit mask of various modes that the connection can be in."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can initiate or hijack Telnet connection",
+        "Target implements LINEMODE option"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Strictly validate the MODE mask value against defined bits (EDIT, TRAPSIG, etc.). Ignore or reject undefined bits and ensure the mask is stored in a properly bounded data structure.",
+      "fingerprint": "74d0040ecb388f29af9bb8761e88f8d7595b73e77548e092da68eda733e880d0"
+    },
+    {
+      "id": "8bc11146-75a5-4431-9a91-9dfc9da61fe7",
+      "technique_name": "SLC Configuration Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: The SLC suboption allows setting local characters for functions like IP, BRK, EOF, etc. Step 2: The protocol allows the client to request remote defaults or send specific values. Step 3: An attacker can race SLC configuration commands with data transmission, potentially causing a special character typed by the user to be interpreted differently by the client and server if the SLC state changes mid-stream, leading to command injection or unexpected process termination.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "The sender of this command REQUESTS that the list of octet triplets be used to set the local character to be used to send to perform the specified function."
+        }
+      ],
+      "prerequisites": [
+        "attacker can inject SLC subnegotiation commands",
+        "user is actively typing data"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "user"
+      ],
+      "mitigation": "Buffer incoming data during SLC reconfiguration and only apply new SLC settings after the current data stream is processed or acknowledged.",
+      "fingerprint": "f5e43d43e784f5c355af0e34146c9af0d8af342122326843be2ccc3a1f0e773d"
+    },
+    {
+      "id": "08fb04f7-af50-4a68-b98b-e53aac2db4c3",
+      "technique_name": "Telnet SUPPRESS-GO-AHEAD Downgrade",
+      "category": "Downgrade",
+      "severity": "low",
+      "confidence": 0.8,
+      "description": "Step 1: An on-path attacker intercepts the SUPPRESS-GO-AHEAD (SGA) option negotiation. Step 2: The attacker forces the negotiation to fail or disables SGA by injecting 'DONT SUPPRESS-GO-AHEAD' or 'WONT SUPPRESS-GO-AHEAD'. Step 3: The connection reverts to half-duplex mode with GO-AHEAD signals. This significantly degrades performance for full-duplex terminals and hosts, causing unnecessary delays and potential input/output synchronization issues, effectively downgrading the connection efficiency to a legacy standard.",
+      "rfc_references": [
+        {
+          "rfc": 858,
+          "section": "2",
+          "quote": "IAC DON'T SUPPRESS-GO-AHEAD: The sender of this command demands that the receiver of the command start or continue transmitting GAs when transmitting data."
+        },
+        {
+          "rfc": 858,
+          "section": "3",
+          "quote": "WON'T SUPPRESS-GO-AHEAD DON'T SUPPRESS-GO-AHEAD Go aheads are transmitted."
+        },
+        {
+          "rfc": 858,
+          "section": "4",
+          "quote": "While the NVT nominally follows a half duplex protocol complete with a GO AHEAD signal, there is no reason why a full duplex connection... should be burdened with the GO AHEAD signal."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "Telnet connection is unencrypted"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use SSH to encrypt the Telnet negotiation. Implementations should be configured to prefer SGA for full-duplex connections and resist downgrading to GO-AHEAD mode unless explicitly required by legacy constraints.",
+      "fingerprint": "f92195049143fb901b306e903e6f87f4da32f4b14763bffc44c2148ceb339627"
+    },
+    {
+      "id": "8d6146c6-0461-4b8a-b75c-b0fa95878992",
+      "technique_name": "Ambiguous GO-AHEAD Transmission Requirement",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: RFC 858 Section 2 defines IAC WON'T SUPPRESS-GO-AHEAD as a demand to 'begin transmitting, or to continue transmitting, the GA character'. Step 2: RFC 858 Section 5 states that when the option is in effect, the sender 'need not transmit GAs'. Step 3: The ambiguity lies in the exact timing and conditions under which a sender must transmit GA when the option is disabled. Implementations may vary on whether GA is sent immediately upon disabling the option, only after a certain amount of data, or only when half-duplex synchronization is required. This can lead to state machine desynchronization between client and server, potentially causing data corruption or connection hangs.",
+      "rfc_references": [
+        {
+          "rfc": 858,
+          "section": "2",
+          "quote": "IAC WON'T SUPPRESS-GO-AHEAD... The sender of this command demands to begin transmitting, or to continue transmitting, the GA character when transmitting data characters."
+        },
+        {
+          "rfc": 858,
+          "section": "5",
+          "quote": "When the SUPPRESS-GO-AHEAD option is in effect on the connection... the sender need not transmit GAs."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can manipulate option negotiation state"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement a strict state machine for SUPPRESS-GO-AHEAD that clearly defines when GA characters must be transmitted upon option disablement, independent of data flow.",
+      "fingerprint": "fb2dc496dfcaa19b048ccf4dcf957f7855d591d404ac176e39a90d4651969063"
+    },
+    {
+      "id": "1f358f00-b6f6-4ae7-a011-73da07d45bbf",
+      "technique_name": "SUPPRESS-GO-AHEAD Option Replay",
+      "category": "ReplayAttack",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker captures a SUPPRESS-GO-AHEAD negotiation command (IAC WILL/DO/WONT/DONT SUPPRESS-GO-AHEAD). Step 2: Attacker replays the command to force the connection to suppress or resume GO-AHEAD signals. Step 3: The target adjusts its transmission behavior, potentially causing data flow issues or disrupting half-duplex/full-duplex synchronization, though the impact is generally limited to connection performance rather than security.",
+      "rfc_references": [
+        {
+          "rfc": 858,
+          "section": "2",
+          "quote": "The sender of this command requests permission to begin suppressing transmission of the TELNET GO AHEAD (GA) character..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "target supports SUPPRESS-GO-AHEAD option",
+        "connection relies on GO-AHEAD for flow control"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use modern encrypted protocols (SSH/TLS) that handle flow control securely. Avoid relying on Telnet options for critical session management.",
+      "fingerprint": "723219c63e544a7827adddab8fabfb833d554d41873b88fdfe738bf6490a0baa"
+    },
+    {
+      "id": "b180c870-1910-4f09-8934-e9c4c876a3f7",
+      "technique_name": "SUPPRESS-GO-AHEAD Option Misinterpretation",
+      "category": "MissingValidation",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker sends conflicting SUPPRESS-GO-AHEAD commands (e.g., WILL and WON'T in rapid succession, or DO and DON'T without proper negotiation). Step 2: The implementation fails to validate the sequence of commands against the expected negotiation state machine. Step 3: The implementation may enter an inconsistent state regarding GO-AHEAD transmission, leading to data flow issues, potential data corruption, or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 858,
+          "section": "2",
+          "quote": "IAC WILL SUPPRESS-GO-AHEAD ... IAC WON'T SUPPRESS-GO-AHEAD ... IAC DO SUPPRESS-GO-AHEAD ... IAC DON'T SUPPRESSS-GO-AHEAD"
+        },
+        {
+          "rfc": 858,
+          "section": "5",
+          "quote": "When the SUPPRESS-GO-AHEAD option is in effect on the connection between a sender of data and the receiver of the data, the sender need not transmit GAs."
+        }
+      ],
+      "prerequisites": [
+        "Attacker can send Telnet commands to the target",
+        "Target supports SUPPRESS-GO-AHEAD option"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement a strict state machine for SUPPRESS-GO-AHEAD negotiation. Validate that commands follow the expected sequence (e.g., DO/WILL followed by confirmation). Ignore or reject out-of-sequence commands.",
+      "fingerprint": "4fa83fbaaf2e23b9b8eccca3aa081b33c91e80a7a732d05a53c94b436a0c2be5"
+    },
+    {
+      "id": "8e82824f-1174-4217-9732-0d5e66f5ee5e",
+      "technique_name": "SUPPRESS-GO-AHEAD State Confusion",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.65,
+      "description": "Step 1: Attacker sends IAC WILL SUPPRESS-GO-AHEAD to request suppression of GO-AHEAD characters. Step 2: Server responds with IAC DO SUPPRESS-GO-AHEAD. Step 3: Attacker sends IAC WON'T SUPPRESS-GO-AHEAD to demand transmission of GO-AHEAD characters. Step 4: Server responds with IAC DON'T SUPPRESS-GO-AHEAD. Step 5: Attacker rapidly toggles between WILL and WON'T SUPPRESS-GO-AHEAD, causing the server to constantly update its state machine and potentially leading to resource exhaustion or state confusion in poorly implemented servers.",
+      "rfc_references": [
+        {
+          "rfc": 858,
+          "section": "2",
+          "quote": "IAC WILL SUPPRESS-GO-AHEAD ... The sender of this command requests permission to begin suppressing transmission of the TELNET GO AHEAD (GA) character..."
+        },
+        {
+          "rfc": 858,
+          "section": "2",
+          "quote": "IAC WON'T SUPPRESS-GO-AHEAD ... The sender of this command demands to begin transmitting, or to continue transmitting, the GA character..."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has established a Telnet connection",
+        "Server implements SUPPRESS-GO-AHEAD option as specified in RFC 858"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement rate limiting on option negotiation messages. Ignore rapid toggling of SUPPRESS-GO-AHEAD requests. Set a timeout for state transitions related to SUPPRESS-GO-AHEAD.",
+      "fingerprint": "116af571fecfb316db3dbb610476d4255a2a5c80187e549fe17b38b8d89cc55e"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T11:27:49.303668+00:00",
+    "model_used": "Qwen3.6-27B-Q4_K_M.gguf",
+    "total_tokens_used": 88834,
+    "analysis_duration_secs": 340.5927955,
+    "run_id": 24,
+    "input_hash": "1e7aec56cea68c7dc939b7d2a5ad4d28560770f1597599e43a7589a4b8ec2a10",
+    "prompt_version": "1.0.0",
+    "rfc_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

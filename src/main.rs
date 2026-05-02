@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
-use rfc_analyzer::cli::{Cli, Command};
-use rfc_analyzer::config::Config;
-use rfc_analyzer::db;
+use ietf_draft_analyzer::cli::{Cli, Command};
+use ietf_draft_analyzer::config::Config;
+use ietf_draft_analyzer::db;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
             depth,
             normative_only,
         } => {
-            rfc_analyzer::commands::map::cmd_map(
+            ietf_draft_analyzer::commands::map::cmd_map(
                 &conn,
                 &config,
                 rfcs,
@@ -55,19 +55,19 @@ async fn main() -> Result<()> {
             .await?;
         }
         Command::Show { rfc } => {
-            rfc_analyzer::commands::show::cmd_show(&conn, rfc).await?;
+            ietf_draft_analyzer::commands::show::cmd_show(&conn, rfc).await?;
         }
         Command::Clear { scope, yes } => {
-            rfc_analyzer::commands::clear::cmd_clear(&conn, &scope, yes).await?;
+            ietf_draft_analyzer::commands::clear::cmd_clear(&conn, &scope, yes).await?;
         }
         Command::Graph { target, format } => {
-            rfc_analyzer::commands::graph::cmd_graph(&conn, &target, &format).await?;
+            ietf_draft_analyzer::commands::graph::cmd_graph(&conn, &target, &format).await?;
         }
         Command::Model {
             protocol,
             mechanisms,
         } => {
-            rfc_analyzer::commands::model::cmd_model(
+            ietf_draft_analyzer::commands::model::cmd_model(
                 &conn,
                 &config,
                 &protocol,
@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
             output,
             format,
         } => {
-            rfc_analyzer::commands::analyze::cmd_analyze(
+            ietf_draft_analyzer::commands::analyze::cmd_analyze(
                 &conn,
                 &config,
                 &protocol,
@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
             output,
             format,
         } => {
-            rfc_analyzer::commands::run::cmd_run(
+            ietf_draft_analyzer::commands::run::cmd_run(
                 &conn,
                 &config,
                 &protocol,
@@ -119,7 +119,7 @@ async fn main() -> Result<()> {
             number,
             protocol,
         } => {
-            rfc_analyzer::commands::import::cmd_import(&conn, &config, &file, number, protocol)
+            ietf_draft_analyzer::commands::import::cmd_import(&conn, &config, &file, number, protocol)
                 .await?;
         }
         Command::Reproduce {
@@ -129,7 +129,7 @@ async fn main() -> Result<()> {
             fingerprint,
             language,
         } => {
-            rfc_analyzer::commands::reproduce::cmd_reproduce(
+            ietf_draft_analyzer::commands::reproduce::cmd_reproduce(
                 &conn,
                 &config,
                 &protocol,
