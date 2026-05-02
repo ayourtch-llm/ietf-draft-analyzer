@@ -319,7 +319,7 @@ src/
     summarize.rs       Extractive summarize-to-fit
 
   commands/            Command handlers
-    map.rs, model.rs, analyze.rs, run.rs,
+    map.rs, model.rs, analyze.rs, run.rs, import.rs,
     show.rs, graph.rs, clear.rs
 
   output/              Report generation
@@ -329,7 +329,7 @@ src/
 ## Testing
 
 ```bash
-# Run all tests (92 tests)
+# Run all tests (104 tests)
 cargo test
 
 # Run with live RFC fetching (requires network)
