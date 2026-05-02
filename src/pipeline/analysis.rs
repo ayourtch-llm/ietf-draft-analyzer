@@ -6,6 +6,7 @@ use crate::llm::prompts;
 use crate::pipeline::section_select;
 use crate::pipeline::summarize;
 use crate::rfc::model::*;
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio_rusqlite::Connection;
@@ -737,6 +738,68 @@ async fn compute_stage3_hash(
     hasher.update(cats.join(",").as_bytes());
 
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Public API: load leads for a protocol from the latest completed run,
+/// applying dedup/filter/rank.
+pub async fn load_existing_leads_public(
+    conn: &Connection,
+    protocol: &str,
+    min_severity: &str,
+) -> Result<Vec<SecurityLead>> {
+    let protocol_str = protocol.to_string();
+    let leads = conn
+        .call(move |conn| {
+            // Find latest completed analyze run for this protocol
+            let run_id: Option<i64> = conn
+                .query_row(
+                    "SELECT id FROM analysis_runs
+                     WHERE protocol = ?1 AND stage = 'analyze' AND status = 'completed'
+                     ORDER BY id DESC LIMIT 1",
+                    [&protocol_str],
+                    |row| row.get(0),
+                )
+                .optional()?;
+
+            let Some(run_id) = run_id else {
+                return Ok(Vec::new());
+            };
+
+            let mut stmt = conn.prepare(
+                "SELECT id, technique_name, category, severity, confidence,
+                    description, rfc_references, prerequisites, entities_involved,
+                    mitigation, fingerprint
+                 FROM security_leads WHERE run_id = ?1
+                 ORDER BY id",
+            )?;
+            let leads: Vec<SecurityLead> = stmt
+                .query_map([run_id], |row| {
+                    Ok(SecurityLead {
+                        id: row.get(0)?,
+                        technique_name: row.get(1)?,
+                        category: row.get(2)?,
+                        severity: row.get(3)?,
+                        confidence: row.get(4)?,
+                        description: row.get(5)?,
+                        rfc_references: serde_json::from_str(&row.get::<_, String>(6)?)
+                            .unwrap_or_default(),
+                        prerequisites: serde_json::from_str(&row.get::<_, String>(7)?)
+                            .unwrap_or_default(),
+                        entities_involved: serde_json::from_str(&row.get::<_, String>(8)?)
+                            .unwrap_or_default(),
+                        mitigation: row.get(9)?,
+                        fingerprint: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                    })
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Ok(leads)
+        })
+        .await?;
+
+    let deduplicated = deduplicate_leads(&leads);
+    let mut ranked = filter_by_severity(deduplicated, min_severity);
+    rank_leads(&mut ranked);
+    Ok(ranked)
 }
 
 #[cfg(test)]

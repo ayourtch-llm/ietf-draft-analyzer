@@ -145,7 +145,10 @@ pub async fn run_stage2(
     ];
 
     let grammar = prompts::clustering_grammar();
-    let (clustering, usage) = match llm.chat_json_grammar::<ClusteringResponse>(messages, &grammar).await {
+    let (clustering, usage) = match llm
+        .chat_json_grammar::<ClusteringResponse>(messages, &grammar)
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             // Check if this was a cancellation — mark interrupted, not failed
@@ -304,7 +307,10 @@ pub async fn run_stage2(
         ];
 
         let grammar = prompts::state_machine_grammar();
-        match llm.chat_json_grammar::<StateMachineResponse>(messages, &grammar).await {
+        match llm
+            .chat_json_grammar::<StateMachineResponse>(messages, &grammar)
+            .await
+        {
             Ok((sm_response, usage)) => {
                 total_tokens += usage.total_tokens;
 
@@ -379,7 +385,11 @@ pub async fn run_stage2(
                 .await?;
             }
             Err(RfcAnalyzerError::LlmParse { detail }) => {
-                tracing::warn!("Mechanism '{}': LLM response parse failed: {}", mechanism, detail);
+                tracing::warn!(
+                    "Mechanism '{}': LLM response parse failed: {}",
+                    mechanism,
+                    detail
+                );
                 analysis_store::complete_work_item(
                     conn,
                     run_id,

@@ -158,6 +158,42 @@ stringarray ::= "[" ws (string (ws "," ws string)*)? ws "]"
     )
 }
 
+/// Stage 4: PoC reproduction script generation.
+pub fn reproduce_prompt(lead_json: &str, rfc_sections: &str, language: &str) -> (String, String) {
+    let system = format!(
+        r#"You are a security researcher writing proof-of-concept scripts to demonstrate protocol vulnerabilities found in RFC specifications. Write minimal, self-contained scripts that clearly demonstrate the vulnerability. Include comments explaining each step.
+
+The script should:
+1. Set up the minimum network interaction needed
+2. Craft the specific protocol messages described in the vulnerability
+3. Send them to a target
+4. Observe/report the outcome
+
+Use {} as the programming language. For network operations use raw sockets or standard protocol libraries. {}"#,
+        language, INJECTION_DEFENSE
+    );
+
+    let user = format!(
+        "Generate a proof-of-concept reproduction script for this security lead:\n\n{}\n\nRelevant RFC specification text:\n{}\n\nAfter your analysis, output JSON with this structure:\n{{\n  \"script_name\": \"poc_technique_name.py\",\n  \"description\": \"One-line description of what this PoC demonstrates\",\n  \"setup\": [\"Step 1: Install dependencies...\", \"Step 2: Start target service...\"],\n  \"code\": \"#!/usr/bin/env python3\\n# Full script here...\",\n  \"expected_vulnerable\": \"Description of what happens when the target IS vulnerable\",\n  \"expected_patched\": \"Description of what happens when the target is NOT vulnerable\",\n  \"caveats\": [\"Any limitations or assumptions\"]\n}}",
+        lead_json, rfc_sections
+    );
+
+    (system, user)
+}
+
+/// GBNF grammar for PoC generation response.
+/// Structured CoT: GOAL → PROTOCOL_STEPS → EDGE_CASES → VERIFY → JSON.
+pub fn reproduce_grammar() -> String {
+    format!(
+        r#"root ::= think json-output
+think ::= "<think>\n" "GOAL: " line "PROTOCOL_STEPS: " line "EDGE_CASES: " line "VERIFY: " line "</think>\n\n"
+json-output ::= "{{" ws "\"script_name\"" ws ":" ws string ws "," ws "\"description\"" ws ":" ws string ws "," ws "\"setup\"" ws ":" ws stringarray ws "," ws "\"code\"" ws ":" ws string ws "," ws "\"expected_vulnerable\"" ws ":" ws string ws "," ws "\"expected_patched\"" ws ":" ws string ws "," ws "\"caveats\"" ws ":" ws stringarray ws "}}"
+stringarray ::= "[" ws (string (ws "," ws string)*)? ws "]"
+{}"#,
+        GRAMMAR_COMMON
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +232,35 @@ mod tests {
         assert!(system.contains(INJECTION_DEFENSE));
         assert!(user.contains("MissingValidation"));
         assert!(user.contains("States: LISTEN"));
+    }
+
+    #[test]
+    fn test_reproduce_prompt() {
+        let (system, user) = reproduce_prompt(
+            r#"{"technique_name":"Test","category":"X"}"#,
+            "<<<RFC_SECTION>>>...<<<END_RFC_SECTION>>>",
+            "python",
+        );
+        assert!(system.contains("proof-of-concept"));
+        assert!(system.contains(INJECTION_DEFENSE));
+        assert!(user.contains("Test"));
+        assert!(user.contains("Relevant RFC specification text:"));
+    }
+
+    #[test]
+    fn test_reproduce_grammar() {
+        let grammar = reproduce_grammar();
+        assert!(grammar.contains("root ::= think json-output"));
+        // format! processes {{ -> { and raw string \" stays as literal \"
+        assert!(grammar.contains("\\\"script_name\\\""));
+        assert!(grammar.contains("\\\"code\\\""));
+        assert!(grammar.contains("PROTOCOL_STEPS: "));
+    }
+
+    #[test]
+    fn test_reproduce_grammar_has_braces() {
+        let grammar = reproduce_grammar();
+        // Check that the grammar has proper structure with braces
+        assert!(grammar.contains("{") || grammar.contains("{{"));
     }
 }

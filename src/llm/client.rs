@@ -77,7 +77,9 @@ impl LlmClient {
         messages: Vec<ChatMessage>,
         grammar: &str,
     ) -> Result<(T, TokenUsage)> {
-        let (content, usage) = self.chat_with_format(messages, false, Some(grammar)).await?;
+        let (content, usage) = self
+            .chat_with_format(messages, false, Some(grammar))
+            .await?;
         let parsed = super::response::parse_json_response::<T>(&content)?;
         Ok((parsed, usage))
     }
@@ -132,7 +134,11 @@ impl LlmClient {
             let estimated_tokens = request_json.chars().count() / 4;
             tracing::debug!(
                 "LLM request to {} (model: {}, ~{} tokens, attempt {}/{})",
-                url, self.config.model, estimated_tokens, attempts, max_attempts
+                url,
+                self.config.model,
+                estimated_tokens,
+                attempts,
+                max_attempts
             );
             let response = match self
                 .http
@@ -160,7 +166,13 @@ impl LlmClient {
                     let wait = 2u64.pow(attempts as u32);
                     tracing::warn!(
                         "Connection error (connect={}, timeout={}): {}. URL: {}. Waiting {}s before retry {}/{}",
-                        is_connect, is_timeout, e, url, wait, attempts, max_attempts
+                        is_connect,
+                        is_timeout,
+                        e,
+                        url,
+                        wait,
+                        attempts,
+                        max_attempts
                     );
                     tokio::select! {
                         _ = tokio::time::sleep(Duration::from_secs(wait)) => {}
@@ -205,12 +217,15 @@ impl LlmClient {
                         .unwrap_or_default();
 
                     // Log raw vs stripped content for debugging
-                    let thinking_len = raw_content.find("</think>")
+                    let thinking_len = raw_content
+                        .find("</think>")
                         .map(|end| end + "</think>".len())
                         .unwrap_or(0);
                     tracing::debug!(
                         "LLM response: raw={} chars, thinking={} chars, finish_reason={}",
-                        raw_content.len(), thinking_len, finish_reason
+                        raw_content.len(),
+                        thinking_len,
+                        finish_reason
                     );
                     if raw_content.len() > 0 && raw_content.len() < 500 {
                         tracing::debug!("LLM raw content: {}", raw_content);
@@ -224,15 +239,13 @@ impl LlmClient {
                     // Strip <think>...</think> blocks (Qwen3 thinking mode)
                     let content = strip_thinking_tags(&raw_content);
 
-                    tracing::debug!(
-                        "LLM content after stripping: {} chars",
-                        content.len()
-                    );
+                    tracing::debug!("LLM content after stripping: {} chars", content.len());
 
                     if content.is_empty() {
                         tracing::warn!(
                             "Empty response content from LLM (raw={} chars, thinking={} chars)",
-                            raw_content.len(), thinking_len
+                            raw_content.len(),
+                            thinking_len
                         );
                         // Retry once with a nudge — sometimes models need encouragement
                         if attempts < max_attempts {

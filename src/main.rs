@@ -114,6 +114,25 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
+        Command::Reproduce {
+            protocol,
+            output_dir,
+            min_severity,
+            fingerprint,
+            language,
+        } => {
+            rfc_analyzer::commands::reproduce::cmd_reproduce(
+                &conn,
+                &config,
+                &protocol,
+                output_dir,
+                &min_severity,
+                fingerprint,
+                &language,
+                cancel_token,
+            )
+            .await?;
+        }
     }
 
     Ok(())

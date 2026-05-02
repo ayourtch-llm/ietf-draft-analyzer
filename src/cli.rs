@@ -125,4 +125,26 @@ pub enum Command {
         #[arg(long)]
         yes: bool,
     },
+
+    /// Generate proof-of-concept reproduction scripts for security leads
+    Reproduce {
+        /// Protocol name (must have completed analysis)
+        protocol: String,
+
+        /// Output directory for PoC scripts
+        #[arg(short, long, default_value = "pocs")]
+        output_dir: PathBuf,
+
+        /// Only generate PoCs for leads at or above this severity
+        #[arg(long, default_value = "medium")]
+        min_severity: String,
+
+        /// Only generate PoC for a specific lead by fingerprint
+        #[arg(long)]
+        fingerprint: Option<String>,
+
+        /// Language for generated scripts
+        #[arg(long, default_value = "python")]
+        language: String,
+    },
 }
