@@ -235,6 +235,10 @@ sev_badge() {
       ')
       ASSESSMENT=$(echo "$lead" | jq -r '.assessment // "unclassified"')
       SECURITY_CONTEXT=$(echo "$lead" | jq -r '.security_context // empty')
+      GAP_EVIDENCE=$(echo "$lead" | jq -r '.gap_evidence // empty')
+      EXISTING_PROTECTION=$(echo "$lead" | jq -r '.existing_protection // empty')
+      ATTACKER_CAPABILITY=$(echo "$lead" | jq -r '.attacker_capability // empty')
+      PROPOSED_CHANGE=$(echo "$lead" | jq -r '.proposed_spec_change // empty')
       MERGED_COUNT=$(echo "$lead" | jq -r '.merged_lead_count // 1')
       SEVERITY=$(echo "$lead" | jq -r '.severity')
       CONFIDENCE=$(echo "$lead" | jq -r '.confidence')
@@ -261,6 +265,22 @@ sev_badge() {
 
       if [[ -n "$SECURITY_CONTEXT" ]]; then
         echo "**Specification/security context:** $SECURITY_CONTEXT"
+        echo ""
+      fi
+      if [[ -n "$GAP_EVIDENCE" ]]; then
+        echo "**Gap/requirement evidence:** $GAP_EVIDENCE"
+        echo ""
+      fi
+      if [[ -n "$EXISTING_PROTECTION" ]]; then
+        echo "**Existing protection:** $EXISTING_PROTECTION"
+        echo ""
+      fi
+      if [[ -n "$ATTACKER_CAPABILITY" ]]; then
+        echo "**Attacker capability:** $ATTACKER_CAPABILITY"
+        echo ""
+      fi
+      if [[ -n "$PROPOSED_CHANGE" ]]; then
+        echo "**Proposed specification change:** $PROPOSED_CHANGE"
         echo ""
       fi
 
@@ -309,7 +329,8 @@ sev_badge() {
         SEVERITY=$(echo "$lead" | jq -r '.severity')
         CONFIDENCE=$(echo "$lead" | jq -r '.confidence')
         DESCRIPTION=$(echo "$lead" | jq -r '.description')
-        MITIGATION=$(echo "$lead" | jq -r '.mitigation // empty')
+      MITIGATION=$(echo "$lead" | jq -r '.mitigation // empty')
+        PROPOSED_CHANGE=$(echo "$lead" | jq -r '.proposed_spec_change // empty')
         BADGE=$(sev_badge "$SEVERITY")
 
         echo "#### $TECHNIQUE"
@@ -328,7 +349,10 @@ sev_badge() {
           echo ""
         done
 
-        if [[ -n "$MITIGATION" ]]; then
+        if [[ -n "$PROPOSED_CHANGE" ]]; then
+          echo "**Audit pattern/change:** $PROPOSED_CHANGE"
+          echo ""
+        elif [[ -n "$MITIGATION" ]]; then
           echo "**Audit guidance:** $MITIGATION"
           echo ""
         fi

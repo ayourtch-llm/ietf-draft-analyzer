@@ -23,6 +23,14 @@ pub struct LeadResponse {
     pub assessment: String,
     #[serde(default)]
     pub security_context: Option<String>,
+    #[serde(default)]
+    pub gap_evidence: Option<String>,
+    #[serde(default)]
+    pub existing_protection: Option<String>,
+    #[serde(default)]
+    pub attacker_capability: Option<String>,
+    #[serde(default)]
+    pub proposed_spec_change: Option<String>,
     pub description: String,
     pub rfc_references: Vec<LeadRfcRef>,
     #[serde(default)]
@@ -33,7 +41,7 @@ pub struct LeadResponse {
     pub mitigation: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct LeadRfcRef {
     pub rfc: u32,
     pub section: String,
@@ -53,6 +61,14 @@ pub struct SecurityLead {
     pub assessment: String,
     #[serde(default)]
     pub security_context: Option<String>,
+    #[serde(default)]
+    pub gap_evidence: Option<String>,
+    #[serde(default)]
+    pub existing_protection: Option<String>,
+    #[serde(default)]
+    pub attacker_capability: Option<String>,
+    #[serde(default)]
+    pub proposed_spec_change: Option<String>,
     pub description: String,
     pub rfc_references: Vec<LeadRfcRef>,
     pub prerequisites: Vec<String>,
@@ -63,6 +79,18 @@ pub struct SecurityLead {
     pub related_categories: Vec<String>,
     #[serde(default = "default_merged_lead_count")]
     pub merged_lead_count: usize,
+    #[serde(default)]
+    pub merged_candidates: Vec<MergedLeadCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MergedLeadCandidate {
+    pub technique_name: String,
+    pub category: String,
+    pub assessment: String,
+    pub confidence: f64,
+    pub description: String,
+    pub rfc_references: Vec<LeadRfcRef>,
 }
 
 fn default_assessment() -> String {
@@ -491,7 +519,7 @@ pub async fn run_stage3(
 fn process_lead(lead: LeadResponse, protocol: &str) -> SecurityLead {
     let fingerprint = compute_fingerprint(protocol, &lead);
     let category = lead.category;
-    SecurityLead {
+    let mut processed = SecurityLead {
         id: Uuid::new_v4().to_string(),
         technique_name: lead.technique_name,
         category: category.clone(),
@@ -499,6 +527,10 @@ fn process_lead(lead: LeadResponse, protocol: &str) -> SecurityLead {
         confidence: lead.confidence.clamp(0.0, 1.0),
         assessment: normalize_assessment(&lead.assessment),
         security_context: lead.security_context,
+        gap_evidence: lead.gap_evidence,
+        existing_protection: lead.existing_protection,
+        attacker_capability: lead.attacker_capability,
+        proposed_spec_change: lead.proposed_spec_change,
         description: lead.description,
         rfc_references: lead.rfc_references,
         prerequisites: lead.prerequisites,
@@ -507,7 +539,10 @@ fn process_lead(lead: LeadResponse, protocol: &str) -> SecurityLead {
         fingerprint,
         related_categories: vec![category],
         merged_lead_count: 1,
-    }
+        merged_candidates: Vec::new(),
+    };
+    apply_deterministic_validation(&mut processed);
+    processed
 }
 
 /// Compute deterministic fingerprint for cross-run comparison.
@@ -672,11 +707,16 @@ fn normalized_technique_tokens(name: &str) -> std::collections::BTreeSet<String>
 }
 
 fn merge_lead(existing: &mut SecurityLead, incoming: &SecurityLead) {
-    let incoming_is_better = incoming.confidence > existing.confidence
-        || (incoming.confidence == existing.confidence
-            && (severity_rank(&incoming.severity) > severity_rank(&existing.severity)
-                || (severity_rank(&incoming.severity) == severity_rank(&existing.severity)
-                    && incoming.technique_name < existing.technique_name)));
+    let existing_quality = evidence_quality_score(existing);
+    let incoming_quality = evidence_quality_score(incoming);
+    let incoming_is_better = incoming_quality > existing_quality
+        || (incoming_quality == existing_quality
+            && (incoming.confidence > existing.confidence
+                || (incoming.confidence == existing.confidence
+                    && (severity_rank(&incoming.severity) > severity_rank(&existing.severity)
+                        || (severity_rank(&incoming.severity)
+                            == severity_rank(&existing.severity)
+                            && incoming.technique_name < existing.technique_name)))));
 
     let mut categories = existing.related_categories.clone();
     categories.push(existing.category.clone());
@@ -692,6 +732,17 @@ fn merge_lead(existing: &mut SecurityLead, incoming: &SecurityLead) {
     merge_strings(&mut prerequisites, &incoming.prerequisites);
     let mut entities = existing.entities_involved.clone();
     merge_strings(&mut entities, &incoming.entities_involved);
+    let mut merged_candidates = existing.merged_candidates.clone();
+    merged_candidates.push(lead_candidate(existing));
+    merged_candidates.extend(incoming.merged_candidates.iter().cloned());
+    merged_candidates.push(lead_candidate(incoming));
+    merged_candidates.sort_by(|left, right| {
+        left.technique_name
+            .cmp(&right.technique_name)
+            .then_with(|| left.category.cmp(&right.category))
+            .then_with(|| left.description.cmp(&right.description))
+    });
+    merged_candidates.dedup();
 
     if incoming_is_better {
         let mut replacement = incoming.clone();
@@ -700,6 +751,7 @@ fn merge_lead(existing: &mut SecurityLead, incoming: &SecurityLead) {
         replacement.rfc_references = merged_references;
         replacement.prerequisites = prerequisites;
         replacement.entities_involved = entities;
+        replacement.merged_candidates = merged_candidates;
         *existing = replacement;
     } else {
         existing.related_categories = categories;
@@ -707,6 +759,7 @@ fn merge_lead(existing: &mut SecurityLead, incoming: &SecurityLead) {
         existing.rfc_references = merged_references;
         existing.prerequisites = prerequisites;
         existing.entities_involved = entities;
+        existing.merged_candidates = merged_candidates;
         if existing.security_context.is_none() {
             existing.security_context = incoming.security_context.clone();
         }
@@ -714,6 +767,58 @@ fn merge_lead(existing: &mut SecurityLead, incoming: &SecurityLead) {
             existing.mitigation = incoming.mitigation.clone();
         }
     }
+}
+
+fn lead_candidate(lead: &SecurityLead) -> MergedLeadCandidate {
+    MergedLeadCandidate {
+        technique_name: lead.technique_name.clone(),
+        category: lead.category.clone(),
+        assessment: lead.assessment.clone(),
+        confidence: lead.confidence,
+        description: lead.description.clone(),
+        rfc_references: lead.rfc_references.clone(),
+    }
+}
+
+fn evidence_quality_score(lead: &SecurityLead) -> i32 {
+    let mut score = 0;
+    let quoted_references = lead
+        .rfc_references
+        .iter()
+        .filter_map(|reference| reference.quote.as_deref())
+        .collect::<Vec<_>>();
+    score += (quoted_references.len() as i32).min(3) * 3;
+    if quoted_references.iter().any(|quote| {
+        ["MUST", "MUST NOT", "SHALL", "SHOULD NOT"]
+            .iter()
+            .any(|keyword| quote.contains(keyword))
+    }) {
+        score += 4;
+    }
+    if nonempty(&lead.gap_evidence) {
+        score += 3;
+    }
+    if nonempty(&lead.existing_protection) {
+        score += 2;
+    }
+    if nonempty(&lead.proposed_spec_change) {
+        score += 3;
+    }
+
+    let description_tokens = normalized_technique_tokens(&lead.description);
+    score += normalized_technique_tokens(&lead.technique_name)
+        .intersection(&description_tokens)
+        .count()
+        .min(5) as i32;
+
+    let description = lead.description.to_lowercase();
+    if ["might", "possibly", "if an implementation", "may accept"]
+        .iter()
+        .any(|phrase| description.contains(phrase))
+    {
+        score -= 2;
+    }
+    score
 }
 
 fn merge_references(existing: &mut Vec<LeadRfcRef>, incoming: &[LeadRfcRef]) {
@@ -748,6 +853,106 @@ fn normalize_assessment(assessment: &str) -> String {
         _ => "unclassified",
     }
     .to_string()
+}
+
+fn nonempty(value: &Option<String>) -> bool {
+    value
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
+fn apply_deterministic_validation(lead: &mut SecurityLead) {
+    let description = lead.description.to_lowercase();
+    let prerequisites = lead.prerequisites.join(" ").to_lowercase();
+    let attacker_capability = lead
+        .attacker_capability
+        .as_deref()
+        .unwrap_or_default()
+        .to_lowercase();
+    let existing_protection = lead
+        .existing_protection
+        .as_deref()
+        .unwrap_or_default()
+        .to_lowercase();
+    let combined = format!("{} {} {}", description, prerequisites, attacker_capability);
+
+    let cites_explicit_requirement = lead.rfc_references.iter().any(|reference| {
+        reference.quote.as_deref().is_some_and(|quote| {
+            ["MUST", "MUST NOT", "SHALL", "SHALL NOT"]
+                .iter()
+                .any(|keyword| quote.contains(keyword))
+        })
+    });
+    let describes_ignored_requirement = [
+        "does not validate",
+        "fails to validate",
+        "does not verify",
+        "fails to verify",
+        "ignores the",
+        "if the implementation",
+        "if an implementation",
+    ]
+    .iter()
+    .any(|phrase| description.contains(phrase));
+
+    if lead.assessment == "specification_gap"
+        && cites_explicit_requirement
+        && describes_ignored_requirement
+    {
+        lead.assessment = "implementation_nonconformance".to_string();
+    }
+
+    let requires_compromised_secret = [
+        "stolen tgt",
+        "stolen credential",
+        "stolen private key",
+        "compromised server",
+        "compromise the server",
+        "already compromised",
+        "possesses a valid credential",
+    ]
+    .iter()
+    .any(|phrase| combined.contains(phrase));
+    if requires_compromised_secret {
+        lead.assessment = "expected_behavior".to_string();
+        cap_severity(lead, "low");
+    }
+
+    let active_on_path = [
+        "on-path",
+        "man-in-the-middle",
+        "intercepts",
+        "strips",
+        "modifies",
+        "injects a forged",
+    ]
+    .iter()
+    .any(|phrase| combined.contains(phrase));
+    if active_on_path {
+        let protected_transport = ["tls", "integrity", "authenticated transport"]
+            .iter()
+            .any(|phrase| existing_protection.contains(phrase));
+        if protected_transport {
+            lead.assessment = "expected_behavior".to_string();
+            cap_severity(lead, "low");
+        } else if lead.assessment == "specification_gap" {
+            lead.assessment = "known_risk".to_string();
+            cap_severity(lead, "medium");
+        }
+    }
+
+    if lead.assessment == "specification_gap"
+        && (!nonempty(&lead.gap_evidence) || !nonempty(&lead.proposed_spec_change))
+    {
+        lead.assessment = "known_risk".to_string();
+        cap_severity(lead, "medium");
+    }
+}
+
+fn cap_severity(lead: &mut SecurityLead, maximum: &str) {
+    if severity_rank(&lead.severity) > severity_rank(maximum) {
+        lead.severity = maximum.to_string();
+    }
 }
 
 fn prepare_leads(leads: &[SecurityLead], min_severity: &str) -> PreparedLeads {
@@ -831,9 +1036,10 @@ async fn store_lead(
                 (id, protocol, technique_name, category, severity, confidence,
                  description, rfc_references, prerequisites, entities_involved,
                  state_machine_name, mitigation, input_hash, run_id, fingerprint,
-                 assessment, security_context)
+                 assessment, security_context, gap_evidence, existing_protection,
+                 attacker_capability, proposed_spec_change)
              SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
-                    ?16, ?17
+                    ?16, ?17, ?18, ?19, ?20, ?21
              WHERE NOT EXISTS (
                  SELECT 1 FROM security_leads WHERE fingerprint = ?15 AND run_id = ?14
              )",
@@ -855,6 +1061,10 @@ async fn store_lead(
                 lead.fingerprint,
                 lead.assessment,
                 lead.security_context,
+                lead.gap_evidence,
+                lead.existing_protection,
+                lead.attacker_capability,
+                lead.proposed_spec_change,
             ],
         )?;
         Ok(())
@@ -876,7 +1086,9 @@ async fn load_existing_leads(
             let mut stmt = conn.prepare(
                 "SELECT id, technique_name, category, severity, confidence,
                     description, rfc_references, prerequisites, entities_involved,
-                    mitigation, fingerprint, assessment, security_context
+                    mitigation, fingerprint, assessment, security_context,
+                    gap_evidence, existing_protection, attacker_capability,
+                    proposed_spec_change
                  FROM security_leads WHERE run_id = ?1
                  ORDER BY id",
             )?;
@@ -899,8 +1111,13 @@ async fn load_existing_leads(
                         fingerprint: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
                         assessment: row.get(11)?,
                         security_context: row.get(12)?,
+                        gap_evidence: row.get(13)?,
+                        existing_protection: row.get(14)?,
+                        attacker_capability: row.get(15)?,
+                        proposed_spec_change: row.get(16)?,
                         related_categories: vec![row.get(2)?],
                         merged_lead_count: 1,
+                        merged_candidates: Vec::new(),
                     })
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1084,7 +1301,9 @@ pub async fn load_existing_leads_public(
             let mut stmt = conn.prepare(
                 "SELECT id, technique_name, category, severity, confidence,
                     description, rfc_references, prerequisites, entities_involved,
-                    mitigation, fingerprint, assessment, security_context
+                    mitigation, fingerprint, assessment, security_context,
+                    gap_evidence, existing_protection, attacker_capability,
+                    proposed_spec_change
                  FROM security_leads WHERE run_id = ?1
                  ORDER BY id",
             )?;
@@ -1107,8 +1326,13 @@ pub async fn load_existing_leads_public(
                         fingerprint: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
                         assessment: row.get(11)?,
                         security_context: row.get(12)?,
+                        gap_evidence: row.get(13)?,
+                        existing_protection: row.get(14)?,
+                        attacker_capability: row.get(15)?,
+                        proposed_spec_change: row.get(16)?,
                         related_categories: vec![row.get(2)?],
                         merged_lead_count: 1,
+                        merged_candidates: Vec::new(),
                     })
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -1122,6 +1346,30 @@ pub async fn load_existing_leads_public(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_response(name: &str, description: &str) -> LeadResponse {
+        LeadResponse {
+            technique_name: name.to_string(),
+            category: "MissingValidation".to_string(),
+            severity: "high".to_string(),
+            confidence: 0.8,
+            assessment: "specification_gap".to_string(),
+            security_context: None,
+            gap_evidence: Some("The specification omits a required check.".to_string()),
+            existing_protection: None,
+            attacker_capability: Some("Network access".to_string()),
+            proposed_spec_change: Some("Add an explicit validation requirement.".to_string()),
+            description: description.to_string(),
+            rfc_references: vec![LeadRfcRef {
+                rfc: 1,
+                section: "1".to_string(),
+                quote: None,
+            }],
+            prerequisites: vec![],
+            entities_involved: vec![],
+            mitigation: None,
+        }
+    }
 
     #[test]
     fn test_severity_rank() {
@@ -1145,6 +1393,10 @@ mod tests {
             confidence: 0.85,
             assessment: "specification_gap".to_string(),
             security_context: None,
+            gap_evidence: None,
+            existing_protection: None,
+            attacker_capability: None,
+            proposed_spec_change: None,
             description: "Step 1...".to_string(),
             rfc_references: vec![
                 LeadRfcRef {
@@ -1189,6 +1441,10 @@ mod tests {
             severity: "high".to_string(),
             assessment: "specification_gap".to_string(),
             security_context: None,
+            gap_evidence: None,
+            existing_protection: None,
+            attacker_capability: None,
+            proposed_spec_change: None,
             description: "".to_string(),
             rfc_references: vec![],
             prerequisites: vec![],
@@ -1196,6 +1452,7 @@ mod tests {
             mitigation: None,
             related_categories: vec!["X".to_string()],
             merged_lead_count: 1,
+            merged_candidates: vec![],
         };
         let lead2 = SecurityLead {
             id: "b".to_string(),
@@ -1231,6 +1488,10 @@ mod tests {
             confidence: 0.85,
             assessment: "specification_gap".to_string(),
             security_context: None,
+            gap_evidence: None,
+            existing_protection: None,
+            attacker_capability: None,
+            proposed_spec_change: None,
             description: "First description".to_string(),
             rfc_references: vec![reference.clone()],
             prerequisites: vec![],
@@ -1239,6 +1500,7 @@ mod tests {
             fingerprint: "fp-state".to_string(),
             related_categories: vec!["StateConfusion".to_string()],
             merged_lead_count: 1,
+            merged_candidates: vec![],
         };
         let lead2 = SecurityLead {
             id: "b".to_string(),
@@ -1248,6 +1510,10 @@ mod tests {
             confidence: 0.9,
             assessment: "specification_gap".to_string(),
             security_context: Some("Security context".to_string()),
+            gap_evidence: None,
+            existing_protection: None,
+            attacker_capability: None,
+            proposed_spec_change: None,
             description: "Better description".to_string(),
             rfc_references: vec![reference],
             prerequisites: vec![],
@@ -1256,6 +1522,7 @@ mod tests {
             fingerprint: "fp-race".to_string(),
             related_categories: vec!["RaceCondition".to_string()],
             merged_lead_count: 1,
+            merged_candidates: vec![],
         };
 
         let result = deduplicate_leads(&[lead1, lead2]);
@@ -1283,6 +1550,10 @@ mod tests {
             confidence: 0.9,
             assessment: "specification_gap".to_string(),
             security_context: None,
+            gap_evidence: None,
+            existing_protection: None,
+            attacker_capability: None,
+            proposed_spec_change: None,
             description: String::new(),
             rfc_references: vec![reference.clone()],
             prerequisites: vec![],
@@ -1291,6 +1562,7 @@ mod tests {
             fingerprint: "flood".to_string(),
             related_categories: vec!["DenialOfService".to_string()],
             merged_lead_count: 1,
+            merged_candidates: vec![],
         };
         let distinct = SecurityLead {
             id: "b".to_string(),
@@ -1319,6 +1591,10 @@ mod tests {
             confidence: 0.8,
             assessment: "specification_gap".to_string(),
             security_context: None,
+            gap_evidence: None,
+            existing_protection: None,
+            attacker_capability: None,
+            proposed_spec_change: None,
             description: String::new(),
             rfc_references: vec![reference],
             prerequisites: vec![],
@@ -1327,6 +1603,7 @@ mod tests {
             fingerprint: "a".to_string(),
             related_categories: vec!["X".to_string()],
             merged_lead_count: 1,
+            merged_candidates: vec![],
         };
         let bridge = SecurityLead {
             id: "b".to_string(),
@@ -1356,6 +1633,10 @@ mod tests {
             confidence: 0.9,
             assessment: "specification_gap".to_string(),
             security_context: None,
+            gap_evidence: None,
+            existing_protection: None,
+            attacker_capability: None,
+            proposed_spec_change: None,
             description: String::new(),
             rfc_references: vec![],
             prerequisites: vec![],
@@ -1364,6 +1645,7 @@ mod tests {
             fingerprint: "gap".to_string(),
             related_categories: vec!["X".to_string()],
             merged_lead_count: 1,
+            merged_candidates: vec![],
         };
         let nonconformance = SecurityLead {
             id: "b".to_string(),
@@ -1386,6 +1668,77 @@ mod tests {
     }
 
     #[test]
+    fn test_validation_moves_explicit_requirement_violation_to_implementation_checks() {
+        let mut response = test_response(
+            "Missing Certificate Validation",
+            "If an implementation does not validate the certificate, an attacker can impersonate the server.",
+        );
+        response.rfc_references[0].quote =
+            Some("Implementations MUST validate the certificate chain.".to_string());
+
+        let lead = process_lead(response, "tls");
+        assert_eq!(lead.assessment, "implementation_nonconformance");
+    }
+
+    #[test]
+    fn test_validation_rejects_attack_requiring_stolen_secret() {
+        let mut response = test_response(
+            "Stolen TGT Authentication Bypass",
+            "The attacker uses a stolen TGT after compromising the server.",
+        );
+        response.attacker_capability = Some("Attacker possesses a stolen TGT".to_string());
+
+        let lead = process_lead(response, "kerberos");
+        assert_eq!(lead.assessment, "expected_behavior");
+        assert_eq!(lead.severity, "low");
+    }
+
+    #[test]
+    fn test_validation_rejects_on_path_tampering_when_integrity_exists() {
+        let mut response = test_response(
+            "Negotiation Tampering",
+            "An on-path attacker intercepts and modifies the negotiation.",
+        );
+        response.existing_protection =
+            Some("TLS provides authenticated transport integrity.".to_string());
+
+        let lead = process_lead(response, "example");
+        assert_eq!(lead.assessment, "expected_behavior");
+        assert_eq!(lead.severity, "low");
+    }
+
+    #[test]
+    fn test_dedup_prefers_direct_evidence_over_higher_confidence_speculation() {
+        let mut weak = test_response(
+            "Overlapping Fragment Ambiguity",
+            "An implementation might possibly process fragments incorrectly.",
+        );
+        weak.confidence = 0.95;
+        weak.gap_evidence = None;
+        weak.proposed_spec_change = None;
+
+        let mut strong = test_response(
+            "Overlapping Fragment Attack",
+            "Two overlapping fragments contain conflicting bytes and produce inconsistent reassembly.",
+        );
+        strong.confidence = 0.8;
+        strong.rfc_references[0].quote = Some(
+            "If fragments overlap, the entire datagram MUST be silently discarded.".to_string(),
+        );
+
+        let weak = process_lead(weak, "ipv6");
+        let strong = process_lead(strong, "ipv6");
+        let consolidated = deduplicate_leads(&[weak, strong]);
+
+        assert_eq!(consolidated.len(), 1);
+        assert_eq!(
+            consolidated[0].technique_name,
+            "Overlapping Fragment Attack"
+        );
+        assert_eq!(consolidated[0].merged_candidates.len(), 2);
+    }
+
+    #[test]
     fn test_rank_leads() {
         let mut leads = vec![
             SecurityLead {
@@ -1397,6 +1750,10 @@ mod tests {
                 category: "".to_string(),
                 assessment: "specification_gap".to_string(),
                 security_context: None,
+                gap_evidence: None,
+                existing_protection: None,
+                attacker_capability: None,
+                proposed_spec_change: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
@@ -1404,6 +1761,7 @@ mod tests {
                 mitigation: None,
                 related_categories: vec![],
                 merged_lead_count: 1,
+                merged_candidates: vec![],
             },
             SecurityLead {
                 id: "2".to_string(),
@@ -1414,6 +1772,10 @@ mod tests {
                 category: "".to_string(),
                 assessment: "specification_gap".to_string(),
                 security_context: None,
+                gap_evidence: None,
+                existing_protection: None,
+                attacker_capability: None,
+                proposed_spec_change: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
@@ -1421,6 +1783,7 @@ mod tests {
                 mitigation: None,
                 related_categories: vec![],
                 merged_lead_count: 1,
+                merged_candidates: vec![],
             },
             SecurityLead {
                 id: "3".to_string(),
@@ -1431,6 +1794,10 @@ mod tests {
                 category: "".to_string(),
                 assessment: "specification_gap".to_string(),
                 security_context: None,
+                gap_evidence: None,
+                existing_protection: None,
+                attacker_capability: None,
+                proposed_spec_change: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
@@ -1438,6 +1805,7 @@ mod tests {
                 mitigation: None,
                 related_categories: vec![],
                 merged_lead_count: 1,
+                merged_candidates: vec![],
             },
         ];
 
@@ -1461,6 +1829,10 @@ mod tests {
                 category: "".to_string(),
                 assessment: "specification_gap".to_string(),
                 security_context: None,
+                gap_evidence: None,
+                existing_protection: None,
+                attacker_capability: None,
+                proposed_spec_change: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
@@ -1468,6 +1840,7 @@ mod tests {
                 mitigation: None,
                 related_categories: vec![],
                 merged_lead_count: 1,
+                merged_candidates: vec![],
             },
             SecurityLead {
                 id: "2".to_string(),
@@ -1478,6 +1851,10 @@ mod tests {
                 category: "".to_string(),
                 assessment: "specification_gap".to_string(),
                 security_context: None,
+                gap_evidence: None,
+                existing_protection: None,
+                attacker_capability: None,
+                proposed_spec_change: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
@@ -1485,6 +1862,7 @@ mod tests {
                 mitigation: None,
                 related_categories: vec![],
                 merged_lead_count: 1,
+                merged_candidates: vec![],
             },
         ];
 

@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// Each migration: (version_number, sql_to_execute)
 /// Migrations are applied in order. Never remove or reorder entries.
@@ -254,6 +254,15 @@ const MIGRATIONS: &[(i64, &str)] = &[
 
         COMMIT;
         PRAGMA foreign_keys = ON;
+    "#,
+    ),
+    (
+        5,
+        r#"
+        ALTER TABLE security_leads ADD COLUMN gap_evidence TEXT;
+        ALTER TABLE security_leads ADD COLUMN existing_protection TEXT;
+        ALTER TABLE security_leads ADD COLUMN attacker_capability TEXT;
+        ALTER TABLE security_leads ADD COLUMN proposed_spec_change TEXT;
     "#,
     ),
 ];
@@ -563,5 +572,29 @@ mod tests {
 
         assert!(columns.contains(&"assessment".to_string()));
         assert!(columns.contains(&"security_context".to_string()));
+    }
+
+    #[test]
+    fn test_migration_v5_adds_lead_evidence_fields() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(security_leads)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+
+        for expected in [
+            "gap_evidence",
+            "existing_protection",
+            "attacker_capability",
+            "proposed_spec_change",
+        ] {
+            assert!(columns.contains(&expected.to_string()));
+        }
     }
 }

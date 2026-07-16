@@ -296,6 +296,10 @@ The output `telnet-report.json` contains:
       "confidence": 0.92,
       "assessment": "specification_gap",
       "security_context": "The Security Considerations discuss transport protection but do not define a resource limit for this state.",
+      "gap_evidence": "The specification defines the message but no aggregate resource bound.",
+      "existing_protection": null,
+      "attacker_capability": "Ability to establish unauthenticated protocol sessions",
+      "proposed_spec_change": "Add a configurable aggregate resource limit and required exhaustion behavior.",
       "description": "Step 1: Attacker initiates Telnet connection...",
       "rfc_references": [
         {"rfc": 1184, "section": "3.3", "quote": "SLC triplets..."}
@@ -308,12 +312,13 @@ The output `telnet-report.json` contains:
       "merged_lead_count": 2
     }
   ],
+  "implementation_checks": [],
   "metadata": {
     "generated_at": "2026-05-01T22:05:30Z",
     "model_used": "Qwen3.5-27B-512K",
     "total_tokens_used": 45000,
     "analysis_duration_secs": 330.0,
-    "prompt_version": "1.1.1",
+    "prompt_version": "1.3.0",
     "ietf_draft_analyzer_version": "0.1.0",
     "report_format": "json"
   }
@@ -322,11 +327,13 @@ The output `telnet-report.json` contains:
 
 Each candidate is checked against the document's Security Considerations and
 normative requirements. The actionable report includes `specification_gap` and
-`known_risk` findings. Candidates classified as `implementation_nonconformance`
-or `expected_behavior` remain in the analysis database for auditability but are
-excluded from the report. Cross-category restatements with the same cited
-sections are conservatively consolidated; `related_categories` and
-`merged_lead_count` retain that provenance.
+`known_risk` findings in `security_leads`. Explicit normative requirements that
+implementations may violate are retained separately in
+`implementation_checks`, making them suitable for source-code or configuration
+audits. `expected_behavior` candidates remain in the analysis database but are
+excluded from reports. Cross-category restatements with the same cited sections
+are conservatively consolidated; `related_categories`, `merged_lead_count`, and
+`merged_candidates` retain that provenance.
 
 ## Attack Categories
 

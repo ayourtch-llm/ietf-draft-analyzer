@@ -1,6 +1,6 @@
 /// Global prompt version. Increment when any prompt template changes.
 /// Stored in analysis_runs.prompt_version and used in composite input hashes.
-pub const PROMPT_VERSION: &str = "1.2.0";
+pub const PROMPT_VERSION: &str = "1.3.0";
 
 /// Section delimiter for embedding RFC text in prompts.
 /// Chosen because it cannot appear in standard RFC formatting.
@@ -113,6 +113,10 @@ For each potential vulnerability found, return a JSON array of objects:
   "confidence": 0.85,
   "assessment": "specification_gap|known_risk|implementation_nonconformance|expected_behavior",
   "security_context": "How the Security Considerations or normative text addresses this candidate, or why it does not",
+  "gap_evidence": "The exact omission, contradiction, ambiguity, or explicit implementation requirement",
+  "existing_protection": "Existing requirement or mechanism that already mitigates the scenario, or null",
+  "attacker_capability": "The minimum capability the attacker must already possess",
+  "proposed_spec_change": "A concrete editorial/normative change for specification gaps, an audit pattern for implementation checks, or null",
   "description": "Step 1: ... Step 2: ... Step 3: ...",
   "rfc_references": [{{"rfc": N, "section": "X.Y", "quote": "..."}}],
   "prerequisites": ["attacker is on-path", ...],
@@ -187,7 +191,7 @@ pub fn security_leads_grammar() -> String {
         r#"root ::= think json-output
 think ::= "<think>\n" "GOAL: " line "APPROACH: " line "EDGE: " line "VERIFY: " line "</think>\n\n"
 json-output ::= "[" ws (lead (ws "," ws lead)*)? ws "]"
-lead ::= "{{" ws "\"technique_name\"" ws ":" ws string ws "," ws "\"category\"" ws ":" ws string ws "," ws "\"severity\"" ws ":" ws severity ws "," ws "\"confidence\"" ws ":" ws decimal ws "," ws "\"assessment\"" ws ":" ws assessment ws "," ws "\"security_context\"" ws ":" ws string ws "," ws "\"description\"" ws ":" ws string ws "," ws "\"rfc_references\"" ws ":" ws "[" ws (rfcref (ws "," ws rfcref)*)? ws "]" ws "," ws "\"prerequisites\"" ws ":" ws stringarray ws "," ws "\"entities_involved\"" ws ":" ws stringarray ws "," ws "\"mitigation\"" ws ":" ws (string | "null") ws "}}"
+lead ::= "{{" ws "\"technique_name\"" ws ":" ws string ws "," ws "\"category\"" ws ":" ws string ws "," ws "\"severity\"" ws ":" ws severity ws "," ws "\"confidence\"" ws ":" ws decimal ws "," ws "\"assessment\"" ws ":" ws assessment ws "," ws "\"security_context\"" ws ":" ws (string | "null") ws "," ws "\"gap_evidence\"" ws ":" ws (string | "null") ws "," ws "\"existing_protection\"" ws ":" ws (string | "null") ws "," ws "\"attacker_capability\"" ws ":" ws (string | "null") ws "," ws "\"proposed_spec_change\"" ws ":" ws (string | "null") ws "," ws "\"description\"" ws ":" ws string ws "," ws "\"rfc_references\"" ws ":" ws "[" ws (rfcref (ws "," ws rfcref)*)? ws "]" ws "," ws "\"prerequisites\"" ws ":" ws stringarray ws "," ws "\"entities_involved\"" ws ":" ws stringarray ws "," ws "\"mitigation\"" ws ":" ws (string | "null") ws "}}"
 rfcref ::= "{{" ws "\"rfc\"" ws ":" ws number ws "," ws "\"section\"" ws ":" ws string ws "," ws "\"quote\"" ws ":" ws (string | "null") ws "}}"
 severity ::= "\"critical\"" | "\"high\"" | "\"medium\"" | "\"low\"" | "\"informational\""
 assessment ::= "\"specification_gap\"" | "\"known_risk\"" | "\"implementation_nonconformance\"" | "\"expected_behavior\""
