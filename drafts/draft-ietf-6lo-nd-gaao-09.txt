@@ -1,0 +1,1176 @@
+
+
+
+
+6lo Working Group                                             L. Iannone
+Internet-Draft                                                    D. Lou
+Intended status: Standards Track                                  Huawei
+Expires: 17 August 2026                                        A. Rashid
+                                                     Politecnico di Bari
+                                                        13 February 2026
+
+
+    Generic Address Assignment Option for 6LoWPAN Neighbor Discovery
+                       draft-ietf-6lo-nd-gaao-09
+
+Abstract
+
+   This document specifies a new extension to the IPv6 Neighbor
+   Discovery in Low Power and Lossy Networks (LLNs), enabling a node to
+   request to be assigned an address or a prefix from neighbor routers.
+   Such mechanism allows to algorithmically assign addresses and
+   prefixes to nodes in a 6LoWPAN deployment.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 17 August 2026.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+
+
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 1]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.  Code Components
+   extracted from this document must include Revised BSD License text as
+   described in Section 4.e of the Trust Legal Provisions and are
+   provided without warranty as described in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   2
+     1.1.  Limitations of DHCPv6 in Constrained LLNs . . . . . . . .   3
+     1.2.  Algorithmic and Distributed Address Assignment  . . . . .   4
+   2.  Terminology . . . . . . . . . . . . . . . . . . . . . . . . .   4
+     2.1.  Requirements Notation . . . . . . . . . . . . . . . . . .   5
+     2.2.  Acronyms  . . . . . . . . . . . . . . . . . . . . . . . .   5
+     2.3.  Definition of Terms . . . . . . . . . . . . . . . . . . .   6
+   3.  Algorithmically Assigned Addresses and Prefixes . . . . . . .   6
+   4.  Generic Address Assignment Option . . . . . . . . . . . . . .   7
+   5.  Messages Sequence and Processing  . . . . . . . . . . . . . .  10
+     5.1.  Request Phase . . . . . . . . . . . . . . . . . . . . . .  10
+     5.2.  Explicit Registration Phase (Optional)  . . . . . . . . .  11
+     5.3.  Message Exchange Optimization . . . . . . . . . . . . . .  12
+       5.3.1.  GAAO with Address Registration  . . . . . . . . . . .  13
+       5.3.2.  GAAO with Router Discovery  . . . . . . . . . . . . .  13
+     5.4.  Error Conditions  . . . . . . . . . . . . . . . . . . . .  14
+   6.  Signaling GAAO Support  . . . . . . . . . . . . . . . . . . .  15
+   7.  IANA Considerations . . . . . . . . . . . . . . . . . . . . .  15
+     7.1.  IPv6 Neighbor Discovery (ND) Option Types . . . . . . . .  15
+     7.2.  6LoWPAN Capability Bits . . . . . . . . . . . . . . . . .  16
+     7.3.  GAAO Error code . . . . . . . . . . . . . . . . . . . . .  16
+     7.4.  Address Assignment Function Registry  . . . . . . . . . .  16
+   8.  Security Considerations . . . . . . . . . . . . . . . . . . .  17
+   Acknowledgements  . . . . . . . . . . . . . . . . . . . . . . . .  17
+   References  . . . . . . . . . . . . . . . . . . . . . . . . . . .  17
+     Normative References  . . . . . . . . . . . . . . . . . . . . .  17
+     Informative References  . . . . . . . . . . . . . . . . . . . .  19
+   Authors' Addresses  . . . . . . . . . . . . . . . . . . . . . . .  20
+
+1.  Introduction
+
+   Low Power and Lossy Networks (LLNs) require adaptations of Internet
+   protocols to operate efficiently under constraints such as limited
+   energy, low data rates, constrained memory, and duty-cycled radio
+   operation.  In many LLN deployments, the wireless interface is the
+   dominant source of energy consumption.  As a result, protocol design
+   must minimize transmissions, idle listening, and the number of nodes
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 2]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   involved in control-plane operations.
+
+   IPv6 Neighbor Discovery (ND) was optimized for LLNs in [RFC6775] and
+   later extended by [RFC8505], [RFC8929], [RFC9010], and [RFC9685].
+   These specifications reduce multicast usage, limit control-plane
+   participation, and introduce explicit address registration mechanisms
+   to better support energy-constrained and duty-cycled devices.
+
+   In general IPv6 networks, address and prefix assignment are well
+   supported by Stateless Address Auto-Configuration (SLAAC) [RFC4862]
+   and DHCPv6 [RFC9915].  However, these mechanisms do not fully align
+   with the architectural and operational goals of RFC8505-based 6LoWPAN
+   deployments, particularly in scenarios requiring:
+
+   *  Strict minimization of multicast traffic,
+
+   *  Avoidance of centralized infrastructure,
+
+   *  Localized control-plane interactions,
+
+   *  Algorithmically structured address assignment to support routing
+      optimizations.
+
+   This document does not attempt to replace SLAAC or DHCPv6 in general
+   IPv6 networks.  Instead, it addresses a specific gap in 6LoWPAN LLNs
+   operating under RFC8505-based Neighbor Discovery optimizations, where
+   nodes may need to request addresses or prefixes directly from
+   neighboring routers without introducing DHCPv6 infrastructure.
+
+1.1.  Limitations of DHCPv6 in Constrained LLNs
+
+   DHCPv6 relies on a client-server model and typically uses multicast
+   (e.g., Solicit messages sent to FF02::1:2).  In IEEE 802.15.4
+   [IEEE802154] and similar LLNs, IPv6 multicast is commonly mapped to
+   link-layer broadcast.  Such broadcasts cause all nodes on the channel
+   to wake up and process the frame.  In duty-cycled networks, this
+   increases:
+
+   *  Radio wake-ups,
+
+   *  Idle listening time,
+
+   *  Channel contention,
+
+   *  Overall energy consumption.
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 3]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   Furthermore, DHCPv6 requires a reachable server, often via relay
+   agents, which may introduce multi-hop control paths and centralized
+   state management.  In lossy multi-hop LLNs, longer control paths
+   increase failure probability and recovery cost.
+
+   While DHCPv6 can be efficient in traditional IPv6 networks, including
+   support for long lifetimes and reduced renewal frequency, its
+   architectural model does not align with the distributed, strictly
+   localized control-plane design promoted by RFC8505-based 6LoWPAN
+   Neighbor Discovery.
+
+1.2.  Algorithmic and Distributed Address Assignment
+
+   Recent work has demonstrated the benefits of algorithmically
+   structured addressing in constrained networks (e.g., [RFC9453],
+   [I-D.ietf-6lo-path-aware-semantic-addressing], [SHENOY21], [BLESS22],
+   [RIDOUX05]).  Such approaches can simplify routing, reduce forwarding
+   state, and improve scalability.  These schemes often require routers
+   to assign addresses or prefixes according to a distributed Address
+   Assignment Function (AAF).
+
+   Existing mechanisms do not provide a standardized way for a 6LoWPAN
+   Node (6LN) to explicitly request an address or prefix from a
+   neighboring 6LoWPAN Router (6LR) within the optimized ND framework
+   defined by [RFC8505].
+
+   This document specifies a new Neighbor Discovery option, the Generic
+   Address Assignment Option (GAAO), that enables a node to request an
+   address or prefix directly from a neighboring router using ND
+   messages.  The mechanism:
+
+   *  Operates strictly at 1-hop,
+
+   *  Avoids introducing DHCPv6 infrastructure,
+
+   *  Aligns with RFC8505 registration procedures,
+
+   *  Supports distributed algorithmic address assignment.
+
+   GAAO complements the Extended Address Registration Option (EARO)
+   defined in [RFC8505] and its extensions, integrating address/prefix
+   assignment into the existing optimized ND framework for 6LoWPAN.
+
+2.  Terminology
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 4]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+2.1.  Requirements Notation
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in BCP
+   14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+2.2.  Acronyms
+
+   This document assumes familiarity with the terminology defined in
+   [RFC6775] and [RFC8505].  In particular for the following acronyms:
+
+   *6CIO*: Capability Indication Option
+
+   *6LBR*: 6LoWPAN Border Router
+
+   *6LN*: 6LoWPAN Node
+
+   *6LoWPAN*: IPv6 over Low-Power Wireless Personal Area Network
+
+   *6LR*: 6LoWPAN Router
+
+   *AAF*: Address Assignment Function
+
+   *ARO*: Address Registration Option
+
+   *EARO*: Extended Address Registration Option
+
+   *GAAO*: Generic Address Assignment Option
+
+   *IID*: Interface IDentifier
+
+   *LLN*: Low-Power and Lossy Network
+
+   *NA*: Neighbor Advertisement
+
+   *ND*: Neighbor Discovery
+
+   *NS*: Neighbor Solicitation
+
+   *PfxLen*: Prefix Length
+
+   *RA*: Router Advertisement
+
+   *RS*: Router Solicitation
+
+   *SLAAC*: Stateless Address Auto-Configuration
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 5]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   *SLLAO*: Source Link-Layer Address Option
+
+   *TLLAO*: Target Link-Layer Address Option
+
+2.3.  Definition of Terms
+
+   *Address Assignment Function (AAF):*  The Address Assignment Function
+      (AAF) is an implementation of the algorithm used by 6LRs/6LBR to
+      assign an address/prefix to requesting nodes.  In order to avoid
+      addressing issues, only one AAF is used in a deployment.  An AAF
+      assigns either addresses or prefixes but not both.  This allows in
+      certain cases to indicate whether a node is requesting an address
+      or a prefix.
+
+   *GAAO:* Generic Address Assignment Option defined in this
+   specification (Section 4).
+
+3.  Algorithmically Assigned Addresses and Prefixes
+
+   The IPv6 address assignment model within a local domain relies on
+   randomly generated Interface Identifiers (IIDs).  These can be
+   assigned in two ways: a centralized approach using DHCPv6
+   ([RFC9915]), which guarantees collision-free addresses, or a
+   decentralized approach using SLAAC ([RFC4862]).  In the latter case,
+   additional mechanisms are required to ensure address uniqueness and
+   security, including Duplicate Address Detection (DAD) [RFC4862],
+   Cryptographically Generated Addresses (CGA) [RFC3972], and Secure
+   Neighbor Discovery (SEND) [RFC3971].  However, there is a third
+   approach for address assignment, which is distributed and collision-
+   free: algorithmically generated addresses (e.g., [SHENOY21],
+   [BLESS22], [RIDOUX05], [ERIKSSON04]).
+
+   The Address Assignment Function (AAF) will work as a decentralized
+   and distributed fashion.  The AAF is used to assign addresses and
+   prefixes to nodes as they join a network.  To ensure consistency, all
+   6LoWPAN Nodes (6LNs), 6LoWPAN Routers (6LRs), and 6LoWPAN Border
+   Routers (6LBRs) MUST use the same AAF within a given network
+   instance.  When a node needs an address/prefix, it first selects a
+   neighboring 6LR/6LBR from those that responded to its initial Router
+   Solicitation (RS) with a Router Advertisement (RA), as specified in
+   [RFC6775].  The node then sends an explicit request for an address/
+   prefix to the chosen 6LR/6LBR (see Section 5 for details about
+   messages sequence and processing).  The 6LR/6LBR assigns the address/
+   prefix based on the AAF.  Depending on the specific technology and
+   algorithm in use, the 6LR/6LBR will either implicitly register this
+   assignment to the requesting 6LN, or will indicate to the 6LN that an
+   explicit registration of the assigned address/prefix is necessary to
+   confirm its use.  The overall process is illustrated in Figure 1.
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 6]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   STEP
+        6LN                         6LR/6LBR
+         |                             |
+      1. | Address/Prefix Request      | \
+         | --------------------------> |  \
+         |                             |   + Request Phase
+      2. | Address/Prefix Offer        |  /
+         | <-------------------------- | /
+         |                             |
+      3. | Address/Prefix Acceptance   | \
+         | --------------------------> |  \
+         |                             |   + Optional Explicit
+      4. | Address/Prefix Confirmation |  /  Registration Phase
+         | <-------------------------- | /
+         |                             |
+
+               Figure 1: Address/Prefix assignment sequence.
+
+   The optional registration phase (steps 3 and 4) is implemented using
+   the address/prefix registration procedures defined in [RFC8505],
+   [RFC9685], or [I-D.ietf-6lo-prefix-registration].  In this phase, an
+   Extended Address Registration Option (EARO) and SLLAO are used to
+   register an address/prefix, which, in this context, is not self-
+   generated.  However, to initiate the process--specifically steps 1
+   and 2, a new Generic Address Assignment Option is required and
+   proposed in this document.  Because no existing mechanism can be
+   readily used for this purpose.  The remainder of this document first
+   defines the format of this option (see Section 4), followed by a
+   revised sequence and processing of Address/Prefix assignment messages
+   (see Section 5).
+
+4.  Generic Address Assignment Option
+
+   In order for a 6LN to request the assignment of an address or prefix,
+   GAAO message is used.  The format of the GAAO message is shown in
+   Figure 2.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 7]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+     0                   1                   2                   3
+     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |     Type      |     Length    |     Status    |    Opaque     |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |R|C|Rsvd |   PfxLen    |  AAF  |     Assignment   Lifetime     |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                                                               |
+    ~            Registration Ownership Verifier (ROVR)             ~
+    |                                                               |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    |                                                               |
+    |                        Address/Prefix                         |
+    |                          (128 bits)                           |
+    |                                                               |
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+         Figure 2: Generic Address Assignment Option (GAAO) format.
+
+   Generic Address Assignment Option Fields:
+
+   *Type:*  TBD
+
+   *Length:*  8-bit unsigned integer.  The length of the option in units
+      of 8 bytes.  This field is set to 1 plus the size of the ROVR
+      field when there is no address/prefix appended to the option.  Its
+      value is augmented by 2 (16 bytes) when an address/prefix is
+      appended to the option.
+
+   *Status:*  As defined in [RFC8505].
+
+   *Opaque:*  As defined in [RFC8505].
+
+   *R:*  1-bit flag for explicit Registration being requested.  It MUST
+      be initialized to 0 in Neighbor Solicitation (NS) messages by the
+      requester and MUST be ignored by the receiver.  The 6LR/6LBR
+      replying to the request with an Neighbor Advertisement (NA)
+      message MAY set this bit to indicate that it requests a
+      confirmation that the address/prefix is accepted and will be used.
+      When the 6LR/6LBR sets the R-flag in a NA(GAAO) message, it
+      indicates that no registration state has been created and that the
+      requester MUST explicitly register the received address/prefix to
+      the same 6LR/6LBR using the procedures defined in [RFC8505],
+      [I-D.ietf-6lo-prefix-registration], and [RFC9685], according to
+      the type of the assigned address/prefix.  When the 6LR/6LBR does
+      not set this R-flag, it implicitly indicates that the assigned
+      address/prefix has been also registered and state created as
+      specified in [RFC8505], [I-D.ietf-6lo-prefix-registration], and
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 8]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+      [RFC9685], according to the type of the assigned address/prefix.
+      In the event that the 6LN does not want to use the allocated
+      address/prefix, it can de-register the allocation by sending an
+      NS(EARO) setting registration lifetime to zero, as defined in
+      [RFC8505].
+
+   *C:*  1-bit flag for Crypto-ID used for ROVR as defined in [RFC8928]
+      and [I-D.ietf-6lo-updating-rfc-8928].  This flag MUST be set when
+      the ROVR field contains a Crypto-ID.
+
+   *Reserved:*  3-bit reserved field for future use.  It MUST be
+      initialized to 0 by the sender and MUST be ignored by the
+      receiver.
+
+   *PfxLen:*  7-bit unsigned integer.  It indicates the length in bits
+      of the address/prefix carried in the option.
+
+   *AAF:*  4-bit unsigned integer.  Describes the Address Assignment
+      Function (AAF), i.e. the algorithm, used to assign the address/
+      prefix. 0 is a special value indicating that the field is not
+      used.  In an NS(GAAO) message, it is RECOMMENDED to set this field
+      to 0 to indicate there is no preference on how the address/prefix
+      is assigned.  However, a 6LN MAY use a value different from 0,
+      meaning that it is requested to use a specific known AAF to assign
+      the address/prefix (see also Section 5.4).  Section 7.4 describes
+      possible values of this field.
+
+   *Assignment Lifetime:*  16-bit unsigned integer, expressed in
+      minutes.  In an NS(GAAO) message, the field expresses a desired
+      lifetime.  It MAY be set to zero, indicating no particular desired
+      lifetime.  In NA(GAAO) message it expresses the granted lifetime.
+      A node MUST NOT use the address/prefix after expiration of the
+      lifetime.  Address/prefix lifetime SHOULD be configurable
+      according to the AAF in use and as mitigation of certain attacks
+      (see Section 8).
+
+   *ROVR:*  As defined in [RFC8505] and extended in [RFC8928] and
+      [I-D.ietf-6lo-updating-rfc-8928].
+
+   *Address/Prefix:*  128-bit IPv6 address/prefix.  This field MAY be
+
+
+
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                 [Page 9]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+      present in NS(GAAO) request messages to indicate the prefix from
+      which the address or sub-prefix has to be derived.  If not present
+      in an NS(GAAO) message, it means that the address returned in an
+      NA(GAAO) message is implicitly used on the interface used to send
+      the request.  This field MUST be present in NA(GAAO) messages that
+      return a successful address/prefix allocation, but MUST NOT be
+      present in case of error.  When the field is used return a prefix,
+      the leftmost bits are used for its encoding according to the
+      length field, the remaining bits are set to zero.
+
+5.  Messages Sequence and Processing
+
+   When a node bootstraps, it typically does multicast a RS message and
+   receives one or more unicast RA messages from neighbor 6LRs.  The
+   node MAY choose one or more 6LRs from which to request address(es) or
+   prefix(es).  A node MAY perform a request at any time, not
+   necessarily at boot time, using NS and NA messages.
+
+5.1.  Request Phase
+
+   When the node requests an address/prefix, the node will go through
+   the following steps:
+
+   1.  The node will issue an NS(GAAO) message to obtain the address/
+       prefix.  In this initial address request, GAAO Status field MUST
+       be set to 0.  Opaque, ROVR, and C-flag are set according to the
+       local configuration.  R-Flag MUST be set to 0.  The AAF field
+       SHOULD be set to zero unless by configuration there is a
+       preference for the assignment algorithm.  The Assignment Lifetime
+       field MAY be set to the desired lifetime, or zero otherwise.  The
+       Address/Prefix field MAY be present to indicate the prefix from
+       which the address or sub-prefix has to be derived.  In this case
+       the PfxLen field MUST be set accordingly.  If the Address/Prefix
+       field is not present, the PfxLen field MUST be set to 0.
+
+   2.  Assuming no errors occur, the node will receive an NA(GAAO)
+       message where all fields have been copied back except for:
+
+       *  *Pfxlen:* Now indicating the actual length of the prefix.  For
+          address assignments this field MUST be set to 64.
+
+       *  *R:* The R-bit is set if the 6LR requests an explicit
+          registration.
+
+       *  *AAF:* It is the algorithm, used to assign the address/prefix.
+          If the node is a 6LR it MUST use the same AAF to generate
+          addresses/prefixes to requesting neighbor nodes.
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 10]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+       *  *Assignment Lifetime:* The maximum lifetime of the assigned
+          address/prefix.
+
+   The message sequence is depicted in Figure 3.
+
+   STEP
+        6LN                                      6LR/6LBR
+         |                                          |
+         | ===== RS-RA Transaction Completed ====== |
+         |                                          |
+         |                                          |
+         |         Address/Prefix Request           |
+      1. | ---------------------------------------> |
+         |                NS (GAAO)                 |
+         |                                          |
+         |           Address/Prefix Offer           |
+      2. | <--------------------------------------- |
+         |                NA (GAAO)                 |
+         |                                          |
+
+           Figure 3: Address/Prefix assignment message sequence.
+
+5.2.  Explicit Registration Phase (Optional)
+
+   Depending on the algorithm in use and the underlying technology, the
+   address/prefix assignment procedure terminates after these two
+   messages.  This may be sufficient for instance in deployments where
+   the link-layer offers reliable packet delivery.  The use of this
+   option is done by configuration.  Documents defining AAFs MUST
+   explicitly state whether this phase remains optional or is mandatory
+   due to factors specific to the proposed algorithm.
+
+   If the R-flag is set in the received NA(GAAO) message, the 6LN MUST
+   register with the obtained address/prefix by following the procedures
+   in [RFC8505], [RFC9685], or [I-D.ietf-6lo-prefix-registration]
+   depending on the type of address/prefix.  When setting the R-flag,
+   and as for [RFC4861], the 6LR is expect to receive a registration
+   within RETRANS_TIMER multiplied by MAX_UNICAST_SOLICIT.  If no
+   registration is received within this amount of time the 6LR will
+   consider that address/prefix is not in use by the requesting 6LN.
+
+   The complete sequence of actions is depicted in Figure 4.
+
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 11]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   STEP
+
+        6LN                                          6LR/6LBR
+         |                                              |
+         |   ====== RS-RA Transaction Completed ======  |
+         |                                              |
+         |           Address/Prefix Request             |
+      1. | -------------------------------------------> |
+         |                 NS(GAAO)                     |
+         |                                              |
+         |           Address/Prefix Offer               |
+      2. | <------------------------------------------- |
+         |                 NA(GAAO)                     |
+         |                                              |
+         |      Address/Prefix Registration Request     |
+      3. | -------------------------------------------> |
+         |            NS(EARO + SLLAO)                  |
+         |                                              |
+                             ...
+            Procedure According to [RFC8505], [RFC9685],
+             or [I-D.ietf-6lo-prefix-registration]
+             depending on the type of address.
+                             ...
+         |                                              |
+         |      Address/Prefix Registration Response    |
+      4. | <------------------------------------------- |
+         |        NA(EARO with Status + SLLAO)          |
+         |                                              |
+
+     Figure 4: Address/Prefix assignment message sequence with explicit
+                               registration.
+
+   [RFC8505], [RFC9685], and [I-D.ietf-6lo-prefix-registration], define
+   how nodes keep address/prefix registering state so to maintain
+   addressing in case of reboot.  When needed, in order to use this
+   feature with GAAO, after reboot the registration phase MUST be used
+   to perform an explicit registration and continue using the address/
+   prefix.  However, when using GAAO, and when preforming the re-
+   registering, if a "Registration Refresh Request" or "Invalid
+   Registration" Status value is returned, the node MUST restart from
+   the top with the initial Request Phase.
+
+5.3.  Message Exchange Optimization
+
+   There are two ways to optimize the prefix/address Request Phase: GAAO
+   with Address Registration and GAAO with Router Discovery.
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 12]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+5.3.1.  GAAO with Address Registration
+
+   Prefix/address Registration utilize NS/NA transactions for the link-
+   local address registration [RFC8505].  In this specification, for
+   prefix/address Request procedure utilizes an additional NS/NA
+   transaction.  To minimize the number of transactions, GAAO MAY be
+   used together with the EARO option during address registration phase.
+   This piggybacking approach provides flexibility and maintains
+   compatibility with existing specifications [RFC8505].  In response
+   the NA message will contain GAAO.  Figure 5 illustrates the GAAO
+   piggybacked within a link-layer address registration request and
+   response.
+
+   STEP
+
+        6LN                                      6LR/6LBR
+         |                                          |
+         |       Address Registration Request       |
+      1. | ---------------------------------------> |
+         |         NS(EARO + SLLAO + GAAO)          |
+         |                                          |
+         |       Address Registration Response      |
+      2. | <--------------------------------------- |
+         |    NA(EARO with Status + SLLAO + GAAO)   |
+         |                                          |
+
+     Figure 5: GAAO piggybacking with link-layer Address Registration.
+
+5.3.2.  GAAO with Router Discovery
+
+   Another optimization for prefix/address requests can be performed
+   during the bootstrapping phase of a 6LN.  The GAAO MAY be included in
+   the initial RS message, thereby implicitly indicating that the node
+   supports this specification.  Similarly, 6LR/6LBR that support this
+   specification MUST include a prefix/address offer in a GAAO appended
+   to the corresponding RA message, as depicted in Figure 6.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 13]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   STEP
+
+        6LN                                      6LR/6LBR
+         |                                          |
+         |               RS message                 |
+      1. | ---------------------------------------> |
+         |         (6CIO + SLLAO + GAAO)            |
+         |                                          |
+         |               RA message                 |
+      2. | <--------------------------------------- |
+         |    (PIO + 6CIO + ABRO + SLLAO + GAAO)    |
+         |                                          |
+
+             Figure 6: GAAO piggybacking with Router Discovery.
+
+   A 6LR/6LBR that does not support GAAO will simply ignore this option,
+   and the corresponding RA message will not include a GAAO.  This
+   behavior implicitly signals that the feature is not supported.
+
+5.4.  Error Conditions
+
+   GAAO Status field uses same Status values defined in [RFC6775] and
+   [RFC8505], further revised in [RFC9010], for error reporting.  This
+   specification introduces a new Status value when the AAF in GAAO in
+   an NS message is not in use in the 6LoWPAN network, as follows (see
+   also Section 7):
+
+   *AAF Not Used:*  The AAF in GAAO in the NS message is not in use in
+      the 6LoWPAN network.
+
+   This status MUST be used when a node requesting an address/prefix did
+   put an AAF value, in the corresponding field, which is not in use in
+   the 6LoWPAN network.  When the node receives this status back it
+   SHOULD perform one of the following actions:
+
+   *  Re-issue the same request without specifying an AAF, meaning set
+      the AAF field to 0.  The 6LR will return the AAF in use in the
+      6LoWPAN network and employed to generate the returned address/
+      prefix.  If the requesting node does not support the returned AAF
+      it does not participate in the AAF-based 6LoWPAN network and does
+      not use the proposed address/prefix.
+
+   *  Re-issue the same request with a different AAF.  The 6LoWPAN
+      network is not using the requested AAF but may be using a
+      different one.  Note that such an approach may lead to repeated
+      requests that may consume bandwidth and energy.
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 14]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   *  Do nothing and do not participate in the AAF-based 6LoWPAN
+      network.
+
+   The action to be used is selected by configuration.  When nodes fail
+   to participate in the AAF-based 6LoWPAN network they MAY still use a
+   different mechanism (e.g., [RFC8505]) to configure addresses/
+   prefixes.
+
+6.  Signaling GAAO Support
+
+   This specification defines a new capability bit, named M-flag, for
+   use in the 6CIO as defined by [RFC7400] ("6LoWPAN-GHC: Generic Header
+   Compression for IPv6 over Low-Power Wireless Personal Area
+   Networks").  A 6LN that supports this specification MUST set the
+   M-flag in RS and RA messages.
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |     Type      |   Length = 1  |   Reserved    |X|A|D|L|B|P|E|G|
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |F|M|                       Reserved                            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+               Figure 7: New GAAO Capability Bit in the 6CIO.
+
+   *M:*  1-bit flag.  The node supports managed addresses/prefixes via
+      the Generic Address Assignment Capability.
+
+7.  IANA Considerations
+
+   This section provides guidance to the Internet Assigned Numbers
+   Authority (IANA) regarding registration of values related to the GAAO
+   specification, in accordance with BCP 26 [RFC8126].
+
+7.1.  IPv6 Neighbor Discovery (ND) Option Types
+
+   IANA is requested to make an addition to the "IPv6 Neighbor Discovery
+   Option Formats" registry under the heading "Internet Control Message
+   Protocol version 6 (ICMPv6) Parameters" as indicated in Table 1:
+
+      +======+===================================+=================+
+      | Type | Description                       | Reference       |
+      +======+===================================+=================+
+      | TBD  | Generic Address Assignment Option | [This Document] |
+      +------+-----------------------------------+-----------------+
+
+             Table 1: New Generic Address Assignment Option.
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 15]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+7.2.  6LoWPAN Capability Bits
+
+   IANA is requested to make an addition to the "6LoWPAN Capability
+   Bits" registry under the registry group "Internet Control Message
+   Protocol version 6 (ICMPv6) Parameters" as indicated in Table 2:
+
+             +=====+============================+===========+
+             | Bit | Description                | Reference |
+             +=====+============================+===========+
+             | TBD | M-Flag for Generic Address | [This     |
+             |     | Assignment Capability      | Document] |
+             +-----+----------------------------+-----------+
+
+                   Table 2: New 6LoWPAN Capability Bit.
+
+7.3.  GAAO Error code
+
+   IANA is requested to make an addition to the "Address Registration
+   Option Status Values" registry under the registry group "Internet
+   Control Message Protocol version 6 (ICMPv6) Parameters" as indicated
+   in Table 3:
+
+            +================+==============+=================+
+            | Value          | Description  | Reference       |
+            +================+==============+=================+
+            | 13 (Suggested) | AAF Not Used | [This Document] |
+            +----------------+--------------+-----------------+
+
+              Table 3: New Address Registration Option Status
+                                Field Value.
+
+7.4.  Address Assignment Function Registry
+
+   IANA is asked to create a registry group named "Generic Address
+   Assignment Option".
+
+   Such registry group should be populated with an octet registry named
+   "Address Assignment Function" and used to identify the used AAF.  The
+   registry is populated as shown in Table 4:
+
+
+
+
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 16]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+         +=========+================================+===========+
+         | Value   | AAF Name                       | Reference |
+         +=========+================================+===========+
+         | 0x0     | No AAF.  This can be used only | [This     |
+         |         | in NS message to indicate that | Document] |
+         |         | no specific AAF is demanded.   |           |
+         +---------+--------------------------------+-----------+
+         | 0x1-0xE | Un-assigned                    |           |
+         +---------+--------------------------------+-----------+
+         | 0xF     | Experimental Use. Used for     | [This     |
+         |         | experimental purposes during   | Document] |
+         |         | implementation of new AAFs.    |           |
+         +---------+--------------------------------+-----------+
+
+                Table 4: Allocation Function Sub-registry
+
+   Values can be assigned by IANA on a "First Come, First Served" basis
+   according to [RFC8126].
+
+8.  Security Considerations
+
+   This document extends [RFC8505], which already extended [RFC6775], as
+   such the security considerations of both documents apply to this
+   specification.  In particular, the link layer SHOULD provide
+   sufficient protection to prevent potential attacks.  Recommendations
+   listed in Section 7 of [RFC8505] SHOULD be applied as well to this
+   specification.
+
+   Depending on the AAF in use, the number of available addresses may
+   encounter limitations.  A rouge node may leverage on this knowledge
+   to carry out address exhaustion attacks by impersonating different
+   nodes and performing multiple requests.  To mitigate such risks the
+   recommendation about the lifetime and number of addresses per node
+   described in Section 7 of [RFC8505] remains valid.
+
+Acknowledgements
+
+   This document received many comments and help from community people.
+   The authors would like to thank all of them.  Thanks as well to Joel
+   Halpern (GENART) and Brian Haberman (INTDIR) for their reviews that
+   helped to spot overlooked points in the definition of the GAAO
+   mechanism.  Thanks to Pascal Thubert for his help in making this
+   specification more integrated with existing specifications.  Thanks
+   to Carles Gomez Montenegro for his very thorough shepherd review.
+
+References
+
+Normative References
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 17]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   [I-D.ietf-6lo-prefix-registration]
+              Thubert, P., "IPv6 Neighbor Discovery Prefix
+              Registration", Work in Progress, Internet-Draft, draft-
+              ietf-6lo-prefix-registration-18, 20 August 2025,
+              <https://datatracker.ietf.org/doc/html/draft-ietf-6lo-
+              prefix-registration-18>.
+
+   [I-D.ietf-6lo-updating-rfc-8928]
+              Thubert, P. and A. Rashid, "Fixing the C-Flag in Extended
+              Address Registration Option (EARO)", Work in Progress,
+              Internet-Draft, draft-ietf-6lo-updating-rfc-8928-05, 26
+              June 2025, <https://datatracker.ietf.org/doc/html/draft-
+              ietf-6lo-updating-rfc-8928-05>.
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119,
+              DOI 10.17487/RFC2119, March 1997,
+              <https://www.rfc-editor.org/rfc/rfc2119>.
+
+   [RFC4861]  Narten, T., Nordmark, E., Simpson, W., and H. Soliman,
+              "Neighbor Discovery for IP version 6 (IPv6)", RFC 4861,
+              DOI 10.17487/RFC4861, September 2007,
+              <https://www.rfc-editor.org/rfc/rfc4861>.
+
+   [RFC4862]  Thomson, S., Narten, T., and T. Jinmei, "IPv6 Stateless
+              Address Autoconfiguration", RFC 4862,
+              DOI 10.17487/RFC4862, September 2007,
+              <https://www.rfc-editor.org/rfc/rfc4862>.
+
+   [RFC6775]  Shelby, Z., Ed., Chakrabarti, S., Nordmark, E., and C.
+              Bormann, "Neighbor Discovery Optimization for IPv6 over
+              Low-Power Wireless Personal Area Networks (6LoWPANs)",
+              RFC 6775, DOI 10.17487/RFC6775, November 2012,
+              <https://www.rfc-editor.org/rfc/rfc6775>.
+
+   [RFC7400]  Bormann, C., "6LoWPAN-GHC: Generic Header Compression for
+              IPv6 over Low-Power Wireless Personal Area Networks
+              (6LoWPANs)", RFC 7400, DOI 10.17487/RFC7400, November
+              2014, <https://www.rfc-editor.org/rfc/rfc7400>.
+
+   [RFC8126]  Cotton, M., Leiba, B., and T. Narten, "Guidelines for
+              Writing an IANA Considerations Section in RFCs", BCP 26,
+              RFC 8126, DOI 10.17487/RFC8126, June 2017,
+              <https://www.rfc-editor.org/rfc/rfc8126>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, DOI 10.17487/RFC8174,
+              May 2017, <https://www.rfc-editor.org/rfc/rfc8174>.
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 18]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   [RFC8505]  Thubert, P., Ed., Nordmark, E., Chakrabarti, S., and C.
+              Perkins, "Registration Extensions for IPv6 over Low-Power
+              Wireless Personal Area Network (6LoWPAN) Neighbor
+              Discovery", RFC 8505, DOI 10.17487/RFC8505, November 2018,
+              <https://www.rfc-editor.org/rfc/rfc8505>.
+
+   [RFC8928]  Thubert, P., Ed., Sarikaya, B., Sethi, M., and R. Struik,
+              "Address-Protected Neighbor Discovery for Low-Power and
+              Lossy Networks", RFC 8928, DOI 10.17487/RFC8928, November
+              2020, <https://www.rfc-editor.org/rfc/rfc8928>.
+
+   [RFC9010]  Thubert, P., Ed. and M. Richardson, "Routing for RPL
+              (Routing Protocol for Low-Power and Lossy Networks)
+              Leaves", RFC 9010, DOI 10.17487/RFC9010, April 2021,
+              <https://www.rfc-editor.org/rfc/rfc9010>.
+
+   [RFC9685]  Thubert, P., Ed., "Listener Subscription for IPv6 Neighbor
+              Discovery Multicast and Anycast Addresses", RFC 9685,
+              DOI 10.17487/RFC9685, November 2024,
+              <https://www.rfc-editor.org/rfc/rfc9685>.
+
+Informative References
+
+   [BLESS22]  Bless, R., Zitterbart, M., Despotovic, Z., and A. Hecker,
+              "KIRA: Distributed Scalable ID-based Routing with Fast
+              Forwarding", 2022 IFIP Networking Conference (IFIP
+              Networking) pp. 1-9,
+              DOI 10.23919/ifipnetworking55013.2022.9829816, June 2022,
+              <https://doi.org/10.23919/
+              ifipnetworking55013.2022.9829816>.
+
+   [ERIKSSON04]
+              Eriksson, J., Faloutsos, M., and S. Krishnamurthy,
+              "Scalable ad hoc routing: the case for dynamic
+              addressing", IEEE INFOCOM 2004 vol. 2, pp. 1108-1119,
+              DOI 10.1109/infcom.2004.1356997, February 2005,
+              <https://doi.org/10.1109/infcom.2004.1356997>.
+
+   [I-D.ietf-6lo-path-aware-semantic-addressing]
+              Iannone, L., Li, G., Lou, D., Liu, P., and P. Thubert,
+              "Path-Aware Semantic Addressing (PASA) for Low power and
+              Lossy Networks", Work in Progress, Internet-Draft, draft-
+              ietf-6lo-path-aware-semantic-addressing-13, 16 September
+              2025, <https://datatracker.ietf.org/doc/html/draft-ietf-
+              6lo-path-aware-semantic-addressing-13>.
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 19]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   [IEEE802154]
+              "IEEE Standard for Low-Rate Wireless Networks",
+              IEEE standard, DOI 10.1109/ieeestd.2016.7460875, April
+              2016, <https://doi.org/10.1109/ieeestd.2016.7460875>.
+
+   [RFC3971]  Arkko, J., Ed., Kempf, J., Zill, B., and P. Nikander,
+              "SEcure Neighbor Discovery (SEND)", RFC 3971,
+              DOI 10.17487/RFC3971, March 2005,
+              <https://www.rfc-editor.org/rfc/rfc3971>.
+
+   [RFC3972]  Aura, T., "Cryptographically Generated Addresses (CGA)",
+              RFC 3972, DOI 10.17487/RFC3972, March 2005,
+              <https://www.rfc-editor.org/rfc/rfc3972>.
+
+   [RFC8929]  Thubert, P., Ed., Perkins, C.E., and E. Levy-Abegnoli,
+              "IPv6 Backbone Router", RFC 8929, DOI 10.17487/RFC8929,
+              November 2020, <https://www.rfc-editor.org/rfc/rfc8929>.
+
+   [RFC9453]  Hong, Y., Gomez, C., Choi, Y., Sangi, A., and S.
+              Chakrabarti, "Applicability and Use Cases for IPv6 over
+              Networks of Resource-constrained Nodes (6lo)", RFC 9453,
+              DOI 10.17487/RFC9453, September 2023,
+              <https://www.rfc-editor.org/rfc/rfc9453>.
+
+   [RFC9915]  Mrugalski, T., Volz, B., Richardson, M., Jiang, S., and T.
+              Winters, "Dynamic Host Configuration Protocol for IPv6
+              (DHCPv6)", STD 102, RFC 9915, DOI 10.17487/RFC9915,
+              January 2026, <https://www.rfc-editor.org/rfc/rfc9915>.
+
+   [RIDOUX05] Ridoux, J., Fladenmuller, A., Viniotis, Y., and K.
+              Salamatian, "Trellis-Based Virtual Regular Addressing
+              Structures in Self-organized Networks", Lecture Notes in
+              Computer Science pp. 511-522, DOI 10.1007/11422778_41,
+              2005, <https://doi.org/10.1007/11422778_41>.
+
+   [SHENOY21] Shenoy, N., Chandraiah, S., and P. Willis, "A Structured
+              Approach to Routing in the Internet", 2021 IEEE 22nd
+              International Conference on High Performance Switching and
+              Routing (HPSR) pp. 1-6,
+              DOI 10.1109/hpsr52026.2021.9481818, June 2021,
+              <https://doi.org/10.1109/hpsr52026.2021.9481818>.
+
+Authors' Addresses
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 20]
+
+Internet-Draft                    GAAO                     February 2026
+
+
+   Luigi Iannone
+   Huawei Technologies France S.A.S.U.
+   18, Quai du Point du Jour
+   92100 Boulogne-Billancourt
+   France
+   Email: luigi.iannone@huawei.com
+
+
+   David Lou
+   Huawei Technologies Duesseldorf GmbH
+   Riesstrasse 25
+   80992 Munich
+   Germany
+   Email: zhe.lou@huawei.com
+
+
+   Adnan Rashid
+   Politecnico di Bari
+   Via Edoardo Orabona 4
+   70126 Bari
+   Italy
+   Email: adnan.rashid@poliba.it
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Iannone, et al.          Expires 17 August 2026                [Page 21]

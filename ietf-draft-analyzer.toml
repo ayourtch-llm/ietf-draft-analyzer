@@ -1,8 +1,9 @@
 [llm]
-api_base = "http://ayourtch-desktop:8000/v1"
-api_key_env = "OPENAI_API_KEY"
-model = "Qwen3.6-27B-Q4_K_M.gguf"
-max_tokens_per_request = 4096
+api_base = "https://api.deepseek.com/v1"
+api_key_env = "DEEPSEEK_API_KEY"
+model = "deepseek-chat"
+use_grammar = false
+max_tokens_per_request = 32768
 max_concurrent_requests = 1
 temperature = 0.2
 model_context_window = 128000

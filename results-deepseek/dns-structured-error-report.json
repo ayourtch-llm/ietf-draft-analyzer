@@ -1,0 +1,1447 @@
+{
+  "protocol_name": "dns-structured-error",
+  "rfcs_analyzed": [
+    99002
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 6,
+  "security_leads": [
+    {
+      "id": "c8cd7ba5-7263-4719-a322-6493a2a3b2cc",
+      "technique_name": "Processing 'c', 'j', 'o' Fields Without Server Authentication",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: Client receives a DNS response over an encrypted connection but without server authentication (e.g., opportunistic privacy). Step 2: The client should ignore the 'c', 'j', and 'o' fields because they may influence end user behavior and are vulnerable to active attacks. Step 3: If the client processes these fields without authentication, an on-path attacker can inject malicious contact info, justification, or organization name. Step 4: The end user may be misled into contacting an attacker or acting on false information.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the identity of the DNS server cannot be verified (e.g., when using opportunistic privacy or opportunistic discovery), the DNS client ignore the 'c', 'j', and 'o' fields, as these fields may influence end user behavior and are vulnerable to active attacks in the absence of resolver authentication."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS connection without server authentication"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Only process 'c', 'j', and 'o' fields when the DNS server identity is verified (e.g., via authenticated DNS-over-TLS/HTTPS/QUIC).",
+      "fingerprint": "f3d98b15045aac5e15572be80b6c6db193d9590f88a796fdd71badae09d1efe1"
+    },
+    {
+      "id": "816073df-b38b-4cd1-8092-336d2467ace4",
+      "technique_name": "Unvalidated EXTRA-TEXT Processing in Unauthenticated Transports",
+      "category": "StateConfusion",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: Attacker on-path intercepts DNS response over unauthenticated transport (e.g., cleartext or opportunistic privacy). Step 2: Attacker modifies EXTRA-TEXT field to inject malicious JSON content (e.g., fake contact URIs or misleading text). Step 3: Client processes the forged EXTRA-TEXT field because integrity is not guaranteed, leading to display of attacker-controlled information.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the integrity of the DNS response is not guaranteed, the DNS client act upon data in the EXTRA-TEXT field, as the data is vulnerable to modification by an on-path attacker."
+        },
+        {
+          "rfc": 99002,
+          "section": "authentication-and-confidentiality",
+          "quote": "cautions against relying on EDE information because it may be unauthenticated and transmitted in cleartext."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "unauthenticated DNS transport (cleartext or opportunistic privacy)"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC with TLS 1.3+).",
+      "fingerprint": "57cb1c69f98cd9b4f92e5faec8830ed31a63827527d91b63c4b76d179c764d80"
+    },
+    {
+      "id": "bce8cca0-65f7-442a-83a9-08465c0f68a1",
+      "technique_name": "Unvalidated EXTRA-TEXT Processing on Unauthenticated Connections",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: Client receives a DNS response with an EDE option over an unauthenticated or integrity-unprotected transport. Step 2: The client processes the EXTRA-TEXT field without verifying the integrity of the response. Step 3: An on-path attacker modifies the EXTRA-TEXT field to inject malicious content (e.g., fake contact URIs, misleading justification). Step 4: The client displays or acts upon the attacker-controlled data, potentially leading to user harm.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the integrity of the DNS response is not guaranteed, the DNS client act upon data in the EXTRA-TEXT field, as the data is vulnerable to modification by an on-path attacker."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS transport without integrity protection (e.g., cleartext)"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC) and validate the response as described in the specification.",
+      "fingerprint": "d6d72f66b7ab27d5277cda9d388538f44c5967f646b09d266725db76a4166091"
+    },
+    {
+      "id": "d9669df2-799f-4f48-bc48-adf165321aa6",
+      "technique_name": "EDE EXTRA-TEXT Injection via Unauthenticated Transport",
+      "category": "AuthBypass",
+      "severity": "critical",
+      "confidence": 0.95,
+      "description": "Step 1: Attacker performs an on-path attack on a DNS response transmitted over an unauthenticated transport (e.g., cleartext DNS). Step 2: Attacker modifies the EDE EXTRA-TEXT field to include arbitrary JSON content (e.g., fake contact URIs, misleading resolver identity, or malicious instructions). Step 3: Client receives the response and, if integrity is not guaranteed, may act upon the data in the EXTRA-TEXT field (e.g., display attacker-controlled contact info to end user). Step 4: End user may be misled into contacting an attacker, installing malware, or revealing personal data, bypassing intended authentication and security policies.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the integrity of the DNS response is not guaranteed, the DNS client act upon data in the EXTRA-TEXT field, as the data is vulnerable to modification by an on-path attacker."
+        },
+        {
+          "rfc": 99002,
+          "section": "authentication-and-confidentiality",
+          "quote": "cautions against relying on EDE information because it may be unauthenticated and transmitted in cleartext."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path between DNS server and client",
+        "DNS transport is not authenticated or integrity-protected (e.g., cleartext DNS)",
+        "client processes EDE EXTRA-TEXT field even without integrity guarantees"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC) with TLS 1.3 or later. Clients should ignore EDE EXTRA-TEXT when integrity is not guaranteed.",
+      "fingerprint": "67dccdb4a09b7f224771216cd86b2c667aab04b3594582601ac63441f121a00f"
+    },
+    {
+      "id": "dd92af04-b818-4a06-ac20-ed6cd883ea56",
+      "technique_name": "Information Leak via EXTRA-TEXT Field in Unauthenticated DNS Responses",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An on-path attacker intercepts a DNS response containing an EDE option with EXTRA-TEXT field. Step 2: The attacker reads the EXTRA-TEXT content, which may include contact URIs (c), justification (j), organization name (o), or sub-error codes (s). Step 3: The attacker gains sensitive information about the filtering policy, organization identity, or contact details, which could be used for social engineering or further attacks.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE."
+        },
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the integrity of the DNS response is not guaranteed, the DNS client must not act upon data in the EXTRA-TEXT field, as the data is vulnerable to modification by an on-path attacker."
+        },
+        {
+          "rfc": 99002,
+          "section": "authentication-and-confidentiality",
+          "quote": "cautions against relying on EDE information because it may be unauthenticated and transmitted in cleartext."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS response not integrity-protected",
+        "EXTRA-TEXT field contains sensitive data"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC) as specified in Section authentication-and-confidentiality. Clients should only process EXTRA-TEXT when the response integrity is guaranteed.",
+      "fingerprint": "6f49acdabc9d115e7de5b1a473b3b0cae80047beb9b0451f61b01e63fdc888d8"
+    },
+    {
+      "id": "e45da33f-577b-44fe-a285-e9205dbba13f",
+      "technique_name": "Automatic Connection Initiation from Contact URIs",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Client processes a 'c' field containing a Contact URI. Step 2: The client automatically initiates a connection to that URI (e.g., making an HTTP request). Step 3: This could allow the resolver to silently report client activity to third parties, enable denial-of-service reflection attacks, or entrap the client. Step 4: The specification restricts schemes to 'sips', 'tel', and 'mailto' to avoid automatic HTTP connections, but if the client does not enforce this, it may be vulnerable.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "Clients automatically initiate connections to URIs derived from the EXTRA-TEXT field. Doing so could allow a resolver to silently report client activity to third parties, enable denial-of-service reflection attacks, or be used to entrap a client."
+        }
+      ],
+      "prerequisites": [
+        "attacker-controlled resolver",
+        "client automatically initiates connections from Contact URIs"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Only allow Contact URI schemes that do not result in automatic connections (e.g., 'sips', 'tel', 'mailto') and never automatically initiate connections.",
+      "fingerprint": "52358f98e1acd14fad2b5707b42364823858a49ed39f12e57a7c1e043b57de12"
+    },
+    {
+      "id": "fc3bce9e-614f-4de8-a170-0535f534029e",
+      "technique_name": "Automatic Connection Initiation from EXTRA-TEXT URIs",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker injects a URI in the 'c' field that, if automatically initiated by the client, could cause silent reporting to third parties, denial-of-service reflection, or entrapment. Step 2: Client automatically initiates connection to the URI without user interaction. Step 3: Attacker exploits the connection for malicious purposes.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "Clients automatically initiate connections to URIs derived from the EXTRA-TEXT field. Doing so could allow a resolver to silently report client activity to third parties, enable denial-of-service reflection attacks, or be used to entrap a client."
+        }
+      ],
+      "prerequisites": [
+        "attacker can inject URI in EXTRA-TEXT",
+        "client automatically initiates connections"
+      ],
+      "entities_involved": [
+        "client",
+        "attacker"
+      ],
+      "mitigation": "Clients must not automatically initiate connections; restrict Contact URI schemes to non-HTTP schemes.",
+      "fingerprint": "92d02b72d84852e5f5a534308bffb920c0ce7cd90f441e867f6c65241bdac26f"
+    },
+    {
+      "id": "ce85863a-2a40-4506-a963-5af5613d24e1",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy DNS Forwarders",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker positions themselves on-path between a legacy DNS forwarder (unaware of EDE) and the client. Step 2: Attacker intercepts a DNS response and injects or modifies the EDE EXTRA-TEXT field with malicious structured content (e.g., fake contact URIs, misleading resolver identity). Step 3: The legacy forwarder forwards the attacker-controlled EDE option to the client without validation. Step 4: Client processes the EXTRA-TEXT field, potentially displaying attacker-controlled contact information or influencing end-user behavior, bypassing intended authentication checks.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path between legacy DNS forwarder and client",
+        "legacy DNS forwarder does not support EDE and forwards EDE options without validation",
+        "client is configured to process EDE from any source (not only explicitly configured servers)"
+      ],
+      "entities_involved": [
+        "client",
+        "legacy DNS forwarder",
+        "attacker"
+      ],
+      "mitigation": "Configure clients to process EDE only from explicitly configured DNS servers or utilize RESINFO. Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC) to ensure EDE integrity.",
+      "fingerprint": "68208e113bc852b9fa43425401663ed75970f9642581982bb851950898fd2531"
+    },
+    {
+      "id": "7529ff8f-4d21-4be7-a42b-497cd0a17d21",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy DNS Forwarder",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker positions themselves on-path between a legacy DNS forwarder (unaware of EDE) and the client. Step 2: Attacker intercepts a DNS response from the forwarder and injects or modifies the EDE EXTRA-TEXT field with malicious content (e.g., a crafted 'c' field containing attacker's contact URI). Step 3: The forwarder, unaware of EDE, forwards the attacker-controlled response to the client. Step 4: Client processes the EDE option and may display the attacker's contact info, leading the user to contact the attacker (e.g., to resolve a blocking issue), enabling social engineering or malware installation.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path between legacy DNS forwarder and client",
+        "legacy DNS forwarder does not understand EDE and forwards the option unchanged",
+        "client is configured to process EDE from any source (or trusts the forwarder)"
+      ],
+      "entities_involved": [
+        "attacker",
+        "legacy DNS forwarder",
+        "client"
+      ],
+      "mitigation": "Configure clients to only process EDE from explicitly configured, trusted DNS servers, or use RESINFO to verify resolver identity. Use authenticated DNS transports (DoT/DoH/DoQ) to prevent injection.",
+      "fingerprint": "0a6fae97eab878f32617d0d6e820b1c4615469721bfa248f3a06ffb5aaa8f190"
+    },
+    {
+      "id": "1d2f9cd9-0f5a-4b7d-84f2-3c31093b8ba4",
+      "technique_name": "Ignoring Unregistered Contact URI Schemes",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker includes a Contact URI with an unregistered scheme in the 'c' field of the EXTRA-TEXT JSON. Step 2: The client should ignore such URIs. Step 3: If the client processes unregistered schemes, it may initiate connections to malicious URIs (e.g., custom URI schemes that trigger actions). Step 4: This could lead to client activity being reported to third parties or enable attacks.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the JSON object contains a 'c' field any of its Contact URIs with schemes not registered in the registry are ignored."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client does not validate Contact URI scheme registration"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Strictly validate that Contact URI schemes are registered in the IANA registry before processing.",
+      "fingerprint": "0c3ad81eea1789e060fc67594cc2ebd709d3facbf269701c69eea6ebd1af5c0e"
+    },
+    {
+      "id": "6694cbd5-8c18-4224-8989-fa30f7bcfae4",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy DNS Forwarders",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker injects or modifies the EDE EXTRA-TEXT field in a DNS response via a legacy DNS proxy or forwarder that is unaware of EDE. Step 2: The forwarder forwards the attacker-controlled EDE option to the client. Step 3: The client processes the malicious EXTRA-TEXT, potentially causing resource exhaustion, misdirection, or client-side crashes due to malformed or oversized data.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "legacy DNS forwarder or proxy unaware of EDE"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "DNS forwarder"
+      ],
+      "mitigation": "Configure clients to process EDE only from explicitly configured DNS servers or utilize RESINFO. Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC) to prevent injection.",
+      "fingerprint": "96f78c32f28780d1d661e958cc158b2c1e42d589a77ef7867af5ed757c3732b8"
+    },
+    {
+      "id": "538b25ed-313d-49fe-a275-1c447178fb35",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy Forwarder",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker injects or modifies the EDE EXTRA-TEXT field via a legacy DNS proxy or forwarder that is unaware of EDE. Step 2: The forwarder passes the attacker-controlled EDE option to the client. Step 3: The client processes the forged EXTRA-TEXT field, potentially displaying misleading contact info or false resolver identity.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "legacy DNS forwarder unaware of EDE"
+      ],
+      "entities_involved": [
+        "client",
+        "legacy DNS forwarder",
+        "attacker"
+      ],
+      "mitigation": "Configure clients to process EDE only from explicitly configured DNS servers or utilize RESINFO.",
+      "fingerprint": "f443b8b2b0717cd81392f80aea3d84b192ee9d8569708405547660aa374ec885"
+    },
+    {
+      "id": "f3df5058-0639-4ef4-b3f0-20ad9b62265a",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy Forwarders",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker on-path modifies or injects the EDE EXTRA-TEXT field in a DNS response forwarded by a legacy DNS proxy/forwarder that is unaware of EDE. Step 2: The legacy forwarder forwards the attacker-controlled EDE option to the client. Step 3: The client processes the attacker-controlled EXTRA-TEXT field, potentially displaying misleading information or triggering actions based on the injected content.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "legacy DNS forwarder unaware of EDE"
+      ],
+      "entities_involved": [
+        "client",
+        "attacker",
+        "legacy DNS forwarder"
+      ],
+      "mitigation": "Configure clients to process EDE only from explicitly configured DNS servers or utilize RESINFO.",
+      "fingerprint": "8180dfb00bbfc6cfd1f64f3b20f5bf983671e45b1c8fdf7eaa588e76102bc3ee"
+    },
+    {
+      "id": "ac3349ab-c785-4e0e-9279-2fe11271f8b7",
+      "technique_name": "Processing 'j' Field Without Integrity Protection",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker modifies the 'j' field (justification) in an EDE response over an unprotected channel. Step 2: The client processes the 'j' field and may display it to the end user or use it for automated processing. Step 3: The attacker can inject misleading justification text that influences end user behavior (e.g., instructing the user to install malware). Step 4: The specification requires that clients only act upon such information when received over an integrity-protected DNS response.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "This specification requires that clients only act upon such information when it is received over an integrity-protected DNS response."
+        },
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the integrity of the DNS response is not guaranteed, the DNS client act upon data in the EXTRA-TEXT field, as the data is vulnerable to modification by an on-path attacker."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS transport without integrity protection"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Only process 'j' field when the DNS response is integrity-protected (e.g., via authenticated DNS-over-TLS/HTTPS/QUIC).",
+      "fingerprint": "e30437886428e7514098d215ef7d6e921b1fa3c4615aea5462e45e7a1112d07f"
+    },
+    {
+      "id": "f0bb32a7-31d4-4e28-94b7-0412692fe623",
+      "technique_name": "Race Condition in Client Processing of Unauthenticated EDE",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Client receives a DNS response with an EDE option over an unauthenticated transport. Step 2: The client processes the EXTRA-TEXT field before verifying integrity, allowing an on-path attacker to inject or modify structured error data. Step 3: The attacker's modified data influences client behavior (e.g., displaying false contact info) before the client can detect the tampering.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the integrity of the DNS response is not guaranteed, the DNS client act upon data in the EXTRA-TEXT field, as the data is vulnerable to modification by an on-path attacker."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS transport lacks authentication (e.g., cleartext or opportunistic privacy)"
+      ],
+      "entities_involved": [
+        "attacker",
+        "DNS client"
+      ],
+      "mitigation": "Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC) and validate responses as described in the specification.",
+      "fingerprint": "84cda61f1aa3a5e48dbd07e990cb2e4bffc01c07bd382c019c1093af1e50e6d6"
+    },
+    {
+      "id": "77cdc49c-db6d-4b9e-91cb-eaf39db77009",
+      "technique_name": "Bypass of DNSSEC via Forged NXDOMAIN",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker on-path forges an NXDOMAIN response for a valid domain. Step 2: Client that relies on the DNS server for DNSSEC validation accepts the forged response. Step 3: Client fails to reach the domain, potentially leading user to switch to insecure networks.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "However, in deployments where the client relies on the DNS server to perform DNSSEC validation, a filtering DNS server can forge an NXDOMAIN response for a valid domain, and the client will trust it."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client relies on DNS server for DNSSEC validation"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Clients should perform DNSSEC validation themselves; use authenticated DNS transports.",
+      "fingerprint": "8e0f48ed18a9d1aed5680ac86077a202fef8355e3bbfa8aa29f9beb83291fa43"
+    },
+    {
+      "id": "ac4955df-8b5f-4e2f-af0f-b92cc794b909",
+      "technique_name": "Forged DNS Response with NXDOMAIN to Bypass DNSSEC",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker forges a DNS response with NXDOMAIN for a valid domain. Step 2: The client relies on the DNS server to perform DNSSEC validation (i.e., the client does not validate DNSSEC itself). Step 3: The client accepts the forged NXDOMAIN response as legitimate. Step 4: The client fails to reach the domain, potentially leading to user frustration or insecure workarounds.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "This approach is incompatible with DNSSEC when the client performs validation, as the forged response will fail DNSSEC checks. However, in deployments where the client relies on the DNS server to perform DNSSEC validation, a filtering DNS server can forge an NXDOMAIN response for a valid domain, and the client will trust it."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client does not perform DNSSEC validation itself",
+        "client trusts the DNS server for DNSSEC validation"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Clients should perform DNSSEC validation themselves. Use authenticated DNS transports to prevent forgery.",
+      "fingerprint": "4df9a32e23ef9abd466787754b2f1ba4b4e1c3b19780b22dde61c4b4805a31f0"
+    },
+    {
+      "id": "81eb4119-9b01-4fb5-802a-a45b1dfffa03",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy DNS Forwarders",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker injects or modifies the EDE EXTRA-TEXT field in a DNS response. Step 2: The modified response passes through a legacy DNS proxy or forwarder that is unaware of EDE. Step 3: The forwarder relays the attacker-controlled EDE option to the client without validation. Step 4: The client processes the malicious EXTRA-TEXT field, potentially displaying false contact info or misleading the user.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "legacy DNS forwarder or proxy unaware of EDE"
+      ],
+      "entities_involved": [
+        "attacker",
+        "DNS forwarder",
+        "client"
+      ],
+      "mitigation": "Configure clients to process EDE only from explicitly configured DNS servers or use RESINFO.",
+      "fingerprint": "4530e4d9e92374d6e6f8513620ace75823bd5e7df98eec4dfbadc7dd357fecc5"
+    },
+    {
+      "id": "a7d71e80-63b2-4c51-809b-1b19f8d2de07",
+      "technique_name": "Displaying 'c' Field Without Resolver Reputation Check",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Client receives a DNS response with a 'c' field containing contact URIs. Step 2: The client should only display the 'c' field to the end user if the encrypted resolver has sufficient reputation per client security policy. Step 3: If the client displays the 'c' field without reputation check, an attacker-controlled resolver can provide malicious contact info. Step 4: The end user may contact the attacker, leading to social engineering or malware installation.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "A client might choose to display the information in the 'c' field to the end user if and only if the encrypted resolver has sufficient reputation, according to some client security policy."
+        }
+      ],
+      "prerequisites": [
+        "attacker-controlled encrypted resolver",
+        "client does not enforce resolver reputation check"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client",
+        "end user"
+      ],
+      "mitigation": "Implement client security policy to only display 'c' field for resolvers with sufficient reputation.",
+      "fingerprint": "66807dd6d4546d5d0097f75f8a170d23406ed83976dd58f5fc043454f0d437a4"
+    },
+    {
+      "id": "8049e121-7b4d-46ba-b5dd-5b982a44214a",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy DNS Forwarders",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker injects or modifies the EDE EXTRA-TEXT field in a DNS response. Step 2: The response passes through a legacy DNS proxy or forwarder that is unaware of EDE and does not validate the field. Step 3: The forwarder passes the attacker-controlled EDE option to the client. Step 4: The client processes the malicious EDE information, potentially leading to misdirection or phishing.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "legacy DNS forwarder or proxy that does not validate EDE options"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS forwarder",
+        "attacker"
+      ],
+      "mitigation": "Configure clients to process EDE only from explicitly configured DNS servers or utilize RESINFO. Use authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC) with TLS 1.3 or later.",
+      "fingerprint": "ff9883e57e507ad25973f64e6c7e21925e05a354e50e1d7ca2e75c6633a98baa"
+    },
+    {
+      "id": "b47a4348-7bb6-42f7-9b15-3d55e6a6ee38",
+      "technique_name": "Malicious Contact URI Exploitation",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker-controlled DNS server includes a malicious contact URI in the 'c' field of the EXTRA-TEXT. Step 2: Client automatically initiates connections to the URI (e.g., tel, mailto) without user consent. Step 3: This can be used for denial-of-service reflection attacks, entrapment, or to silently report client activity to third parties, overwhelming the client or network.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "Clients automatically initiate connections to URIs derived from the EXTRA-TEXT field. Doing so could allow a resolver to silently report client activity to third parties, enable denial-of-service reflection attacks, or be used to entrap a client."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls DNS server",
+        "client processes EXTRA-TEXT automatically"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Restrict automatic initiation of connections from EXTRA-TEXT fields. Only allow safe URI schemes (sips, tel, mailto) and require user confirmation. Validate identity of DNS server before acting on contact details.",
+      "fingerprint": "faae980c71a578377acee74215d8d216c6b6381923aee7fd400d3356f1749f09"
+    },
+    {
+      "id": "5d5f2ad3-8e3e-4ed2-a801-2fc92cadbd65",
+      "technique_name": "Exploitation of Unverified Server Identity to Inject Malicious Contact URIs",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sets up a malicious DNS resolver that does not authenticate its identity (e.g., using opportunistic privacy or discovery). Step 2: Client sends a DNS query to the malicious resolver. Step 3: Malicious resolver responds with an EDE option containing a crafted EXTRA-TEXT field with a 'c' field containing attacker-controlled Contact URIs (e.g., tel: or mailto:). Step 4: Client, unable to verify the resolver's identity, may still process the 'c' field if it chooses to display contact details (per client security policy). Step 5: End user may contact the attacker, leading to social engineering or malware installation.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the identity of the DNS server cannot be verified (e.g., when using opportunistic privacy or opportunistic discovery), the DNS client ignore the 'c', 'j', and 'o' fields, as these fields may influence end user behavior and are vulnerable to active attacks in the absence of resolver authentication."
+        },
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "A client might choose to display the information in the 'c' field to the end user if and only if the encrypted resolver has sufficient reputation, according to some client security policy."
+        }
+      ],
+      "prerequisites": [
+        "client uses a resolver without server authentication (e.g., opportunistic privacy profile)",
+        "client security policy allows display of 'c' field even without verified identity",
+        "attacker controls the resolver or can spoof responses"
+      ],
+      "entities_involved": [
+        "client",
+        "malicious resolver",
+        "attacker"
+      ],
+      "mitigation": "Clients must ignore 'c', 'j', and 'o' fields when server identity is not verified. Use strict privacy profiles with authenticated DNS transports. Clients should only display contact info from resolvers with sufficient reputation.",
+      "fingerprint": "c0d66c16be2494438a7bbc676665eb491dd8e8ae52686db14077d456af25ce85"
+    },
+    {
+      "id": "ccbb7fdc-d26e-42f9-a736-d42d775339a6",
+      "technique_name": "Exploitation of 'c' Field to Mislead End User",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker controls a malicious encrypted resolver or injects a forged 'c' field in EXTRA-TEXT. Step 2: Client displays the contact URI (e.g., tel, mailto) to the end user. Step 3: End user contacts the attacker, who then misleads the user to install malware or reveal personal data.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "For example, an end user can use the details in the 'c' field to contact an attacker to solve the problem of being unable to reach a domain. The attacker can mislead the end user to install malware or spyware..."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls resolver or can inject EDE",
+        "client displays 'c' field without reputation check"
+      ],
+      "entities_involved": [
+        "client",
+        "end user",
+        "attacker"
+      ],
+      "mitigation": "Display 'c' field only if encrypted resolver has sufficient reputation per client security policy; restrict Contact URI schemes to 'sips', 'tel', 'mailto'.",
+      "fingerprint": "c63db622d7b80d03d603be9e99c9c4a4e04cbe00ecb207891dbbb2380957ec6c"
+    },
+    {
+      "id": "b3ad4ea3-45e8-44dd-b2be-bc1a5b3b590d",
+      "technique_name": "Malicious Contact URI Exploitation",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: A malicious resolver includes a crafted 'c' field in the EXTRA-TEXT JSON with a contact URI (e.g., tel, mailto) pointing to an attacker-controlled endpoint. Step 2: The client, if configured to display contact details, may present the URI as a clickable link. Step 3: The end user clicks the link, initiating a call or email to the attacker, who can then mislead the user into installing malware or revealing personal data.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "For example, an end user can use the details in the 'c' field to contact an attacker to solve the problem of being unable to reach a domain. The attacker can mislead the end user to install malware or spyware..."
+        }
+      ],
+      "prerequisites": [
+        "malicious resolver",
+        "client displays contact URIs",
+        "end user interacts with link"
+      ],
+      "entities_involved": [
+        "client",
+        "end user",
+        "malicious resolver",
+        "attacker"
+      ],
+      "mitigation": "Clients should only display contact details when the identity of the DNS server is verified. Restrict Contact URI schemes to 'sips', 'tel', and 'mailto' and avoid automatic connections.",
+      "fingerprint": "efb9b15f69d3e9120354b71fc66d76efc23d80ba019e12eefd51615503f52acb"
+    },
+    {
+      "id": "bf75f677-4ead-4d12-879e-01b08c0ca7d0",
+      "technique_name": "Race Condition in Display of 'c' Field Without Resolver Authentication",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Client receives a DNS response with a 'c' field over an unauthenticated connection. Step 2: The client displays the contact URI to the end user before verifying the resolver's identity. Step 3: An attacker on-path modifies the 'c' field to point to a malicious contact URI, leading the user to contact an attacker who may install malware or steal personal data.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "A client might choose to display the information in the 'c' field to the end user if and only if the encrypted resolver has sufficient reputation... This limits the ability of a malicious encrypted resolver to cause harm."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS transport lacks authentication",
+        "client does not enforce resolver reputation check"
+      ],
+      "entities_involved": [
+        "attacker",
+        "DNS client",
+        "end user"
+      ],
+      "mitigation": "Only display 'c' field when resolver identity is verified (e.g., via authenticated connection or reputation list).",
+      "fingerprint": "95025cb99b029fc80c6faee8c9bedc11f50350a91d4d8e490fe8c2ea461cc1e4"
+    },
+    {
+      "id": "29c8fef9-6fdc-4147-8590-83cb8a2d6aad",
+      "technique_name": "EDE EXTRA-TEXT Injection via Legacy DNS Forwarder",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker injects or modifies the EDE EXTRA-TEXT field in a DNS response forwarded by a legacy DNS proxy/forwarder that is unaware of EDE. Step 2: The legacy forwarder forwards the attacker-controlled EDE option to the client without integrity checking. Step 3: The client processes the malicious EXTRA-TEXT field, potentially displaying misleading contact information or false resolver identity.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "security-risks-from-legacy-dns-forwarders",
+          "quote": "An attacker might inject (or modify) the EDE EXTRA-TEXT field with a DNS proxy or DNS forwarder that is unaware of EDE. Such a DNS proxy or DNS forwarder will forward that attacker-controlled EDE option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path between legacy forwarder and client",
+        "legacy DNS forwarder does not support EDE"
+      ],
+      "entities_involved": [
+        "attacker",
+        "legacy DNS forwarder",
+        "DNS client"
+      ],
+      "mitigation": "Configure clients to process EDE only from explicitly configured DNS servers or utilize RESINFO.",
+      "fingerprint": "bdae197549636049c932e96c3c40b7a44143d963e181dc75f3bae6e3df81befa"
+    },
+    {
+      "id": "f2d3f03f-3a3b-4203-a39b-794769436e68",
+      "technique_name": "Malicious Contact URI Exploitation via EDE",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker injects a malicious contact URI (e.g., 'tel:' or 'mailto:') in the EDE EXTRA-TEXT 'c' field. Step 2: The client displays the contact details to the end user. Step 3: The end user contacts the attacker, who misleads them into installing malware or revealing personal data. Step 4: The attacker compromises the device or obtains sensitive information.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "For example, an end user can use the details in the 'c' field to contact an attacker to solve the problem of being unable to reach a domain. The attacker can mislead the end user to install malware or spyware to compromise the device security posture or mislead the end user to reveal personal data."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or controls a malicious DNS server",
+        "client displays contact URIs from EDE without verification",
+        "client security policy does not restrict display of 'c' field"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "end user",
+        "attacker"
+      ],
+      "mitigation": "Clients should only display contact URIs if the resolver has sufficient reputation. Restrict Contact URI schemes to 'sips', 'tel', and 'mailto' and do not automatically initiate connections. Validate the identity of the DNS server before displaying contact details.",
+      "fingerprint": "6d6f416b8cbc651c30f0a52c7378916cd0d670c6f6b71540725eec5739dbb468"
+    },
+    {
+      "id": "2306f37c-858b-4520-adda-954b206ec3d3",
+      "technique_name": "Downgrade to Unauthenticated EDE Processing",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker forces the client to use a plain DNS transport (e.g., UDP) instead of an authenticated, integrity-protected transport. Step 2: The client receives EDE information over the unauthenticated channel. Step 3: The client processes the EDE information without integrity protection, allowing the attacker to inject malicious EDE data. Step 4: The attacker can mislead the client or end user.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "authentication-and-confidentiality",
+          "quote": "This specification assumes the use of authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, or DNS-over-QUIC). Such transports be based on TLS 1.3 or later. Under these conditions, EDE information is integrity-protected, reducing the risks associated with relying on structured EDE content."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client supports both authenticated and unauthenticated DNS transports",
+        "client can be downgraded to plain DNS"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Enforce the use of authenticated DNS transports (DoT, DoH, DoQ) with TLS 1.3 or later. Disable fallback to plain DNS. Validate DNS responses as described in the specification.",
+      "fingerprint": "e92c85b6f90b3273e48a244e1875dfc03f1d20b52632dd052bcb2f554f8fad37"
+    },
+    {
+      "id": "23a97db0-2be8-46c7-9b76-b1b4436c3d8c",
+      "technique_name": "Replay of Forged DNS Response with EDE",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker forges a DNS response with a malicious EDE option (e.g., containing a 'c' field with attacker's contact URI) and sends it to a client. Step 2: Client accepts the forged response if it lacks DNSSEC validation or uses unauthenticated transport. Step 3: Attacker replays the same forged response to multiple clients or repeatedly to the same client, causing persistent display of attacker-controlled information. Step 4: Users may be misled into contacting the attacker, leading to social engineering or malware installation.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "The DNS response is forged to provide a list of IP addresses that points to an HTTP(S) server alerting the end user about the reason for blocking access to the requested domain (e.g., malware)."
+        },
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "For example, an end user can use the details in the 'c' field to contact an attacker to solve the problem of being unable to reach a domain. The attacker can mislead the end user to install malware or spyware to compromise the device security posture or mislead the end user to reveal personal data."
+        }
+      ],
+      "prerequisites": [
+        "attacker can forge DNS responses (on-path or spoofing)",
+        "client does not use DNSSEC or authenticated transport",
+        "client accepts and processes EDE from unverified sources"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Use DNSSEC to validate DNS response authenticity. Use authenticated DNS transports (DoT/DoH/DoQ) to prevent forgery. Configure clients to only process EDE from trusted resolvers.",
+      "fingerprint": "686517cf4fcdf31aecfa6cbdd98d1f0babcaef0f1c6eff110a627ac5f678ff8c"
+    },
+    {
+      "id": "09b544f7-8c59-4e3d-b27a-da68dd55648f",
+      "technique_name": "EDE EXTRA-TEXT Injection via Unauthenticated Encrypted Transport",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker performs a man-in-the-middle attack on an encrypted DNS connection that does not include server authentication (e.g., opportunistic DNS-over-TLS without certificate validation). Step 2: Attacker modifies the DNS response to include a crafted EDE EXTRA-TEXT field. Step 3: Client, receiving the response over an encrypted connection but without server authentication, may process the 's' field (as allowed by spec) and potentially other fields if client policy permits. Step 4: Attacker-controlled sub-error codes or other data may influence client behavior or end-user actions.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the DNS response was received over an encrypted connection without server authentication, the client process the 's' field and other parts of the response, as the 's' field is a registry-defined, enumerated value and does not contain free-form text."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path and can intercept encrypted DNS traffic",
+        "encrypted transport does not authenticate the server (e.g., opportunistic DoT)",
+        "client processes 's' field even without server authentication"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Use strict privacy profiles with server authentication (e.g., authenticated DNS-over-TLS, DNS-over-HTTPS, DNS-over-QUIC). Clients should ignore all fields except 's' when server identity is not verified, and even then, validate sub-error codes.",
+      "fingerprint": "dfe85badca4832958ec3f72bee87b8817f96f2c988f5dab483c3b9c1935b4ea7"
+    },
+    {
+      "id": "0742326a-aaee-42d4-b685-5f0235571f83",
+      "technique_name": "Processing EXTRA-TEXT Without Required Fields",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a DNS response with an EXTRA-TEXT JSON object that lacks at least one of the required fields 'c', 'j', or 's', or all present fields have empty values. Step 2: The client should discard the entire JSON object. Step 3: If the client fails to perform this check, it may process an incomplete or meaningless JSON object, potentially leading to incorrect behavior.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the EXTRA-TEXT field does not contain at least one of the JSON names 'c', 'j', or 's', or if all of the fields that are present have empty values, the entire JSON object be discarded."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client does not validate presence of required fields"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Implement strict validation to discard JSON objects that do not contain at least one of 'c', 'j', or 's' with non-empty values.",
+      "fingerprint": "d3376480136aeea56b3b5df9bcc31f062621e7889b7e09b37b8835c67d2bf544"
+    },
+    {
+      "id": "343d5204-6c64-4db9-80a1-b01294622fc1",
+      "technique_name": "Replay of Structured DNS Error EDNS Option",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker captures a valid DNS response containing a Structured DNS Error EDNS option (with EXTRA-TEXT JSON) from a legitimate resolver. Step 2: Attacker replays this captured response to a client at a later time or in a different context (e.g., for a different query). Step 3: Client accepts the replayed response if no replay protection (e.g., transaction ID, timestamps) is enforced. Step 4: The client may display stale or misleading blocking information, potentially causing the user to take incorrect action (e.g., contacting an outdated support number).",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "authentication-and-confidentiality",
+          "quote": "This specification assumes the use of authenticated, integrity-protected DNS transports (e.g., DNS-over-TLS, DNS-over-HTTPS, or DNS-over-QUIC). Such transports be based on TLS 1.3 or later. Under these conditions, EDE information is integrity-protected, reducing the risks associated with relying on structured EDE content."
+        }
+      ],
+      "prerequisites": [
+        "attacker can capture a valid DNS response with Structured DNS Error option",
+        "client does not use authenticated transport or lacks replay protection",
+        "client accepts the replayed response as valid"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client",
+        "legitimate resolver"
+      ],
+      "mitigation": "Use authenticated DNS transports (DoT/DoH/DoQ) with TLS 1.3 to ensure integrity and freshness. Implement transaction ID randomization and enforce response uniqueness per query.",
+      "fingerprint": "cd83dff7e54a1f857704d703d88bc0c72ed751ce50d7400cfacb31bd00629a5d"
+    },
+    {
+      "id": "7220c848-7d5e-4e0f-b7d2-6942a71cd59d",
+      "technique_name": "Certificate Error Exploitation to Train Users",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Network security device presents a block page over HTTPS using a locally generated root certificate. Step 2: Client encounters certificate validation error. Step 3: End user is trained to click through certificate errors, or manually installs a local root certificate, creating a security vulnerability.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "Furthermore, certificate errors train end users to click through certificate errors, which is a bad security practice."
+        }
+      ],
+      "prerequisites": [
+        "network security device uses local root certificate",
+        "client accesses HTTPS URL"
+      ],
+      "entities_involved": [
+        "client",
+        "end user",
+        "network security device"
+      ],
+      "mitigation": "Avoid using local root certificates; use structured DNS errors instead.",
+      "fingerprint": "4086283357b7c725705f53fff10230574faae8cca5a88943e950a74186c374cd"
+    },
+    {
+      "id": "db64eabc-7832-40fd-9d4a-e9242b6daf26",
+      "technique_name": "Oversized EXTRA-TEXT JSON Payload",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker-controlled DNS server or on-path attacker injects a crafted EDE option with an EXTRA-TEXT field containing a large JSON payload (e.g., excessively long 'j' or 'o' fields, many contact URIs in 'c' array). Step 2: The client receives the response and attempts to parse the JSON, potentially exceeding memory or processing limits. Step 3: The oversized payload may cause denial of service (e.g., buffer overflow, resource exhaustion) or bypass security checks if the client fails to validate size limits.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "name-spec",
+          "quote": "To avoid exceeding the maximum EDNS0 size the generated JSON values be as short as possible: short domain names, concise text in the values for the 'j' and 'o' names, and minified JSON (that is, without spaces or line breaks between JSON elements)."
+        },
+        {
+          "rfc": 99002,
+          "section": "server-response",
+          "quote": "If including the additional detail would cause the response to exceed the EDNS0 size (and thus setting TC=1), it be omitted."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or controls a DNS server",
+        "client supports EDE and SDE option",
+        "client processes EXTRA-TEXT field"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should enforce strict size limits on the EXTRA-TEXT field (e.g., maximum 512 bytes) and validate JSON parsing to prevent resource exhaustion. Use authenticated transports (DoT/DoH/DoQ) to prevent injection. Servers must omit oversized data to avoid setting TC=1.",
+      "fingerprint": "e57bafdb38723e9bece1aa2cf20ef7d618f80993ecee58a1faee605002b2038e"
+    },
+    {
+      "id": "4b3fa9b6-49de-4329-b1d0-b5131bd254b3",
+      "technique_name": "Information Leak via Contact URIs (c field) to Malicious Resolver",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: A malicious DNS resolver returns a filtered response with a crafted EXTRA-TEXT containing a contact URI (c field) pointing to an attacker-controlled service. Step 2: The client, if it displays the contact URI to the end user, may lead the user to contact the attacker. Step 3: The attacker can then extract personal information or trick the user into installing malware.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "For example, an end user can use the details in the 'c' field to contact an attacker to solve the problem of being unable to reach a domain. The attacker can mislead the end user to install malware or spyware..."
+        },
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the identity of the DNS server cannot be verified, the DNS client must ignore the 'c', 'j', and 'o' fields, as these fields may influence end user behavior and are vulnerable to active attacks."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls DNS resolver",
+        "client displays contact URIs without verification",
+        "client security policy allows display from unverified resolvers"
+      ],
+      "entities_involved": [
+        "client",
+        "malicious resolver",
+        "end user"
+      ],
+      "mitigation": "Clients should only display contact URIs when the resolver identity is verified (e.g., via authenticated DNS transport). Implement client security policy to restrict display to reputable resolvers.",
+      "fingerprint": "5bf1282db1c8a7fccc539f627fd195abb945daaaee64a855d23a1de87729db20"
+    },
+    {
+      "id": "85a6304c-f848-48df-89be-f57588d6aa01",
+      "technique_name": "Forged DNS Response with NXDOMAIN Causing Repeated Retries",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker forges a DNS response with NXDOMAIN for a valid domain. Step 2: Client receives the forged response and fails to resolve the domain. Step 3: End user, frustrated, repeatedly attempts to access the domain, increasing network traffic and client resource consumption, potentially leading to denial of service for the client or network.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "The DNS response is forged to provide an NXDOMAIN answer, causing the DNS lookup to fail. ... the end user may not understand why a domain cannot be reached and may repeatedly attempt access without success."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client does not use DNSSEC validation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use DNSSEC to validate DNS responses. Implement rate limiting on DNS queries. Educate users to avoid repeated retries.",
+      "fingerprint": "56f8a1210a989ade1bf989c8f51b2db3dc20f747a53f4e9ed156d9e1bd02aaee"
+    },
+    {
+      "id": "adb7acc6-863f-4835-8bbd-0565fa69ca93",
+      "technique_name": "Ignoring Sub-Error Code Applicability Check",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker crafts a DNS response with an EDE option containing a sub-error code that is not applicable to the accompanying EDE code. Step 2: The client receives the response and, per specification, should ignore the 's' field if the sub-error code is not defined as applicable. Step 3: If the client fails to perform this check, it may process an invalid sub-error code, leading to incorrect interpretation of the filtering reason.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the JSON object contains an 's' field and the sub-error code is not defined as applicable to the accompanying Extended DNS Error (EDE) code, the client ignore the value of the 's' field and continue processing the remaining fields in accordance with this specification."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client does not validate sub-error code applicability"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client"
+      ],
+      "mitigation": "Ensure client strictly validates that the sub-error code is applicable to the EDE code before processing the 's' field.",
+      "fingerprint": "f854cb7f69a405e1205fc59aaae51f4f4f62fa4e5eb69aca17b11ef601d660dc"
+    },
+    {
+      "id": "d81acbd8-9f0b-4469-91d9-472dea71b99d",
+      "technique_name": "Displaying 'o' Field Without Organization Name Validation",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Client receives a DNS response with an 'o' field containing an organization name. Step 2: The client should only display the 'o' field if it matches a registered organization name or consists solely of an organization name without additional free-form content. Step 3: If the client displays the 'o' field without validation, an attacker can inject misleading organization names or include instructions/URLs that influence end user behavior. Step 4: The end user may be misled into trusting a malicious entity.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "Further, clients display the value of the field to the end user unless one of the following conditions is met: The value matches a registered organization name listed in the OR The value consists solely of an organization name and does not contain any additional free-form content such as instructions, URLs, or messaging intended to influence end user behavior, as determined by client security policy or heuristics."
+        }
+      ],
+      "prerequisites": [
+        "attacker-controlled resolver",
+        "client does not validate 'o' field content"
+      ],
+      "entities_involved": [
+        "attacker",
+        "client",
+        "end user"
+      ],
+      "mitigation": "Validate 'o' field against registered organization names and ensure it contains only the organization name without additional content.",
+      "fingerprint": "bccc12e893dcacddeaa2fdf77d3243ac861fafee767edcd6d5c4fc6d6cdea148"
+    },
+    {
+      "id": "a5c4ce10-93a9-4a29-bc8b-01c05b87c60e",
+      "technique_name": "Race Condition in Processing of 'j' Field Without Integrity Protection",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Client receives a DNS response with a 'j' field over an unauthenticated transport. Step 2: The client processes the free-form text in the 'j' field for display or logging before verifying integrity. Step 3: An on-path attacker modifies the 'j' field to include misleading instructions or malicious content, influencing end user behavior.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "The same client security policy considerations apply to the display of the 'j' field, as it contains free-form, human-readable text that may influence end user behavior."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS transport lacks authentication"
+      ],
+      "entities_involved": [
+        "attacker",
+        "DNS client",
+        "end user"
+      ],
+      "mitigation": "Use authenticated DNS transports and apply client security policy to validate or restrict display of 'j' field.",
+      "fingerprint": "295b433f9e48755190e0cae107621c07bf151668c583ccc958f3b5f22d47aad5"
+    },
+    {
+      "id": "7873db1d-ba2a-41b5-a166-3de85bdaaf8e",
+      "technique_name": "Misuse of 'o' Field to Influence End User Behavior",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker injects free-form text in the 'o' field containing instructions, URLs, or messaging. Step 2: Client displays the 'o' field to the end user without proper validation. Step 3: End user follows the attacker's instructions, potentially compromising security.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "If the organization name cannot be verified through registry checks or heuristics, the client display the 'o' field to the end user."
+        }
+      ],
+      "prerequisites": [
+        "attacker can inject 'o' field",
+        "client does not verify organization name"
+      ],
+      "entities_involved": [
+        "client",
+        "end user",
+        "attacker"
+      ],
+      "mitigation": "Display 'o' field only if it matches a registered organization name or consists solely of an organization name without additional content; otherwise, do not display.",
+      "fingerprint": "002892373c878c9dd6122abd3253beaf67a134be0e833266d3fb6cb3d26805d3"
+    },
+    {
+      "id": "e93e1d7b-3014-4b4b-a67e-a92262e88133",
+      "technique_name": "Free-form Text Manipulation in 'o' and 'j' Fields",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: A malicious resolver includes misleading or harmful free-form text in the 'o' (organization) or 'j' (JSON) fields of the EXTRA-TEXT. Step 2: The client displays this text to the end user without proper validation. Step 3: The end user may be influenced to take actions that compromise security, such as clicking on embedded instructions or URLs (if rendered as clickable).",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "When displaying the free-form text of 'o', the client make any of those elements into actionable (clickable) links and these fields need to be rendered as text, not as HTML."
+        }
+      ],
+      "prerequisites": [
+        "malicious resolver",
+        "client displays 'o' or 'j' fields"
+      ],
+      "entities_involved": [
+        "client",
+        "end user",
+        "malicious resolver"
+      ],
+      "mitigation": "Clients must render 'o' and 'j' fields as plain text, not HTML, and avoid making them clickable. Validate organization names against registries or heuristics.",
+      "fingerprint": "2416364abb1c72ce140f048ef2de44389c9cd04b79d7ffb64cfc7df55104b005"
+    },
+    {
+      "id": "80416165-8c9c-4a06-aa85-9be0e53027f9",
+      "technique_name": "Information Leak via Justification (j field) in Unauthenticated Responses",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An on-path attacker modifies the EXTRA-TEXT field to include misleading justification text (j field). Step 2: The client, if it displays the justification to the end user, may cause the user to take actions based on false information. Step 3: The attacker can influence user behavior, e.g., convincing the user to switch to an insecure network.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "An attacker can inject or modify a structured DNS error response in transit without detection, enabling fabrication of filtering information..."
+        },
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "The same client security policy considerations apply to the display of the 'j' field, as it contains free-form, human-readable text that may influence end user behavior."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS response not integrity-protected",
+        "client displays j field"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use authenticated DNS transports. Clients should only display j field when response integrity is verified and resolver identity is authenticated.",
+      "fingerprint": "661e7b5e23b215674fe02648f9d7426f53bfcbaae25a6cd1d6a2877bcc0fc99b"
+    },
+    {
+      "id": "988fcc1a-e628-4c79-a1ba-a036f3dfa0a7",
+      "technique_name": "Silent Client Activity Reporting via URIs",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: A resolver includes a URI in the EXTRA-TEXT that, when automatically accessed by the client, reports client activity to a third party. Step 2: The client automatically initiates a connection to the URI (e.g., via a clickable link or automatic fetch). Step 3: The third party receives information about the client's IP address and the domain being resolved, compromising privacy.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "Clients automatically initiate connections to URIs derived from the EXTRA-TEXT field. Doing so could allow a resolver to silently report client activity to third parties..."
+        }
+      ],
+      "prerequisites": [
+        "resolver includes URI in EXTRA-TEXT",
+        "client automatically accesses URIs"
+      ],
+      "entities_involved": [
+        "client",
+        "resolver",
+        "third party"
+      ],
+      "mitigation": "Restrict Contact URI schemes to 'sips', 'tel', and 'mailto' which do not result in automatic HTTP connections. Clients should not automatically initiate connections.",
+      "fingerprint": "2473ec04fac0da04ed6340b798fbd18bceef65fd18152b8e6eb1a9dd4f5d51fc"
+    },
+    {
+      "id": "3548e831-b7dc-4cce-a629-51fdd31d97ee",
+      "technique_name": "Large EXTRA-TEXT Causing EDNS0 Size Exceedance and Truncation",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker-controlled DNS server includes a large EXTRA-TEXT field in the response. Step 2: The response exceeds the EDNS0 buffer size, causing the server to set TC=1 (truncation). Step 3: Client receives truncated response and must retry over TCP, increasing latency and resource usage, potentially leading to denial of service if repeated.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "server-response",
+          "quote": "If including the additional detail would cause the response to exceed the EDNS0 size (and thus setting TC=1), it be omitted."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls DNS server",
+        "client uses EDNS0 with limited buffer size"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Limit the size of EXTRA-TEXT field. Use DNS-over-TLS/HTTPS/QUIC to avoid size limitations. Implement client-side handling of truncated responses.",
+      "fingerprint": "917a5111330b48e62c2a13bbd675b303e0f1f0d0748fbf561e4b358f41c00280"
+    },
+    {
+      "id": "590d338f-c47c-45ac-8f85-e4b25ddad1aa",
+      "technique_name": "Race Condition in Upstream DNS Forwarder Integrity Check",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: A DNS forwarder receives a Blocked (15) error from an upstream DNS server. Step 2: The forwarder replaces the error code with 'Blocked by Upstream DNS Server' and forwards the EXTRA-TEXT field to the client. Step 3: If the communication channel with the upstream server lacks integrity protection, an attacker can modify the EXTRA-TEXT field before the forwarder processes it, leading to injection of malicious data.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "extended-dns-error-code-tba1-blocked-by-upstream-dns-server",
+          "quote": "Implementations should ensure that the communication channel with the upstream DNS server provides adequate integrity protection to mitigate the threats described in step 1 of ."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path between upstream DNS server and forwarder",
+        "communication channel lacks integrity protection"
+      ],
+      "entities_involved": [
+        "attacker",
+        "upstream DNS server",
+        "DNS forwarder",
+        "DNS client"
+      ],
+      "mitigation": "Ensure integrity protection (e.g., TLS) for the channel between forwarder and upstream DNS server.",
+      "fingerprint": "a2771adaf3bd37134804e7a6e045f79b24a2599a785e6e132c900a3b98764427"
+    },
+    {
+      "id": "03fde9c2-fb5f-4235-815e-b69fb8fcf308",
+      "technique_name": "Downgrade from HTTPS Block Page to Certificate Error",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker forces the client to use HTTPS to a blocked domain. Step 2: The network security device attempts to serve a block page over HTTPS but uses a locally generated root certificate not trusted by the client. Step 3: The client receives a certificate validation error. Step 4: The end user does not understand the error and may click through or switch networks, compromising security.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "If the client is using HTTPS (via a web browser or another application) this results in a certificate validation error which gives no information to the end user about the reason for the DNS filtering."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "network security device uses a locally generated root certificate",
+        "client does not trust the local root certificate"
+      ],
+      "entities_involved": [
+        "client",
+        "network security device",
+        "attacker"
+      ],
+      "mitigation": "Use structured EDE codes to inform the user instead of relying on certificate errors. Avoid using locally generated root certificates for HTTPS block pages.",
+      "fingerprint": "7e8f812e6454b19e3e5c1bc96cdd9a44b0ab4a5d725ddbadaefabcce0fa7b04d"
+    },
+    {
+      "id": "2d8606ff-ea5a-4571-b5f6-6b38d41e3082",
+      "technique_name": "EDE Sub-Error Code Mismatch Exploitation",
+      "category": "AuthBypass",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker crafts a DNS response with an EDE option containing an 's' field (sub-error code) that is not defined as applicable to the accompanying EDE code. Step 2: Client, per specification, ignores the 's' field value and continues processing other fields. Step 3: However, if the client's implementation incorrectly processes the 's' field despite the mismatch, it may act on an invalid sub-error code, potentially bypassing intended filtering policies or displaying misleading information.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the JSON object contains an 's' field and the sub-error code is not defined as applicable to the accompanying Extended DNS Error (EDE) code, the client ignore the value of the 's' field and continue processing the remaining fields in accordance with this specification."
+        }
+      ],
+      "prerequisites": [
+        "attacker can inject or modify DNS responses",
+        "client implementation does not properly ignore mismatched sub-error codes"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Implement strict validation: ignore 's' field if sub-error code is not applicable to the EDE code. Follow specification exactly.",
+      "fingerprint": "2dce0084ce730e759b2b3bdb965c3030b0a2cb9a4f616c8f98fd22036194d92e"
+    },
+    {
+      "id": "61cc481a-2b6a-4d11-be81-249361ed0a2e",
+      "technique_name": "Short TTL Exploitation for Amplified Query Traffic",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker-controlled DNS server returns filtered responses with very short TTL (e.g., 10 seconds). Step 2: Clients repeatedly query the same domain due to short TTL, increasing query traffic. Step 3: This can amplify traffic to the DNS server or network, potentially causing denial of service for the server or network infrastructure.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "server-response",
+          "quote": "Servers decide to return small TTL values in filtered DNS responses (e.g., 10 seconds) to handle domain category and reputation updates. Short TTLs allow for quick adaptation ... but can result in increased query traffic."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls DNS server",
+        "clients respect TTL"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Set minimum TTL limits on DNS responses. Implement rate limiting on DNS queries. Use caching proxies to reduce load.",
+      "fingerprint": "20bb893d19145ac688857ea90138738b0540948ff72123c28563b3882feb79f1"
+    },
+    {
+      "id": "d0ea2197-a6c4-45e7-a1b8-2040af4b1db4",
+      "technique_name": "Downgrade to Unstructured EDE via Missing JSON Parsing",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker sends a DNS response with an EDE option that contains unstructured EXTRA-TEXT instead of structured JSON. Step 2: The client expects structured JSON but falls back to displaying the raw text. Step 3: The attacker can inject misleading or malicious text that influences end user behavior. Step 4: The end user may act on the misleading information.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "existing-techniques",
+          "quote": "Further, the information conveyed by is intended for diagnostic purposes and is not structured for automated processing, localization, or extensibility. This document defines a structured, machine-readable format for conveying such details in the EXTRA-TEXT field."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client does not validate that EXTRA-TEXT is valid JSON",
+        "client falls back to displaying raw text"
+      ],
+      "entities_involved": [
+        "client",
+        "DNS server",
+        "attacker"
+      ],
+      "mitigation": "Clients should validate that EXTRA-TEXT contains valid JSON and ignore malformed data. Only display structured fields according to client security policy.",
+      "fingerprint": "77a83b3a77549dc3e1ef24d798638ea4faa8d566d412b2f3b14f5ae777e1d5bf"
+    },
+    {
+      "id": "9041cc28-360f-48f4-9db7-02978ce45b0b",
+      "technique_name": "Sub-Error Code Misuse",
+      "category": "ImplementationAmbiguity",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: A resolver sends a sub-error code that is reserved (e.g., 0) or not properly registered. Step 2: The client may misinterpret the sub-error code or fail to handle it gracefully. Step 3: This could lead to incorrect error handling or display of misleading information.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "policy-reserved",
+          "quote": "Number: 0 Meaning: Reserved. This sub-error code value be sent. If received, it has no meaning."
+        }
+      ],
+      "prerequisites": [
+        "resolver sends invalid sub-error code"
+      ],
+      "entities_involved": [
+        "client",
+        "resolver"
+      ],
+      "mitigation": "Clients should ignore reserved sub-error codes and handle unknown codes gracefully.",
+      "fingerprint": "ba336926707648f6a9e9ab294da757bffb8223d5d1c0547510ff0f55159fb161"
+    },
+    {
+      "id": "97defd8e-8bc8-4651-9310-ff6db07e4a5a",
+      "technique_name": "Information Leak via Organization Name (o field) to Infer Network Policies",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: An attacker observes a DNS response with an EXTRA-TEXT containing an organization name (o field). Step 2: The attacker learns which organization is performing the filtering, potentially revealing network topology or policy. Step 3: This information could be used to target attacks against that organization or infer user context.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "name-spec",
+          "quote": "o: (organization) 'UTF-8'-encoded human-friendly name of the organization that filtered this particular DNS query."
+        },
+        {
+          "rfc": 99002,
+          "section": "restrictions-on-display-of-c-o-and-j-fields",
+          "quote": "If the organization name cannot be verified through registry checks or heuristics, the client must not display the 'o' field to the end user."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe DNS responses",
+        "EXTRA-TEXT contains o field",
+        "response not encrypted"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use encrypted DNS transports to prevent eavesdropping. Clients should not display o field from unverified resolvers.",
+      "fingerprint": "16c0e4c9739064f8d896dc6322e9cb5507eb8c2cfcadeb3c3fee54dc96bfeaf2"
+    },
+    {
+      "id": "94d6e505-3228-4b91-8ed4-df2f2dff42e2",
+      "technique_name": "Information Leak via Sub-Error Code (s field) in Unauthenticated Responses",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.65,
+      "description": "Step 1: An on-path attacker observes a DNS response with a sub-error code (s field) indicating specific filtering reason (e.g., malware, phishing). Step 2: The attacker learns the exact reason for blocking, which may reveal the security posture or policies of the network. Step 3: This information could be used to tailor attacks to bypass filters.",
+      "rfc_references": [
+        {
+          "rfc": 99002,
+          "section": "client-processing",
+          "quote": "If the DNS response was received over an encrypted connection without server authentication, the client may process the 's' field..."
+        },
+        {
+          "rfc": 99002,
+          "section": "name-spec",
+          "quote": "s: (sub-error) An integer representing the sub-error code for this particular DNS filtering case."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "DNS response not integrity-protected",
+        "s field present"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "attacker"
+      ],
+      "mitigation": "Use authenticated DNS transports. Even though s field is an enumerated value, it can leak policy information; encrypt DNS traffic to prevent eavesdropping.",
+      "fingerprint": "8e133481480673774a232534cefeb62cae1ec475b7a108aeb0f8f99a910f2747"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-04T08:39:03.175938+00:00",
+    "model_used": "deepseek-chat",
+    "total_tokens_used": 68382,
+    "analysis_duration_secs": 234.83021275,
+    "run_id": 9,
+    "input_hash": "b57c5d21e8e60b53a7d5b3dd1c55f1ced7b232eae35ba70b4cec483eef9ccfc3",
+    "prompt_version": "1.0.0",
+    "ietf_draft_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 32768,
+    "schema_version": 2
+  }
+}

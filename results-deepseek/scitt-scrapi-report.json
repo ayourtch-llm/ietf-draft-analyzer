@@ -1,0 +1,686 @@
+{
+  "protocol_name": "scitt-scrapi",
+  "rfcs_analyzed": [
+    99006
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 7,
+  "security_leads": [
+    {
+      "id": "aa320ffc-5db5-4ae2-8451-276c4437506f",
+      "technique_name": "Race condition in registration policy application",
+      "category": "RaceCondition",
+      "severity": "critical",
+      "confidence": 0.6,
+      "description": "Step 1: Client submits a Signed Statement with a detached payload. Step 2: The Transparency Service must verify the signature as part of the Registration Policy, requiring access to the payload. Step 3: If the payload is provided via an external mechanism (e.g., a separate HTTP request), a race condition exists where the payload may be modified or revoked between the time the signature is verified and the time the statement is committed to the log. Step 4: An attacker could exploit this by submitting a valid signature with a benign payload, then changing the payload before it is logged, resulting in a logged statement that does not match the verified signature.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-register-signed-statement",
+          "quote": "When a Signed Statement is submitted with a detached payload, the Transparency Service still requires access to the payload content in order to verify the signature as part of applying the Registration Policy. The mechanism by which the payload is made available to the Transparency Service is implementation-specific."
+        }
+      ],
+      "prerequisites": [
+        "attacker can modify payload delivery mechanism",
+        "detached payloads are used"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "payload provider"
+      ],
+      "mitigation": "Use embedded payloads or ensure atomic delivery of payload and statement. If detached payloads are necessary, the server should fetch the payload at the time of verification and commit it immediately, or use content-addressed storage to prevent tampering.",
+      "fingerprint": "a3bf1321d522ecd7f65af5205f300fab652ddaa130038e9a5e53c3b11aa67674"
+    },
+    {
+      "id": "0fed54b4-cd75-4f9f-9039-7a84c4a0b743",
+      "technique_name": "Unverified HTTP Metadata for Profile Routing",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The specification allows implementations to use unauthenticated HTTP-layer signals (e.g., request headers, distinct endpoints) to route incoming Signed Statements to profile-specific processing. Step 2: An attacker on-path can manipulate these signals (e.g., modify headers, redirect to a different endpoint) to cause the Transparency Service to apply a different registration policy or processing logic than intended. Step 3: Since the signals are not signed or committed to the Verifiable Data Structure, the attack may go undetected by auditors, potentially leading to registration of malicious statements under a weaker policy or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-use-of-unauthenticated-http-metadata",
+          "quote": "Implementations that serve multiple application profiles use unauthenticated HTTP-layer signals, such as request headers or distinct registration endpoints, to route incoming Signed Statements to profile-specific processing. However, these signals are not signed, are not committed to the Verifiable Data Structure, and cannot be replayed by Auditors."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "Transparency Service uses unauthenticated HTTP signals for profile routing"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure that all processing decisions affecting registration outcome are determined by authenticated inputs (e.g., protected headers or payload) after signature verification. Avoid relying on unauthenticated HTTP metadata for authoritative routing.",
+      "fingerprint": "a89f227246b8e2f31a57928f697bfa42c1d4eef64cb3b73b549c496dfa890cc0"
+    },
+    {
+      "id": "d7070bda-3781-4327-9f5d-5516ad575801",
+      "technique_name": "Missing Validation of Unauthenticated HTTP Metadata for Profile Routing",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The specification allows implementations to use unauthenticated HTTP-layer signals (e.g., request headers or distinct registration endpoints) to route incoming Signed Statements to profile-specific processing. Step 2: These signals are not signed, not committed to the Verifiable Data Structure, and cannot be replayed by Auditors. Step 3: An attacker on-path can manipulate these unauthenticated signals (e.g., modify headers or redirect to a different endpoint) to cause the Transparency Service to apply an incorrect registration policy or profile, potentially bypassing policy checks or registering statements under a different profile than intended. Step 4: The specification states that implementations must ensure that processing decisions affecting registration are fully determined by authenticated inputs or captured in the Verifiable Data Structure, but does not require validation of the unauthenticated signals against the authenticated profile identifier. This missing validation allows the attack.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-use-of-unauthenticated-http-metadata",
+          "quote": "Implementations that serve multiple application profiles use unauthenticated HTTP-layer signals, such as request headers or distinct registration endpoints, to route incoming Signed Statements to profile-specific processing. However, these signals are not signed, are not committed to the Verifiable Data Structure, and cannot be replayed by Auditors. Implementations use unauthenticated signals as authoritative inputs to the registration decision."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path between client and Transparency Service",
+        "Transparency Service uses unauthenticated HTTP metadata for profile routing"
+      ],
+      "entities_involved": [
+        "client",
+        "Transparency Service"
+      ],
+      "mitigation": "Implementations must validate that the unauthenticated HTTP metadata (e.g., headers or endpoint) matches the authenticated profile identifier carried in the protected header or payload of the Signed Statement after signature verification. Alternatively, avoid using unauthenticated signals for routing and instead derive the profile solely from authenticated data.",
+      "fingerprint": "191842aa404d205b7c6e0342cfea9c66d613446c6450428c2c6e60165e536b21"
+    },
+    {
+      "id": "c40389ca-0ae5-4329-8099-44c87e469de4",
+      "technique_name": "Resource Exhaustion via Asynchronous Registration Polling",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker submits multiple Signed Statements to the Transparency Service, triggering asynchronous registration (303 or 302 responses). Step 2: Attacker aggressively polls the returned Location headers to check registration status, causing high load on the server. Step 3: The server may return 429 Too Many Requests, but if rate limiting is insufficient, resources can be exhausted, preventing legitimate registrations.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-status-302-registration-is-running",
+          "quote": "Registration requests fail, in which case the Location return an error when queried. If the client requests (GET) the location when the registration is still in progress, the TS return a 302 Found..."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-status-303-registration-is-running",
+          "quote": "In cases where the registration request is accepted but the Transparency Service is not able to produce a Receipt in a reasonable time, it return a locator for the registration operation..."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-status-429-too-many-requests",
+          "quote": "If a client is polling for an in-progress registration too frequently then the Transparency Service , in addition to implementing rate limiting, return a 429 response:"
+        }
+      ],
+      "prerequisites": [
+        "attacker can send HTTP requests to the Transparency Service",
+        "attacker can submit Signed Statements"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement robust rate limiting on polling endpoints, require authentication for registration, and use exponential backoff for polling intervals. Consider using push notifications or webhooks instead of polling.",
+      "fingerprint": "40f45b1999409a452bdf21f0505620fb257ea45eea764ccbee28e2488895196e"
+    },
+    {
+      "id": "387e3b57-7803-42af-9e1e-167e8b1a7be9",
+      "technique_name": "Profile Routing via Unauthenticated HTTP Metadata",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker intercepts or crafts HTTP requests to a Transparency Service that uses unauthenticated HTTP-layer signals (e.g., headers or endpoints) to route Signed Statements to profile-specific processing. Step 2: Attacker manipulates these signals to route a legitimate Signed Statement to a different application profile than intended, potentially bypassing profile-specific registration policies or verification steps. Step 3: The Transparency Service processes the statement under the wrong profile, leading to incorrect registration or receipt issuance. The attack exploits the state confusion between the routing decision (based on unauthenticated signals) and the authenticated profile identification in the Signed Statement's protected header.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-use-of-unauthenticated-http-metadata",
+          "quote": "Implementations that serve multiple application profiles use unauthenticated HTTP-layer signals, such as request headers or distinct registration endpoints, to route incoming Signed Statements to profile-specific processing. However, these signals are not signed, are not committed to the Verifiable Data Structure, and cannot be replayed by Auditors."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "Transparency Service uses unauthenticated HTTP metadata for profile routing",
+        "attacker can modify HTTP headers or redirect requests"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure that all routing decisions that affect registration outcome are based on authenticated inputs (e.g., signed headers or payload) and are committed to the Verifiable Data Structure. Do not rely on unauthenticated HTTP metadata for authoritative profile selection.",
+      "fingerprint": "652f26ad4832f16928d7f5f4f6e6b565842ea9427754dd5da5206885d37221fb"
+    },
+    {
+      "id": "7e514313-cace-4e94-af64-45ffeb65d0e8",
+      "technique_name": "Information Leak via Unauthenticated HTTP Metadata Routing",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker observes unauthenticated HTTP signals (e.g., request headers or distinct registration endpoints) used to route Signed Statements to profile-specific processing. Step 2: Attacker can infer which application profile a client is using based on these signals, potentially leaking information about the client's identity or the nature of the statement. Step 3: This information can be used to target specific clients or statements.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-use-of-unauthenticated-http-metadata",
+          "quote": "Implementations that serve multiple application profiles use unauthenticated HTTP-layer signals, such as request headers or distinct registration endpoints, to route incoming Signed Statements to profile-specific processing."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can observe HTTP traffic"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use authenticated signals (e.g., protected headers or payload) for routing decisions; avoid relying on unauthenticated HTTP metadata for authoritative profile identification.",
+      "fingerprint": "5a19ff5802fca10ba84497abf9a7fd1e3103b52a0c6d30ddb885da56b6aa1b66"
+    },
+    {
+      "id": "f3feb5fb-de98-4607-b12a-ab9b35fffec6",
+      "technique_name": "Oversized Payload in Signed Statement Registration",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a POST request to the registration endpoint with an oversized Signed Statement payload (e.g., exceeding server limits). Step 2: The Transparency Service attempts to process the payload, potentially causing resource exhaustion (CPU, memory, disk) or denial of service. Step 3: The server may crash or become unresponsive, preventing legitimate registrations.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-register-signed-statement",
+          "quote": "This resource instructs a Transparency Service to register a Signed Statement on its log."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-denial-of-service-attacks",
+          "quote": "any attack which could cause the failure of Signed Statement registration, for example, should be considered in scope."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send HTTP requests to the Transparency Service"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement payload size limits and reject oversized requests with a 413 Payload Too Large status. Use rate limiting and resource monitoring to detect and mitigate oversized payload attacks.",
+      "fingerprint": "c204e8fce2c74cc2c43fedf06dd0dc14239fe7b2ce7b946823ac5bc720ce2c44"
+    },
+    {
+      "id": "96cd12b6-e3ad-40b9-a71d-6b8f0ca796b5",
+      "technique_name": "DoS via Unauthenticated Profile Routing",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends requests with manipulated unauthenticated HTTP headers (e.g., Content-Type, custom headers) to route Signed Statements to a specific application profile. Step 2: The Transparency Service uses these unauthenticated signals for early dispatch, potentially overwhelming a particular profile's processing resources. Step 3: Since the signals are not authenticated, the attacker can easily spoof them, causing resource exhaustion on targeted profiles.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-use-of-unauthenticated-http-metadata",
+          "quote": "Implementations that serve multiple application profiles use unauthenticated HTTP-layer signals, such as request headers or distinct registration endpoints, to route incoming Signed Statements to profile-specific processing. However, these signals are not signed..."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send HTTP requests with arbitrary headers",
+        "Transparency Service uses unauthenticated signals for routing"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Do not rely solely on unauthenticated signals for routing; authenticate the profile within the Signed Statement's protected header. Implement rate limiting per profile.",
+      "fingerprint": "de55b815daf3f3bd9efbd85394cf91bd389f5433854b5ab0f83dfca3c908038c"
+    },
+    {
+      "id": "4b9bdd20-48be-4e12-b749-1a9756f34ca1",
+      "technique_name": "Profile Routing via Unauthenticated HTTP Metadata",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a Signed Statement with a malicious payload intended for a different application profile. Step 2: The Transparency Service uses unauthenticated HTTP signals (e.g., request headers or distinct endpoints) to route the statement to a profile-specific processing pipeline. Step 3: If the service relies on these unauthenticated signals for authoritative routing decisions before verifying the signed profile identifier, the attacker can bypass profile-specific authentication or authorization checks. Step 4: The statement is processed under a different profile, potentially gaining unauthorized access or evading policy enforcement.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-use-of-unauthenticated-http-metadata",
+          "quote": "Implementations that serve multiple application profiles use unauthenticated HTTP-layer signals, such as request headers or distinct registration endpoints, to route incoming Signed Statements to profile-specific processing. However, these signals are not signed, are not committed to the Verifiable Data Structure, and cannot be replayed by Auditors. Implementations use unauthenticated signals as authoritative inputs to the registration decision."
+        }
+      ],
+      "prerequisites": [
+        "Transparency Service uses unauthenticated HTTP signals for profile routing",
+        "Attacker can craft HTTP requests with arbitrary headers or target different endpoints"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure that all routing decisions affecting registration outcome are based on authenticated inputs (e.g., signed protected headers or payload) and verified after signature authentication. Do not rely on unauthenticated HTTP metadata as authoritative inputs.",
+      "fingerprint": "8c1a1d9159a74f328b01d6e9348cf63624eda5772a5dd311f6571f0fb0bd8466"
+    },
+    {
+      "id": "0ff29233-1133-434f-a313-57d8878ca287",
+      "technique_name": "Missing Authentication Specification",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The specification explicitly states 'Authentication is out of scope for this document' and leaves authentication to implementations. Step 2: This ambiguity can lead to implementations that do not authenticate clients at all, or use weak authentication mechanisms. Step 3: An attacker can exploit this by sending arbitrary registration requests without authentication, potentially registering malicious statements or causing denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-authentication",
+          "quote": "Authentication is out of scope for this document. Implementations authenticate clients, for example for the purposes of authorization or preventing denial of service attacks."
+        }
+      ],
+      "prerequisites": [
+        "Transparency Service does not implement authentication"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strong authentication for all client requests, such as mutual TLS or OAuth 2.0, to prevent unauthorized access.",
+      "fingerprint": "3963624402e0bc7de6be4821c71aa105c02a227ba22c3f71e1341febe0029173"
+    },
+    {
+      "id": "ac3cc8bd-5604-4319-b2eb-aad8a9e52a32",
+      "technique_name": "Race condition in receipt resolution with key rotation",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Client obtains a receipt from the Transparency Service. Step 2: Client later attempts to resolve the receipt by querying the key discovery resource to get the public key. Step 3: If the Transparency Service rotates its keys between receipt issuance and resolution, the client may retrieve a key set that does not include the key used to sign the receipt. Step 4: An attacker could exploit this window by intercepting the key discovery response and providing a different key, causing the client to accept a forged receipt. The race condition occurs because the receipt resolution and key discovery are not atomic.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-transparency-service-keys",
+          "quote": "The Transparency Service stop returning at that resource the keys it no longer uses to issue Receipts, following a reasonable delay."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-individual-transparency-service-key",
+          "quote": "This resource is used to resolve a single public key, from a value contained in a Receipt previously issued by the Transparency Service."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "Transparency Service rotates keys frequently",
+        "client resolves receipt after key rotation"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clients should cache keys for a reasonable period and verify that the key used to sign the receipt is still present in the key set. Servers should ensure retired keys remain available for a sufficient time (e.g., until all receipts signed with them are expired).",
+      "fingerprint": "f0710add09d368430fdf99f0a80c17dddc6c55a33f2abb92c00d7b3928e2cb81"
+    },
+    {
+      "id": "a6efe167-2742-4a05-b032-49ee33d4008b",
+      "technique_name": "Replay of Signed Statement with Time-Dependent Payload",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker captures a Signed Statement that was previously submitted to the Transparency Service. Step 2: Attacker replays the same Signed Statement at a later time. Step 3: If the payload contains time-dependent information (e.g., 'it is raining'), the replayed statement may be semantically incorrect but still accepted by the Transparency Service, as the service is payload-agnostic and does not check for freshness.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-replay-attacks",
+          "quote": "Replay attacks are not particularly concerning for SCITT or SCRAPI: Once a statement is made, it is intended to be immutable and non-repudiable, so making it twice should not lead to any particular issues. There could be issues at the payload level (for instance, the statement 'it is raining' may be true when first submitted but not when replayed), but being payload-agnostic implementations of SCITT services cannot be required to worry about that."
+        }
+      ],
+      "prerequisites": [
+        "Attacker has access to a previously submitted Signed Statement",
+        "The payload contains time-dependent information"
+      ],
+      "entities_involved": [
+        "client",
+        "transparency service"
+      ],
+      "mitigation": "Include timestamps in the protected header of the Signed Statement, as defined in COSE header parameters for timestamp tokens. The Transparency Service should verify the timestamp and reject statements that are too old or from the future.",
+      "fingerprint": "a63d20081a79d06a62f8d32e984a15846518d7d4a779519aed77210d8f4a8eb3"
+    },
+    {
+      "id": "c23bbed6-a600-4da7-9a19-afc7edb5ea3c",
+      "technique_name": "Ambiguous Key Encoding in Receipt Resolution",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The specification states that if key identifier values are not URL-safe, the resource must accept the base64url encoding of the value without padding. Step 2: However, it does not specify how to distinguish between a raw URL-safe identifier and a base64url-encoded one, leading to potential ambiguity. Step 3: An attacker could craft a key identifier that is both a valid URL-safe string and a valid base64url encoding of a different key, causing the Transparency Service to resolve the wrong key or return a 404 incorrectly.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-individual-transparency-service-key",
+          "quote": "If the values used by the service ( in the request above) are not URL-safe, the resource accept the base64url encoding of the value, without padding, in the URL instead."
+        }
+      ],
+      "prerequisites": [
+        "attacker can craft key identifier values",
+        "Transparency Service implements key resolution"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Define a clear mechanism to distinguish between raw and encoded key identifiers, such as requiring all identifiers to be base64url-encoded or using a prefix.",
+      "fingerprint": "defaa155a4cd8f431631970b501b90d47b20b709294937294041ebf1e2a6851c"
+    },
+    {
+      "id": "cef4dc54-3bc2-4d68-9186-1c72b7078669",
+      "technique_name": "Oversized Key Set in Key Discovery",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends a GET request to the key discovery endpoint. Step 2: The Transparency Service responds with an excessively large COSE Key Set (e.g., containing many keys or large key material). Step 3: The client's resources (memory, CPU) are exhausted when parsing or storing the oversized response, leading to denial of service on the client side.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-transparency-service-keys",
+          "quote": "The Transparency Service responds with a COSE Key Set, as defined in ."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-resource-definition",
+          "quote": "The resource allows clients to discover the public keys used by a Transparency Service to issue Receipts."
+        }
+      ],
+      "prerequisites": [
+        "attacker controls the Transparency Service or can inject responses",
+        "client requests key discovery"
+      ],
+      "entities_involved": [
+        "server",
+        "client"
+      ],
+      "mitigation": "Implement size limits on key sets returned by the server. Clients should enforce maximum response size and reject oversized responses. Use streaming or pagination for large key sets.",
+      "fingerprint": "ed7251320da4d7b7d9128e130727b890e3fb290848ae0fa0393d7b481ecc4dd9"
+    },
+    {
+      "id": "d99ed431-cbb8-4814-87c8-455bc1245253",
+      "technique_name": "Amplification via Large Key Set Responses",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends many requests to the Transparency Service Keys resource (GET /.well-known/ts-keys). Step 2: The server responds with a potentially large COSE Key Set containing multiple public keys. Step 3: If the key set is large, the response size amplifies the attacker's traffic, potentially overwhelming the server's outbound bandwidth or the client's network.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-transparency-service-keys",
+          "quote": "This resource is used to discover the public keys... The Transparency Service responds with a COSE Key Set, as defined in ."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-resource-definition",
+          "quote": "The resource allows clients to discover the public keys used by a Transparency Service to issue Receipts."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send HTTP GET requests to the key discovery endpoint"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Limit the number of keys returned in a single response, implement caching headers, and use rate limiting on the key discovery endpoint.",
+      "fingerprint": "09d4ef2e2802b35e82e4efc97e5a43a39dbe2ab7e615edb6df2195db3aa760e9"
+    },
+    {
+      "id": "5af8d6f0-a132-4b2f-9c28-12d567e2c0b7",
+      "technique_name": "Oversized Receipt in Receipt Resolution",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker sends a GET request to the receipt resolution endpoint with a crafted receipt identifier. Step 2: The Transparency Service responds with an oversized Receipt (e.g., containing large payloads or many entries). Step 3: The client's resources are exhausted when processing the oversized receipt, leading to denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-resolve-receipt",
+          "quote": "Request: Response:"
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-status-200-ok",
+          "quote": "If the Receipt is found:"
+        }
+      ],
+      "prerequisites": [
+        "attacker can trigger receipt resolution with a valid identifier",
+        "server returns oversized receipt"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement size limits on receipt responses. Clients should enforce maximum response size and reject oversized receipts. Use pagination or compression for large receipts.",
+      "fingerprint": "ee1d0e1a7b4f173b50c2cffc6a245255cfc71d2270c4be60c8aa0f8c4216ed02"
+    },
+    {
+      "id": "a101be0a-e10f-42cf-82c0-1f7b69ec377f",
+      "technique_name": "Resource Exhaustion via Large Detached Payloads",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker submits a Signed Statement with a detached payload that is extremely large. Step 2: The Transparency Service must access the payload content to verify the signature as part of the Registration Policy. Step 3: Processing the large payload consumes excessive memory and CPU, potentially exhausting server resources and causing denial of service for other clients.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-register-signed-statement",
+          "quote": "When a Signed Statement is submitted with a detached payload, the Transparency Service still requires access to the payload content in order to verify the signature as part of applying the Registration Policy. The mechanism by which the payload is made available to the Transparency Service is implementation-specific."
+        }
+      ],
+      "prerequisites": [
+        "attacker can submit Signed Statements with detached payloads",
+        "attacker can provide large payloads via implementation-specific mechanism"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Enforce size limits on payloads, implement streaming verification, and use resource quotas per client.",
+      "fingerprint": "d6009144d3ca726fd5bcf56b8487d1d47faa1cdfeb9046adc0fd3dad9723ae93"
+    },
+    {
+      "id": "93841d34-5990-44a7-b04e-3f3050eec279",
+      "technique_name": "Inconsistent Error Handling for Asynchronous Registration",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: The specification defines multiple status codes for asynchronous registration (200, 302, 303, 400, 404, 429) but does not fully specify the state transitions or error handling logic. Step 2: For example, a 302 response indicates registration is running, but the specification says 'Registration requests fail, in which case the Location return an error when queried.' This creates ambiguity about whether a 302 can lead to a permanent error. Step 3: An attacker could exploit inconsistent implementations to cause a client to poll indefinitely or misinterpret a transient error as permanent, leading to denial of service or missed registrations.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-status-302-registration-is-running",
+          "quote": "Registration requests fail, in which case the Location return an error when queried."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-status-303-registration-is-running",
+          "quote": "In cases where the registration request is accepted but the Transparency Service is not able to produce a Receipt in a reasonable time, it return a locator for the registration operation"
+        }
+      ],
+      "prerequisites": [
+        "attacker can trigger asynchronous registration",
+        "client polls for status"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Clearly define the state machine for asynchronous registration, including all possible transitions and error conditions. Ensure clients handle all status codes consistently.",
+      "fingerprint": "cf3b209d26e31688dbee5b7c6f7c7c9bda97bc6eda4d4b9a6b39d455eb017064"
+    },
+    {
+      "id": "0748a5cb-38b7-4f9e-8a00-68e3fdec175e",
+      "technique_name": "Information Leak via Key Discovery Resource",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker queries the Transparency Service Keys resource (GET /keys) to obtain the COSE Key Set. Step 2: Attacker can enumerate all public keys used by the service, including retired keys that are still available. Step 3: This leaks information about the key lifecycle and potentially the number of keys, which could aid in fingerprinting the service or planning attacks.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-transparency-service-keys",
+          "quote": "The Transparency Service responds with a COSE Key Set, as defined in . ... retired keys remain available for as long as any Receipts signed with them may still need to be verified."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send HTTP GET requests to the Transparency Service"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Limit key disclosure to only necessary keys; consider authentication for key discovery endpoints; implement rate limiting.",
+      "fingerprint": "a2927195e41a01e19862cb4e0ba3a652200aac4ef3dcfa23da691b99dff9fd99"
+    },
+    {
+      "id": "af565031-574e-460e-a26a-d27d6260334e",
+      "technique_name": "Race condition in asynchronous registration polling",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Client submits a Signed Statement and receives a 302 or 303 response with a Location header pointing to a temporary registration operation resource. Step 2: Client polls the Location to check registration status. Step 3: If the Transparency Service processes the registration and returns a 200 or 201 response with a receipt, but the client's polling request arrives before the state is updated (e.g., due to network delays or concurrent processing), the client may receive a 302 or 303 again, causing it to miss the receipt or poll indefinitely. Step 4: An attacker on-path could intercept the 200/201 response and drop it, causing the client to continue polling and potentially timeout or accept a stale receipt.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-status-302-registration-is-running",
+          "quote": "Registration requests fail, in which case the Location return an error when queried. If the client requests (GET) the location when the registration is still in progress, the TS return a 302 Found"
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-status-303-registration-is-running",
+          "quote": "In cases where the registration request is accepted but the Transparency Service is not able to produce a Receipt in a reasonable time, it return a locator for the registration operation"
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-status-200-asynchronous-registration-is-successful",
+          "quote": "Along with the receipt the Transparency Service return a locator in the HTTP response header, provided the locator is a valid URL. The response contains the Receipt for the Signed Statement."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client uses asynchronous registration polling"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use idempotent registration tokens or conditional requests (e.g., If-None-Match) to ensure the client can detect state transitions. Alternatively, the server should ensure that once a registration is complete, the polling endpoint returns a final response (200/201) and does not revert to 302/303.",
+      "fingerprint": "3ddb78b014fe61c1a3da01d3aee4a75abe09a2e71ed72f6d0376f81e8daff1e1"
+    },
+    {
+      "id": "ae795e42-3d9e-4da2-b3a9-a528d31cfe54",
+      "technique_name": "Information Leak via Individual Key Resolution",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker obtains a key identifier (kid) from a Receipt. Step 2: Attacker queries the individual key resolution resource (GET /keys/{kid}) to retrieve the corresponding public key. Step 3: This confirms that the key exists and is associated with the service, potentially leaking information about key usage patterns or allowing tracking of specific Receipts.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-individual-transparency-service-key",
+          "quote": "This resource is used to resolve a single public key, from a value contained in a Receipt previously issued by the Transparency Service."
+        }
+      ],
+      "prerequisites": [
+        "attacker has a valid kid from a Receipt"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Require authentication for key resolution; implement rate limiting; avoid exposing key identifiers that can be linked to specific statements.",
+      "fingerprint": "497a5e28a49c1b6855d75ae78bcbaaee4d8fca51adc8d15733826fe7c99b840e"
+    },
+    {
+      "id": "0b5c33cb-19f0-4baa-81ac-481780b48526",
+      "technique_name": "Replay of Registration Request to Cause Duplicate Registration",
+      "category": "ReplayAttack",
+      "severity": "low",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker intercepts a valid registration request (POST) for a Signed Statement. Step 2: Attacker replays the same request to the Transparency Service. Step 3: The Transparency Service processes the duplicate request, potentially creating a duplicate registration and receipt. Although the specification states that making a statement twice should not lead to issues, duplicate receipts could cause confusion or waste resources.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-replay-attacks",
+          "quote": "Once a statement is made, it is intended to be immutable and non-repudiable, so making it twice should not lead to any particular issues."
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-register-signed-statement",
+          "quote": "This resource instructs a Transparency Service to register a Signed Statement on its log."
+        }
+      ],
+      "prerequisites": [
+        "Attacker is on-path and can intercept HTTP requests",
+        "The Transparency Service does not implement idempotency or deduplication"
+      ],
+      "entities_involved": [
+        "client",
+        "transparency service"
+      ],
+      "mitigation": "Implement idempotency keys or deduplication mechanisms for registration requests. The Transparency Service should check if the same Signed Statement (by content or identifier) has already been registered and return the existing receipt instead of creating a duplicate.",
+      "fingerprint": "6bf5164ac5f665a18135d7e485b37c8cf53bdad4c7689951b63fbb208387857d"
+    },
+    {
+      "id": "724ffe8e-0933-4ec9-8979-2d635f2cd810",
+      "technique_name": "Replay Attack on Registration (Payload-Level DoS)",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker captures a valid Signed Statement with a time-dependent payload (e.g., 'it is raining'). Step 2: Attacker replays the same Signed Statement to the Transparency Service at a later time when the statement is no longer valid. Step 3: The Transparency Service processes the registration, consuming resources and potentially causing a denial of service if many replays are submitted. However, the spec notes that replay attacks are not particularly concerning for SCITT, but payload-level issues may arise.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-replay-attacks",
+          "quote": "Replay attacks are not particularly concerning for SCITT or SCRAPI... There could be issues at the payload level (for instance, the statement 'it is raining' may be true when first submitted but not when replayed)..."
+        }
+      ],
+      "prerequisites": [
+        "attacker can intercept a valid Signed Statement",
+        "attacker can submit Signed Statements to the Transparency Service"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Include timestamps in the protected header of Signed Statements as recommended in the spec. Implement payload-level freshness checks if needed.",
+      "fingerprint": "daaafa99cb379859c26f8046ff9deb9965c1f53814df989e42eadeaa6c5486d8"
+    },
+    {
+      "id": "d6fd61ee-328b-4923-808a-f1834fdeab80",
+      "technique_name": "Information Leak via Receipt Resolution",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.6,
+      "description": "Step 1: Attacker obtains a receipt locator (e.g., from a Location header). Step 2: Attacker queries the receipt resolution resource to retrieve the Receipt. Step 3: The Receipt contains information about the registered Signed Statement, potentially leaking metadata such as the statement's digest or timestamp.",
+      "rfc_references": [
+        {
+          "rfc": 99006,
+          "section": "sec-resolve-receipt",
+          "quote": "Request: Response:"
+        },
+        {
+          "rfc": 99006,
+          "section": "sec-status-200-ok",
+          "quote": "If the Receipt is found:"
+        }
+      ],
+      "prerequisites": [
+        "attacker has a valid receipt locator"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Require authentication for receipt resolution; ensure that receipt locators are not guessable; implement access control policies.",
+      "fingerprint": "a508ccbc2933610a63e0b4cbbdc9749313c8ad75e40c1a7ec25aaaefea347dc4"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-04T08:53:34.343557+00:00",
+    "model_used": "deepseek-chat",
+    "total_tokens_used": 45629,
+    "analysis_duration_secs": 119.831615375,
+    "run_id": 17,
+    "input_hash": "2157b14791efeb9971c9ba6d94634bde00febbd7117183a142c247031334d90d",
+    "prompt_version": "1.0.0",
+    "ietf_draft_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 32768,
+    "schema_version": 2
+  }
+}

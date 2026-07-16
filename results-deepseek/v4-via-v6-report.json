@@ -1,0 +1,534 @@
+{
+  "protocol_name": "v4-via-v6",
+  "rfcs_analyzed": [
+    99005
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 5,
+  "security_leads": [
+    {
+      "id": "3f408ad9-55b7-4f36-9f62-fe7a109e7490",
+      "technique_name": "Routing Table Poisoning via v4-via-v6 Routes",
+      "category": "StateConfusion",
+      "severity": "critical",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker injects malicious v4-via-v6 routes into the routing protocol (e.g., BGP or Babel) that advertise IPv4 prefixes with an IPv6 next hop. Step 2: Routers implementing v4-via-v6 routing accept these routes and populate their routing tables. Step 3: IPv4 traffic is redirected through the attacker-controlled IPv6 path, allowing interception or black-holing. This exploits the state confusion between the IPv4 and IPv6 forwarding planes, as the router treats the IPv6 next hop as valid for IPv4 traffic.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "operation-of-routing-protocols",
+          "quote": "Some protocols already support the advertisement of IPv4 routes with an IPv6 next hop, including Babel and BGP."
+        }
+      ],
+      "prerequisites": [
+        "attacker can inject routes into the routing protocol",
+        "routers support v4-via-v6 routing",
+        "no route validation or filtering"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "routing protocol"
+      ],
+      "mitigation": "Implement route validation (e.g., RPKI, BGPsec) and filter incoming routes to ensure only authorized prefixes are accepted. Use prefix filtering and origin validation.",
+      "fingerprint": "87e075b41cc498894711bc85d683c554287a83d6484020cb2e36ff0daf0d577a"
+    },
+    {
+      "id": "424d87a1-6727-40e9-86a2-e9b236cc280e",
+      "technique_name": "ICMP Black-Holing due to Missing Router-ID",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: The RFC requires routers to generate ICMP Destination Unreachable messages but does not specify what happens if no router-id (IPv4 address) has been assigned. Step 2: An attacker can exploit this ambiguity by sending packets that trigger ICMP errors, but the router may fail to generate them due to lack of source address, leading to persistent black-holing of traffic (e.g., PMTUd failure). Step 3: The ambiguity is in the missing specification of fallback behavior when no IPv4 address is available for ICMP source.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "Routers implementing the mechanism described in this document do not need to have any IPv4 addresses assigned to any of their interfaces, and does not specify what happens if no router-id has been assigned."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets that trigger ICMP errors",
+        "router has no IPv4 addresses assigned"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "end host"
+      ],
+      "mitigation": "Ensure every router has at least one IPv4 address assigned, or implement a fallback mechanism to generate ICMP using the dummy address as specified.",
+      "fingerprint": "79e1e4546c6d7b66014151a3c2eb5cf973306ea23fc436a7f86505ec5e21300f"
+    },
+    {
+      "id": "f8c40824-eec8-47d6-8ac2-e906e06e62d0",
+      "technique_name": "ICMP Black-Holing Due to Dummy Address Filtering",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker sends IPv4 packets that require ICMP responses (e.g., packets with DF bit set and size exceeding path MTU) through a v4-via-v6 router with no IPv4 address. Step 2: Router generates ICMP Destination Unreachable (Fragmentation Needed) with source 192.0.0.8. Step 3: Firewalls or network boundaries drop these ICMP packets because 192.0.0.8 is a dummy address often considered spoofed. Step 4: The sending host never receives the ICMP, so it does not reduce its packet size, leading to persistent black-holing of traffic (DoS).",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "packets originating from 192.0.0.8 might be considered as spoofed traffic and dropped by firewalls at network boundaries."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send IPv4 packets that trigger ICMP (e.g., large packets with DF set)",
+        "router has no IPv4 address assigned",
+        "firewalls drop packets from 192.0.0.8"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "end host",
+        "firewall"
+      ],
+      "mitigation": "Assign an IPv4 address to the router, or configure firewalls to allow ICMP from 192.0.0.8, or use alternative PMTUd mechanisms.",
+      "fingerprint": "6a95effae7dbe68547b08f7372e93b7522bce0ba7b4da878fb28fe28c3719091"
+    },
+    {
+      "id": "9976ca75-08ad-430e-b631-cc6bd13e83e3",
+      "technique_name": "Missing ICMP Source Address Validation",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker sends IPv4 traffic that triggers an ICMP error from a router implementing v4-via-v6 routing. Step 2: The router generates an ICMP packet with source address 192.0.0.8 (dummy address) if no IPv4 address is assigned. Step 3: The ICMP packet may be dropped by firewalls or considered spoofed, leading to path MTU discovery failures and potential black-holing of traffic.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "If a router does not have any IPv4 addresses assigned, the router use the dummy address 192.0.0.8 as the source address of outgoing ICMPv4 packets"
+        }
+      ],
+      "prerequisites": [
+        "attacker can send IPv4 traffic through the router",
+        "router has no IPv4 addresses assigned"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "end host"
+      ],
+      "mitigation": "Assign at least one IPv4 address to the router to use as a valid source address for ICMP messages, or implement filtering rules to allow ICMP from 192.0.0.8 within trusted boundaries.",
+      "fingerprint": "c74b26248526bab782675ec208f56b37cb26e87f5fdac974f20b44ca667498cc"
+    },
+    {
+      "id": "200dae9a-e6ca-463a-a08d-eb636c77207c",
+      "technique_name": "ICMP Source Address Spoofing via Dummy Address",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The RFC states that routers implementing v4-via-v6 routing may use the dummy address 192.0.0.8 as the source address of outgoing ICMPv4 packets if no IPv4 address is assigned. Step 2: An attacker on the path can craft ICMP packets with source address 192.0.0.8, which may be accepted by other routers as legitimate, potentially causing path MTU discovery disruption or other ICMP-based attacks. Step 3: The ambiguity lies in the lack of specification for validating the source address of ICMP packets from routers using the dummy address, allowing spoofing.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "If a router does not have any IPv4 addresses assigned, the router use the dummy address 192.0.0.8 as the source address of outgoing ICMPv4 packets"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "router has no IPv4 addresses assigned"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "end host"
+      ],
+      "mitigation": "Assign at least one IPv4 address to each router to avoid using the dummy address, or implement ingress filtering to drop ICMP packets with source address 192.0.0.8 from outside the network.",
+      "fingerprint": "f636911f313d74ceb5f577b9292a5ac5ae45753c1279df770e4658a58023eae2"
+    },
+    {
+      "id": "f2f8edd5-33fe-4cab-9b19-10bbe8084c93",
+      "technique_name": "ICMP Source Address Spoofing via Dummy Address",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker observes an ICMPv4 packet with source address 192.0.0.8 generated by a router implementing v4-via-v6 routing. Step 2: Attacker replays this ICMP packet to a victim host, potentially causing the victim to incorrectly update its path MTU or routing state. Step 3: The victim may black-hole traffic or redirect it to an attacker-controlled path.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "If a router does not have any IPv4 addresses assigned, the router use the dummy address 192.0.0.8 as the source address of outgoing ICMPv4 packets"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path between the router and victim",
+        "router has no IPv4 addresses assigned and uses 192.0.0.8 as ICMP source",
+        "victim relies on ICMP for PMTUd or other functions"
+      ],
+      "entities_involved": [
+        "router",
+        "victim host"
+      ],
+      "mitigation": "Assign unique IPv4 addresses to routers to avoid using the dummy address, or implement ingress filtering to drop ICMP packets with source 192.0.0.8 at network boundaries.",
+      "fingerprint": "eacc8e6d5dfed5bbe34809a49bc412b7f8906d08277f6e05866a52da120ba720"
+    },
+    {
+      "id": "ba208d42-86af-4de7-8c5a-abb262135377",
+      "technique_name": "Oversized ICMP Payload via v4-via-v6 Router",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends an oversized IPv4 packet (e.g., with size > path MTU) to a destination reachable via a v4-via-v6 router. Step 2: The router attempts to generate an ICMPv4 Destination Unreachable (Fragmentation Needed) message. Step 3: The ICMPv4 packet includes a portion of the original packet. If the original packet is oversized, the ICMP payload may exceed the minimum IPv4 MTU (68 bytes) or cause fragmentation, potentially leading to amplification or evasion of security controls.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "A router must therefore be able to generate ICMPv4 Destination Unreachable messages (as required by Section 5.2.7.1). The source address of these messages must be one of the addresses assigned to the outgoing interface; if no such address has been assigned, then one of the other addresses assigned to the router, known as the 'router-id', must be used ( Section 4.3.2.4)."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send IPv4 packets to a destination behind a v4-via-v6 router",
+        "router has no IPv4 address assigned (uses dummy 192.0.0.8)",
+        "router generates ICMPv4 messages in response to oversized packets"
+      ],
+      "entities_involved": [
+        "attacker",
+        "v4-via-v6 router",
+        "destination host"
+      ],
+      "mitigation": "Assign IPv4 addresses to all v4-via-v6 routers to avoid using dummy address; implement rate limiting on ICMP generation; filter oversized packets at network boundaries; ensure ICMP payload truncation per RFC 1812.",
+      "fingerprint": "ba238e9812e891acaa4466ce88f48b8bed512da695c7a3f2e9237a0f0137f891"
+    },
+    {
+      "id": "7b6e70bb-d02b-490a-b19c-5dc9274000d7",
+      "technique_name": "IPv4 Reachability via IPv6-Only Network Downgrade",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker on-path between IPv4-only hosts and IPv4 Internet. Step 2: Attacker exploits v4-via-v6 routing to make IPv4-only hosts reachable from IPv4 Internet, bypassing network segmentation assumptions. Step 3: Attacker sends malicious IPv4 traffic to hosts that were assumed isolated.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "security-considerations",
+          "quote": "if an island of IPv4-only hosts is separated from the IPv4 Internet by routers that have not been assigned IPv4 addresses, a network administrator might reasonably assume that the IPv4-only hosts are unreachable from the IPv4 Internet. This assumption is broken if the intermediary routers implement v4-via-v6 routing"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "network uses v4-via-v6 routing",
+        "no packet filtering rules to block undesired traffic"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "router"
+      ],
+      "mitigation": "Implement suitable packet filtering rules in the forwarding plane to block undesirable traffic.",
+      "fingerprint": "5e36bb2e9c484ca2d4e149dbaf340070b4d58b65b77791c73896b7bda985a927"
+    },
+    {
+      "id": "2030e5c4-7dc9-400a-bfc4-ce3025f5743f",
+      "technique_name": "ICMP Source Address Spoofing via Dummy Address",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker triggers ICMP generation from a router that has no IPv4 addresses assigned, causing the router to use the dummy address 192.0.0.8 as source. Step 2: The attacker can craft packets that cause the router to generate ICMP messages with this dummy address. Step 3: Since 192.0.0.8 is a well-known dummy address, firewalls may drop these packets as spoofed, or multiple routers using the same address cause confusion in debugging and fault isolation. This can lead to state confusion where the router's ICMP responses are misidentified or dropped, disrupting path MTU discovery and other ICMP-dependent mechanisms.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "Using the dummy address as the source of ICMPv4 packet causes a number of drawbacks: using the same address on multiple routers may hamper debugging and fault isolation, e.g., when using the utility (but see for a possible solution to this problem); packets originating from 192.0.0.8 might be considered as spoofed traffic and dropped by firewalls at network boundaries."
+        }
+      ],
+      "prerequisites": [
+        "attacker can trigger ICMP generation from a router with no IPv4 addresses",
+        "router uses dummy address 192.0.0.8 as source",
+        "firewalls may drop packets from 192.0.0.8"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "firewall"
+      ],
+      "mitigation": "Assign at least one IPv4 address to each router to avoid using the dummy address. Alternatively, configure firewalls to accept ICMP from 192.0.0.8 within trusted boundaries.",
+      "fingerprint": "289fb6b1fe3c4a7191ecaf2dc3d82f14bec9cbcd0969d32c2ed52d6b070fc723"
+    },
+    {
+      "id": "fcf6f40e-dc04-4298-8dd8-23f264816d26",
+      "technique_name": "ICMP Source Address Spoofing via Dummy Address",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker on-path identifies a router implementing v4-via-v6 routing that has no IPv4 addresses assigned. Step 2: The router uses dummy address 192.0.0.8 as source for ICMPv4 packets. Step 3: Attacker spoofs ICMP packets with source 192.0.0.8 to trigger actions like path MTU discovery changes or redirects, bypassing authentication checks that rely on source address validation.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "If a router does not have any IPv4 addresses assigned, the router use the dummy address 192.0.0.8 as the source address of outgoing ICMPv4 packets"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "router has no IPv4 addresses assigned"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router"
+      ],
+      "mitigation": "Assign at least one unique IPv4 address to each router, or implement ingress filtering to drop packets with source 192.0.0.8 from outside the network.",
+      "fingerprint": "879c3e06ac8488c2aadb505320ec2966a1b550c9453aeaf362db626016a04ab0"
+    },
+    {
+      "id": "d04586b9-6147-4a76-8753-59fa12cda388",
+      "technique_name": "IPv4 Route Propagation Across IPv6-Only Network",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker on the IPv4 Internet sends traffic to an IPv4-only host that is behind a router implementing v4-via-v6 routing. Step 2: The intermediary routers forward the IPv4 traffic over IPv6-only links, making the IPv4-only host reachable from the IPv4 Internet. Step 3: The attacker can then probe or communicate with the IPv4-only host, which was previously assumed unreachable, potentially leaking information about the internal network.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "security-considerations",
+          "quote": "if an island of IPv4-only hosts is separated from the IPv4 Internet by routers that have not been assigned IPv4 addresses, a network administrator might reasonably assume that the IPv4-only hosts are unreachable from the IPv4 Internet. This assumption is broken if the intermediary routers implement v4-via-v6 routing, which might make the IPv4-only hosts reachable from the IPv4 Internet."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on the IPv4 Internet",
+        "network has IPv4-only hosts behind routers implementing v4-via-v6 routing",
+        "no packet filtering rules are in place to block undesired traffic"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "intermediary routers"
+      ],
+      "mitigation": "Network administrators must filter out undesirable traffic in the forwarding plane by implementing suitable packet filtering rules.",
+      "fingerprint": "602194673f91c900235dba1d15566c7746e1ee351e2cd1d8e1c907093e691523"
+    },
+    {
+      "id": "5c56601c-3537-4700-9b58-0c1e59b60461",
+      "technique_name": "ICMP Source Address Spoofing via Dummy Address",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker triggers a router implementing v4-via-v6 routing to generate an ICMPv4 packet (e.g., by sending a packet that exceeds the MTU, causing a 'Fragmentation Needed' ICMP). Step 2: The router uses the dummy address 192.0.0.8 as the source IP of the ICMP packet if no IPv4 address is assigned. Step 3: The ICMP packet may be dropped by firewalls or considered spoofed, preventing proper Path MTU Discovery (PMTUd) and causing persistent black-holing of IPv4 traffic. Step 4: This can lead to denial of service for IPv4 traffic traversing the router.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "If a router does not have any IPv4 addresses assigned, the router use the dummy address 192.0.0.8 as the source address of outgoing ICMPv4 packets"
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets that trigger ICMP generation (e.g., oversized packets)",
+        "router has no IPv4 addresses assigned",
+        "firewalls or filters drop packets from 192.0.0.8"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "end hosts"
+      ],
+      "mitigation": "Assign at least one IPv4 address to the router to avoid using the dummy address. Alternatively, ensure firewalls do not drop ICMP packets from 192.0.0.8, or implement proper filtering rules.",
+      "fingerprint": "d3312074ad4a427dfde77b285aa6d6719227e923b9e2d6a2412c89d42a98a5d4"
+    },
+    {
+      "id": "0faf00ff-c307-4551-b88a-233c8b49e4fa",
+      "technique_name": "ICMP Source Address Spoofing via Race Condition",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker sends a packet that triggers an ICMP error (e.g., TTL exceeded) to a router implementing v4-via-v6 routing. Step 2: The router, lacking an IPv4 address on the outgoing interface, uses the dummy address 192.0.0.8 as the ICMP source. Step 3: If the router's routing table is updated concurrently (e.g., via routing protocol updates) between the time the packet is received and the ICMP response is generated, the source address selection may race with the assignment of a new IPv4 address to the interface, potentially causing the ICMP packet to be sent with an incorrect or unexpected source address. This could allow an attacker to spoof ICMP messages or bypass filters that rely on source address consistency.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "Routers implementing the mechanism described in this document do not need to have any IPv4 addresses assigned to any of their interfaces, and does not specify what happens if no router-id has been assigned. If a router does not have any IPv4 addresses assigned, the router use the dummy address 192.0.0.8 as the source address of outgoing ICMPv4 packets"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "router has no IPv4 address on the outgoing interface",
+        "routing table updates can occur concurrently with ICMP generation"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router"
+      ],
+      "mitigation": "Assign at least one IPv4 address to each router interface to avoid using the dummy address. Implement proper locking or atomic operations when selecting the source address for ICMP packets to prevent race conditions with routing table updates.",
+      "fingerprint": "bf0f72fd13a793a5a34c9c6bcb5e893de2a4710fa8750b5009eb56eb8e58e97b"
+    },
+    {
+      "id": "5de16800-10b6-483f-89d6-50bb676a4751",
+      "technique_name": "IPv4 Reachability Assumption Violation",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: Network administrator assumes IPv4-only hosts behind routers without IPv4 addresses are unreachable from the IPv4 Internet. Step 2: Routers implementing v4-via-v6 routing forward IPv4 traffic across IPv6-only links, making those hosts reachable. Step 3: Attacker from IPv4 Internet can now reach previously isolated IPv4 hosts, bypassing intended security boundaries. This is a state confusion between the expected network topology (no IPv4 connectivity) and the actual behavior (v4-via-v6 routing enables connectivity).",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "security-considerations",
+          "quote": "if an island of IPv4-only hosts is separated from the IPv4 Internet by routers that have not been assigned IPv4 addresses, a network administrator might reasonably assume that the IPv4-only hosts are unreachable from the IPv4 Internet. This assumption is broken if the intermediary routers implement v4-via-v6 routing"
+        }
+      ],
+      "prerequisites": [
+        "network has IPv4-only hosts behind routers without IPv4 addresses",
+        "routers implement v4-via-v6 routing",
+        "no packet filtering in place"
+      ],
+      "entities_involved": [
+        "network administrator",
+        "IPv4-only hosts",
+        "attacker",
+        "router"
+      ],
+      "mitigation": "Implement packet filtering rules at network boundaries to block undesired IPv4 traffic. Ensure network administrators are aware of v4-via-v6 capabilities and adjust security policies accordingly.",
+      "fingerprint": "9bfd87301dd082b5633de4ceef6d148351f44d54fd0fc3b8281bb84c168223e7"
+    },
+    {
+      "id": "93e4d386-4f4c-4c33-808c-4695ed08f5a2",
+      "technique_name": "Missing Validation of IPv4 Reachability Assumptions",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Network administrator assumes IPv4-only hosts behind a router without IPv4 addresses are unreachable from the IPv4 Internet. Step 2: v4-via-v6 routing allows IPv4 traffic to traverse the IPv6-only network, making those hosts reachable. Step 3: If no packet filtering is applied, unintended access from the IPv4 Internet occurs.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "security-considerations",
+          "quote": "if an island of IPv4-only hosts is separated from the IPv4 Internet by routers that have not been assigned IPv4 addresses, a network administrator might reasonably assume that the IPv4-only hosts are unreachable from the IPv4 Internet. This assumption is broken if the intermediary routers implement v4-via-v6 routing"
+        }
+      ],
+      "prerequisites": [
+        "network has IPv4-only hosts behind routers without IPv4 addresses",
+        "v4-via-v6 routing is enabled on intermediary routers",
+        "no packet filtering rules are in place"
+      ],
+      "entities_involved": [
+        "network administrator",
+        "IPv4-only hosts",
+        "v4-via-v6 routers",
+        "IPv4 Internet hosts"
+      ],
+      "mitigation": "Implement packet filtering rules in the forwarding plane to restrict undesirable traffic, as recommended in the security considerations.",
+      "fingerprint": "0564b91f1b3e6780c1dfc8851614cf4f4c3bf97f7831e89ae7464df66036fb0d"
+    },
+    {
+      "id": "fbf06f1a-53ca-4351-a844-243169ab3277",
+      "technique_name": "IPv4 Reachability Assumption Violation Leading to Unfiltered Traffic",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Network administrator assumes IPv4-only hosts are unreachable from the IPv4 Internet due to lack of IPv4 addresses on intermediary routers. Step 2: Attacker exploits v4-via-v6 routing to send IPv4 traffic to those hosts through the IPv6-only network. Step 3: If the administrator has not implemented packet filtering, the traffic reaches the IPv4-only hosts, potentially overwhelming them with unwanted traffic (DoS). Step 4: The hosts may become unavailable due to resource exhaustion or processing of malicious packets.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "security-considerations",
+          "quote": "if an island of IPv4-only hosts is separated from the IPv4 Internet by routers that have not been assigned IPv4 addresses, a network administrator might reasonably assume that the IPv4-only hosts are unreachable from the IPv4 Internet. This assumption is broken if the intermediary routers implement v4-via-v6 routing"
+        }
+      ],
+      "prerequisites": [
+        "network has IPv4-only hosts behind routers with no IPv4 addresses",
+        "attacker can send IPv4 traffic from the Internet",
+        "no packet filtering rules in place"
+      ],
+      "entities_involved": [
+        "attacker",
+        "IPv4-only hosts",
+        "intermediary routers"
+      ],
+      "mitigation": "Implement packet filtering rules in the forwarding plane to block undesired traffic to IPv4-only hosts.",
+      "fingerprint": "3a62126a0cb72ecefccad36957f9a84b906b50373b3532646e66ab0dd99d0726"
+    },
+    {
+      "id": "b93cc756-4c84-4172-96cc-8ac197eec848",
+      "technique_name": "ICMP Source Address Spoofing via Dummy Address",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker on-path observes ICMP packets from router using dummy address 192.0.0.8. Step 2: Attacker spoofs ICMP packets with source 192.0.0.8 to trigger path MTU discovery issues or other misbehavior. Step 3: This can cause persistent black-holing of IPv4 traffic or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "Using the dummy address as the source of ICMPv4 packet causes a number of drawbacks: ... packets originating from 192.0.0.8 might be considered as spoofed traffic and dropped by firewalls at network boundaries."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "router uses dummy address 192.0.0.8 for ICMP",
+        "no router-id assigned"
+      ],
+      "entities_involved": [
+        "router",
+        "client"
+      ],
+      "mitigation": "Assign one or more IPv4 addresses to routers to avoid using the dummy address.",
+      "fingerprint": "f217ec4b386a2aaf1ad667dc5c90bd4c5d3d7e1cecddbd80b92c2392cb7884a5"
+    },
+    {
+      "id": "8d5f30b8-900b-4e36-af3d-85995c706263",
+      "technique_name": "IPv4 Reachability Assumption Violation",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The RFC notes that v4-via-v6 routing can make IPv4-only hosts reachable from the IPv4 Internet even if intermediary routers lack IPv4 addresses, breaking network administrators' assumptions. Step 2: An attacker can exploit this by sending IPv4 traffic to a supposedly isolated IPv4-only network, as the routers forward traffic via IPv6. Step 3: The ambiguity is in the lack of mandatory filtering or explicit security boundaries when deploying v4-via-v6 routing.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "security-considerations",
+          "quote": "if an island of IPv4-only hosts is separated from the IPv4 Internet by routers that have not been assigned IPv4 addresses, a network administrator might reasonably assume that the IPv4-only hosts are unreachable from the IPv4 Internet. This assumption is broken if the intermediary routers implement v4-via-v6 routing"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on the IPv4 Internet",
+        "network has v4-via-v6 routing enabled without filtering"
+      ],
+      "entities_involved": [
+        "attacker",
+        "router",
+        "IPv4-only host"
+      ],
+      "mitigation": "Implement packet filtering rules in the forwarding plane to block undesired traffic, or assign IPv4 addresses to boundary routers to maintain traditional security assumptions.",
+      "fingerprint": "2e146ec01dd13f2e9c2fe906b2053e56d2783a35ad562f9bd063043db043e732"
+    },
+    {
+      "id": "30d90f05-737c-49e6-a081-170fa74f3a3a",
+      "technique_name": "ICMP Source Address Spoofing via Dummy Address",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: A router implementing v4-via-v6 routing has no IPv4 addresses assigned and uses the dummy address 192.0.0.8 as the source of outgoing ICMPv4 packets. Step 2: An attacker on the network can observe ICMP packets with source address 192.0.0.8, which may be considered spoofed traffic and dropped by firewalls, but also can be used to infer that the router is using v4-via-v6 routing. Step 3: The attacker can use this information to map the network topology or identify routers that lack IPv4 addresses, potentially aiding further attacks.",
+      "rfc_references": [
+        {
+          "rfc": 99005,
+          "section": "sec-icmp",
+          "quote": "Using the dummy address as the source of ICMPv4 packet causes a number of drawbacks: using the same address on multiple routers may hamper debugging and fault isolation, e.g., when using the utility; packets originating from 192.0.0.8 might be considered as spoofed traffic and dropped by firewalls at network boundaries."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or can observe ICMP traffic",
+        "router has no IPv4 addresses assigned and uses dummy address 192.0.0.8"
+      ],
+      "entities_involved": [
+        "router",
+        "attacker"
+      ],
+      "mitigation": "Assign one or more IPv4 addresses to routers even if they perform v4-via-v6 routing on all interfaces.",
+      "fingerprint": "b83aa928de1d09a3f8d9e2aaebe00c072df7ef3f57eda5e97eff346f03632b8a"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-04T08:50:05.714365+00:00",
+    "model_used": "deepseek-chat",
+    "total_tokens_used": 23057,
+    "analysis_duration_secs": 100.654244083,
+    "run_id": 15,
+    "input_hash": "3348523287c73d53522c461325388438f8fe313b810e0d4f71f4db73aaf0ec3a",
+    "prompt_version": "1.0.0",
+    "ietf_draft_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 32768,
+    "schema_version": 2
+  }
+}

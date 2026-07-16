@@ -1,0 +1,247 @@
+{
+  "protocol_name": "6lo-nd-gaao",
+  "rfcs_analyzed": [
+    99004
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 6,
+  "security_leads": [
+    {
+      "id": "a31a893a-07ca-47cf-88b4-4c4c30bedb63",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker on-path observes the AAF in use and the address pool limitations. Step 2: Attacker impersonates multiple legitimate nodes by spoofing their source addresses in NS(GAAO) requests. Step 3: The 6LR processes each request without validating the identity of the requesting node, assigning addresses/prefixes and depleting the available pool. Step 4: Legitimate nodes are unable to obtain addresses, leading to denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "8",
+          "quote": "A rouge node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple requests."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker knows the AAF in use",
+        "limited address pool"
+      ],
+      "entities_involved": [
+        "6LN (attacker)",
+        "6LR/6LBR"
+      ],
+      "mitigation": "Implement per-node rate limiting on address requests, use cryptographic identity validation (e.g., CGA or SEND), and enforce strict source address validation at the link layer.",
+      "fingerprint": "ac6ced94dffac29545a77abb96f6b9c5508db155bd080795e4bcfbee5e185ede"
+    },
+    {
+      "id": "d7d19646-667a-44f3-af92-d615111389b3",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker on-path observes GAAO requests and responses. Step 2: Attacker impersonates multiple legitimate nodes by spoofing source addresses and sending multiple NS(GAAO) requests with different identities. Step 3: The 6LR/6LBR allocates addresses/prefixes for each request, exhausting the available address pool. Step 4: Legitimate nodes are denied address assignments.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "8",
+          "quote": "A rouge node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple requests."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can spoof source addresses",
+        "AAF-based address pool is limited"
+      ],
+      "entities_involved": [
+        "attacker",
+        "6LR/6LBR",
+        "6LN"
+      ],
+      "mitigation": "Implement link-layer security (e.g., IEEE 802.15.4 security) to prevent spoofing. Enforce per-node address limits and short lifetimes as per RFC8505 Section 7. Use AAFs that provide cryptographic address ownership verification.",
+      "fingerprint": "d996456933d184d6766493693b9c93d63424320d33cd986e930e0483ef18513b"
+    },
+    {
+      "id": "4eb7928c-21b7-4dd5-9405-a5081771b066",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker impersonates multiple legitimate nodes by spoofing their source addresses. Step 2: Attacker sends multiple NS(GAAO) requests with different source addresses to the 6LR. Step 3: The 6LR assigns addresses/prefixes to each request, exhausting the available address pool. Step 4: Legitimate nodes are unable to obtain addresses, resulting in denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "8",
+          "quote": "A rouge node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple requests."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "link-layer not sufficiently protected"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement link-layer security (e.g., IEEE 802.15.4 security) to prevent spoofing. Enforce per-node address limits and short lifetimes as recommended in RFC8505 Section 7.",
+      "fingerprint": "024201506b5ef1600f2b70fc06faf27d908aec7dc0151b375f787c04425381dd"
+    },
+    {
+      "id": "c9fe5a43-f4cd-4f87-bb11-cd9d258c8b35",
+      "technique_name": "AAF Not Used Error Handling Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: The specification defines a new error status 'AAF Not Used' (value 13) when a requested AAF is not in use. Step 2: The error handling (Section 5.4) provides three possible actions: re-issue without AAF, re-issue with different AAF, or do nothing. Step 3: The choice is left to configuration, but no guidance is given on how to prevent repeated requests that may consume bandwidth and energy. Step 4: An attacker could force a node to repeatedly retry with different AAFs, causing resource exhaustion or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "5.4",
+          "quote": "When the node receives this status back it SHOULD perform one of the following actions: ... Re-issue the same request with a different AAF. ... Note that such an approach may lead to repeated requests that may consume bandwidth and energy."
+        },
+        {
+          "rfc": 99004,
+          "section": "7.3",
+          "quote": "13 (Suggested) | AAF Not Used"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can spoof NA(GAAO) with AAF Not Used status"
+      ],
+      "entities_involved": [
+        "6LN",
+        "6LR/6LBR"
+      ],
+      "mitigation": "Implement rate limiting on retries, enforce a maximum number of retries, or require explicit configuration to limit retry behavior.",
+      "fingerprint": "979fca2e7b8083fe4a012a69d8e3daa2c47b066bc321e2128629d1a9df3992f1"
+    },
+    {
+      "id": "cada7bce-5283-4b13-9c1e-d6276c4ddbb0",
+      "technique_name": "AAF Not Used Error Loop",
+      "category": "OversizedPayload",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends NS(GAAO) with an invalid or unsupported AAF value. Step 2: 6LR/6LBR responds with 'AAF Not Used' status. Step 3: Attacker repeatedly re-issues requests with different AAF values, causing multiple NS/NA exchanges. Step 4: This consumes bandwidth and processing resources on the 6LR/6LBR, potentially leading to denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "5.4",
+          "quote": "Re-issue the same request with a different AAF. ... such an approach may lead to repeated requests that may consume bandwidth and energy."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send NS messages",
+        "6LR/6LBR processes GAAO requests"
+      ],
+      "entities_involved": [
+        "attacker",
+        "6LR/6LBR"
+      ],
+      "mitigation": "Rate-limit GAAO requests per source. Configure a maximum number of retries. Use link-layer authentication to filter malicious nodes.",
+      "fingerprint": "234d3606f76bf61de1d9e03ca7d30a81cbd62b5a9e52db2a8ddf899f42ee6089"
+    },
+    {
+      "id": "706abb10-d068-4626-84f1-504000bc7d8f",
+      "technique_name": "Piggybacking with Router Discovery Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Section 5.3.2 allows GAAO to be piggybacked in RS/RA messages. Step 2: The specification states that a 6LR/6LBR that does not support GAAO will simply ignore the option, and the RA will not include GAAO. Step 3: However, there is no mechanism for the 6LN to distinguish between a 6LR that does not support GAAO and a 6LR that maliciously omits the GAAO. Step 4: An attacker could suppress the GAAO in RA, causing the 6LN to believe GAAO is unsupported and fall back to other mechanisms, potentially leading to address assignment from an untrusted source.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "5.3.2",
+          "quote": "A 6LR/6LBR that does not support GAAO will simply ignore this option, and the corresponding RA message will not include a GAAO. This behavior implicitly signals that the feature is not supported."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can intercept and modify RS/RA messages"
+      ],
+      "entities_involved": [
+        "6LN",
+        "6LR/6LBR"
+      ],
+      "mitigation": "Use secure neighbor discovery (SEND) or link-layer security to protect RS/RA messages; require explicit signaling of GAAO support via the M-flag in 6CIO.",
+      "fingerprint": "12ea85e4eca398723221d6dd8724c792b21b5f6c5f085aee376c1193276de397"
+    },
+    {
+      "id": "5753f9fe-a4be-4518-81d7-f417c68356fb",
+      "technique_name": "R-flag Handling Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Section 4 defines the R-flag in GAAO. When set in NA(GAAO), the 6LN MUST explicitly register the address/prefix. Step 2: Section 5.2 states that if no registration is received within RETRANS_TIMER * MAX_UNICAST_SOLICIT, the 6LR considers the address/prefix not in use. Step 3: However, the specification does not specify how the 6LR should handle the address/prefix during this waiting period (e.g., whether it is reserved or available to others). Step 4: An attacker could request an address, receive an NA with R-flag set, and then not register, causing the address to be tied up until timeout, enabling a denial-of-service attack on address availability.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "4",
+          "quote": "When the 6LR/6LBR sets the R-flag in a NA(GAAO) message, it indicates that no registration state has been created and that the requester MUST explicitly register the received address/prefix..."
+        },
+        {
+          "rfc": 99004,
+          "section": "5.2",
+          "quote": "When setting the R-flag, and as for [RFC4861], the 6LR is expect to receive a registration within RETRANS_TIMER multiplied by MAX_UNICAST_SOLICIT. If no registration is received within this amount of time the 6LR will consider that address/prefix is not in use by the requesting 6LN."
+        }
+      ],
+      "prerequisites": [
+        "attacker is a 6LN",
+        "attacker can send NS(GAAO) and receive NA(GAAO) with R-flag set"
+      ],
+      "entities_involved": [
+        "6LN",
+        "6LR/6LBR"
+      ],
+      "mitigation": "Implement a short reservation timeout for addresses offered with R-flag set, or require immediate registration to prevent address exhaustion.",
+      "fingerprint": "cb298b289b4b8ebb8c4696182adfd45ad5422384362b5990023715cc36d0a08a"
+    },
+    {
+      "id": "1556ab01-af84-4c7f-a567-32898545c272",
+      "technique_name": "Piggybacked GAAO Flooding",
+      "category": "OversizedPayload",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker includes a GAAO option in an NS(EARO) or RS message. Step 2: The GAAO option may contain an oversized or malformed Address/Prefix field (128 bits) or ROVR field. Step 3: The 6LR/6LBR processes the option, potentially causing buffer overflow or excessive memory allocation. Step 4: Repeated piggybacked requests can exhaust memory or CPU on constrained devices.",
+      "rfc_references": [
+        {
+          "rfc": 99004,
+          "section": "5.3.1",
+          "quote": "GAAO MAY be used together with the EARO option during address registration phase."
+        },
+        {
+          "rfc": 99004,
+          "section": "5.3.2",
+          "quote": "The GAAO MAY be included in the initial RS message"
+        }
+      ],
+      "prerequisites": [
+        "attacker can send NS or RS messages",
+        "6LR/6LBR is resource-constrained"
+      ],
+      "entities_involved": [
+        "attacker",
+        "6LR/6LBR"
+      ],
+      "mitigation": "Validate GAAO option length against expected size. Implement input sanitization and bounds checking. Use rate limiting for incoming ND messages.",
+      "fingerprint": "1950ae556941b3806ed206e41acab11d5e23da084bd5b0aa9e6c9d9e1aa8b933"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-04T08:47:47.255315+00:00",
+    "model_used": "deepseek-chat",
+    "total_tokens_used": 90696,
+    "analysis_duration_secs": 94.358891417,
+    "run_id": 13,
+    "input_hash": "be4a75bf1cca160322d700eb37c48e487c89c4f56ce7180c35d0742d8b1481a8",
+    "prompt_version": "1.0.0",
+    "ietf_draft_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 32768,
+    "schema_version": 2
+  }
+}

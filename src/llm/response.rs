@@ -34,6 +34,10 @@ pub fn parse_json_response<T: serde::de::DeserializeOwned>(content: &str) -> Res
 
 /// Parse a JSON response that may contain an array, accepting partial results.
 /// Returns successfully parsed items and logs warnings for malformed entries.
+///
+/// Accepts either a bare top-level array (what grammar mode produces) or an
+/// object envelope wrapping the array (what `response_format: json_object`
+/// forces strict backends like OpenAI to produce, e.g. `{"leads": [...]}`).
 pub fn parse_json_array_partial<T: serde::de::DeserializeOwned>(content: &str) -> Result<Vec<T>> {
     let cleaned = strip_markdown_fences(content);
 
@@ -42,8 +46,9 @@ pub fn parse_json_array_partial<T: serde::de::DeserializeOwned>(content: &str) -
         return Ok(items);
     }
 
-    // Try parsing as array of Value, then convert each item individually
-    let values: Vec<serde_json::Value> = serde_json::from_str(&cleaned).map_err(|e| {
+    // Parse as a generic Value, then locate the array (top-level, or the array
+    // field of an object envelope), and convert each item individually.
+    let parsed: serde_json::Value = serde_json::from_str(&cleaned).map_err(|e| {
         if looks_like_refusal(content) {
             RfcAnalyzerError::LlmContentRefusal {
                 detail: content.chars().take(200).collect(),
@@ -51,6 +56,18 @@ pub fn parse_json_array_partial<T: serde::de::DeserializeOwned>(content: &str) -
         } else {
             RfcAnalyzerError::LlmParse {
                 detail: format!("Not a JSON array: {}", e),
+            }
+        }
+    })?;
+
+    let values = extract_array(parsed).ok_or_else(|| {
+        if looks_like_refusal(content) {
+            RfcAnalyzerError::LlmContentRefusal {
+                detail: content.chars().take(200).collect(),
+            }
+        } else {
+            RfcAnalyzerError::LlmParse {
+                detail: "Response contained no JSON array (neither a top-level array nor an object wrapping one)".to_string(),
             }
         }
     })?;
@@ -66,6 +83,29 @@ pub fn parse_json_array_partial<T: serde::de::DeserializeOwned>(content: &str) -
     }
 
     Ok(results)
+}
+
+/// Locate the JSON array in a parsed value.
+/// Returns the value itself if it is an array, otherwise—if it is an object—the
+/// first array-valued field, preferring conventional envelope keys.
+fn extract_array(value: serde_json::Value) -> Option<Vec<serde_json::Value>> {
+    match value {
+        serde_json::Value::Array(arr) => Some(arr),
+        serde_json::Value::Object(mut map) => {
+            // Prefer well-known wrapper keys used by our prompts/backends.
+            for key in ["leads", "items", "results", "data", "array"] {
+                if let Some(serde_json::Value::Array(arr)) = map.remove(key) {
+                    return Some(arr);
+                }
+            }
+            // Otherwise take the first array-valued field (stable object order).
+            map.into_iter().find_map(|(_, v)| match v {
+                serde_json::Value::Array(arr) => Some(arr),
+                _ => None,
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Strip markdown code fences (```json ... ```) from a string.
@@ -191,6 +231,45 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].x, 1);
         assert_eq!(results[1].x, 3);
+    }
+
+    #[test]
+    fn test_parse_json_array_partial_object_envelope() {
+        // json_object mode (OpenAI/vLLM) forces an object wrapper around the array.
+        #[derive(serde::Deserialize, Debug)]
+        struct Item {
+            x: i32,
+        }
+        let input = r#"{"leads": [{"x": 1}, {"x": 2}]}"#;
+        let results: Vec<Item> = parse_json_array_partial(input).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].x, 1);
+        assert_eq!(results[1].x, 2);
+    }
+
+    #[test]
+    fn test_parse_json_array_partial_object_first_array_field() {
+        #[derive(serde::Deserialize, Debug)]
+        struct Item {
+            x: i32,
+        }
+        // Unknown wrapper key, but still a single array field to unwrap.
+        let input = r#"{"vulnerabilities": [{"x": 7}]}"#;
+        let results: Vec<Item> = parse_json_array_partial(input).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].x, 7);
+    }
+
+    #[test]
+    fn test_parse_json_array_partial_object_no_array_errors() {
+        #[derive(serde::Deserialize, Debug)]
+        #[allow(dead_code)]
+        struct Item {
+            x: i32,
+        }
+        let input = r#"{"message": "no findings"}"#;
+        let result = parse_json_array_partial::<Item>(input);
+        assert!(matches!(result, Err(RfcAnalyzerError::LlmParse { .. })));
     }
 
     #[test]

@@ -1,0 +1,1197 @@
+{
+  "protocol_name": "6lo-pasa",
+  "rfcs_analyzed": [
+    99003
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 1,
+    "total_edges": 0,
+    "connected_components": 1,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 9,
+  "security_leads": [
+    {
+      "id": "229f5592-1c44-4414-ba06-ddbbf4b8c3d4",
+      "technique_name": "PASA-6LoRH Oversized Address Injection",
+      "category": "OversizedPayload",
+      "severity": "critical",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker crafts a malicious packet with a PASA-6LoRH header where the Size field indicates a length greater than 8 octets (e.g., Size=8, N=9). Step 2: The packet is sent to a PASA node. Step 3: The receiving node parses the header and attempts to read N octets of the PASA address, causing a buffer overflow or out-of-bounds read. Step 4: This can lead to memory corruption, crash, or potential code execution.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "8.2",
+          "quote": "Size: indicates the length of the PASA address in octets. The length N equals Size plus 1, which indicates that the length of the PASA address in PASA-6LoRH is at least 1 octet and no more than 8 octets."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send raw packets to a PASA node",
+        "receiving node does not validate the Size field against the actual packet length"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA node (any role)"
+      ],
+      "mitigation": "Implement strict bounds checking on the Size field in PASA-6LoRH headers, ensuring N does not exceed the remaining packet length and is within the 1-8 octet range.",
+      "fingerprint": "1bf5ace71c6432bc754b4ade951903bf613bc0502aeb029574519a2fb18c85e8"
+    },
+    {
+      "id": "4caba619-504c-4aed-9011-0572bec3e6b2",
+      "technique_name": "Missing Validation of PASA-6LoRH Header Length",
+      "category": "MissingValidation",
+      "severity": "critical",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker crafts a packet with a malformed PASA-6LoRH header where the Size field indicates a length larger than the actual packet. Step 2: The receiving node parses the header without validating that the advertised length matches the available data. Step 3: This can cause buffer over-read or denial of service. The specification states 'Size: indicates the length of the PASA address in octets' but does not require validation against packet length.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "8.2",
+          "quote": "Size: indicates the length of the PASA address in octets. The length N equals Size plus 1, which indicates that the length of the PASA address in PASA-6LoRH is at least 1 octet and no more than 8 octets."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets to a PASA node"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Validate that the PASA-6LoRH header length does not exceed the remaining packet length before processing.",
+      "fingerprint": "1f210d25f6ab45bd0324a7471f0f23e657213854522df7f0abb5a4731b6eb2fd"
+    },
+    {
+      "id": "e98bc3e3-8e49-4a62-ac09-b1e99e390141",
+      "technique_name": "Forged PASA-6LoRH Header Forwarding",
+      "category": "StateConfusion",
+      "severity": "critical",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker crafts a packet with a malicious PASA-6LoRH header containing a fake destination address. Step 2: The packet is injected into the PASA Domain. Step 3: Intermediate PASA routers process the header according to the stateless forwarding algorithm (Section 7.1). Step 4: Due to lack of authentication on the PASA-6LoRH header, the packet may be misrouted, potentially to unintended nodes or causing loops. Step 5: This can lead to denial of service, eavesdropping, or traffic redirection.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "8.2",
+          "quote": "Reserved (Rsvd): Reserved for future use. It MUST be initialized to zero by the sender and MUST be ignored by the receiver."
+        },
+        {
+          "rfc": 99003,
+          "section": "7.1",
+          "quote": "Get destination address from the PASA-6LoRH ... and the current node's address ..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can inject packets into the PASA Domain"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA routers",
+        "PASA hosts"
+      ],
+      "mitigation": "Implement integrity protection for PASA-6LoRH headers (e.g., using link-layer security or IPsec). Validate that the source address matches the expected parent-child relationship.",
+      "fingerprint": "242666915e226f26287da03a9fe0121e4e78f3eabbaee7917d341442057765a5"
+    },
+    {
+      "id": "97b1eba6-29aa-413c-a770-e6b73ad13a20",
+      "technique_name": "Parent Selection Hijacking",
+      "category": "AuthBypass",
+      "severity": "critical",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker listens for Router Solicitation (RS) from a bootstrapping node. Step 2: Attacker sends a forged Router Advertisement (RA) with a higher priority or faster response to become the selected parent. Step 3: The victim node sends a Neighbor Solicitation (NS) with GAAO to the attacker. Step 4: Attacker assigns a malicious address or becomes a man-in-the-middle, intercepting and modifying traffic.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "the node can choose a parent on a 'first come first served' basis and send a Neighbor Solicitation (NS) with a GAAO message to request an address to the selected parent."
+        },
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "it will multicast a Routing Solicitation (RS) and may receive one or more unicast Routing Advertisement (RA) messages from potential parents."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can send forged RA messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "victim node (PASA Host or Router)"
+      ],
+      "mitigation": "Use link-layer security (e.g., MACSec) and authenticate RA messages using SEND [RFC3971].",
+      "fingerprint": "cc45cfa7605ade3ad6a5601152d41488987e95fdde0819cccbe53478a7974f57"
+    },
+    {
+      "id": "13141814-92de-4148-b2c8-7e697e46dc95",
+      "technique_name": "Address Collision via Index Mismanagement",
+      "category": "ImplementationAmbiguity",
+      "severity": "critical",
+      "confidence": 0.7,
+      "description": "Step 1: A PASA Router reboots and loses its non-volatile memory (or it is not properly implemented). Step 2: The router reinitializes its 'r' and 'h' indexes to 0. Step 3: It then assigns addresses to new children using the TAAF, potentially reusing addresses that were previously assigned to other nodes that are still in the network. Step 4: This causes address collisions, leading to misrouting and potential data interception or denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "6.1",
+          "quote": "These two indexes MUST be stored in non-volatile memory along with address assignment state, so that in case of reboot a PASA-Router can continue its role without disrupting the addressing."
+        },
+        {
+          "rfc": 99003,
+          "section": "3",
+          "quote": "PASA Routers are expected to store in non-volatile memory state about address registration and assignment."
+        }
+      ],
+      "prerequisites": [
+        "PASA Router reboots",
+        "non-volatile memory is lost or not implemented"
+      ],
+      "entities_involved": [
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Ensure robust non-volatile storage of indexes and address assignment state; implement Duplicate Address Detection (DAD) as a fallback.",
+      "fingerprint": "32f0dcaf50c959cf6d10992b16310643aa92c2e6e5a7856dc200bc060f2882a8"
+    },
+    {
+      "id": "577b2887-a1df-47ea-9463-b39d6e013d9b",
+      "technique_name": "Topology Disclosure via Algorithmic Addresses",
+      "category": "InformationLeak",
+      "severity": "high",
+      "confidence": 0.95,
+      "description": "Step 1: An attacker observes a PASA address (e.g., 2001:db8::2B) used in external communications. Step 2: The attacker knows the TAAF algorithm and that the trailing bit '1' indicates a host, and the preceding bits encode the path to the root. Step 3: By decoding the address (0x2B = b101011), the attacker reconstructs the path: root (1) -> router (10) -> router (1010) -> host (101011). Step 4: The attacker infers the internal topology, including parent-child relationships and node roles.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "14",
+          "quote": "Depending on the AAF, the algorithmically built addresses may reveal topology information outside the PASA Domain. In particular the Tree Assignment Function (TAAF) proposed in this specification reveals the path between the root and a node."
+        },
+        {
+          "rfc": 99003,
+          "section": "6.1",
+          "quote": "the proposed TAAF encodes the topology in the addresses themselves, which enables stateless forwarding, but if used beyond the PASA Domain it exposes the internal topology."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe PASA addresses in external communications (e.g., IPv6 packets leaving the PASA domain)",
+        "attacker knows the TAAF algorithm and address format"
+      ],
+      "entities_involved": [
+        "client",
+        "server",
+        "PASA Root",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Use opaque addresses for external communications as per RFC 7217 to conceal the internal topology. Alternatively, deploy a different AAF that does not encode topology information.",
+      "fingerprint": "81c113d66c7d3ba15b69456c05952fb9ccfc9606ed0ef8a2e3ab971759d0041d"
+    },
+    {
+      "id": "0eb2bbd8-2d94-4654-bd96-26bf6ed918ca",
+      "technique_name": "Packet Drop via Unrecognized PASA-6LoRH Header",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker sends a packet with a malformed or unrecognized PASA-6LoRH header to a node in the PASA Domain. Step 2: The receiving node does not recognize the header and drops the packet. Step 3: This disrupts communication for legitimate traffic.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "8.1",
+          "quote": "All nodes of a PASA Domain MUST recognize the PASA critical 6LoWPAN Routing Header and be able to handle the packets according to these specifications. Otherwise, packets can be dropped, hence disrupting communications."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets to PASA Domain"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA node"
+      ],
+      "mitigation": "Ensure all nodes correctly implement PASA-6LoRH parsing; use ingress filtering to block malformed packets.",
+      "fingerprint": "b4f7efeac006968f1392e58d297b65edee599d91e5ee0185dcb93266695eda5c"
+    },
+    {
+      "id": "0445e17b-6c81-4af9-a162-508d4ea7365c",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker impersonates multiple nodes by sending multiple Neighbor Solicitation (NS) messages with GAAO options to a PASA Router, requesting addresses. Step 2: The PASA Router assigns addresses without verifying the identity of the requester, as the specification only recommends cryptographic signatures but does not mandate them. Step 3: The attacker exhausts the available address pool, preventing legitimate nodes from obtaining addresses.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers. Such kind of attacks can be mitigated using cryptographic signatures (e.g., [RFC3971])."
+        }
+      ],
+      "prerequisites": [
+        "attacker is within the PASA Domain",
+        "attacker can send NS messages to a PASA Router"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Mandate cryptographic signatures (e.g., SEND [RFC3971]) for address registration to prevent impersonation.",
+      "fingerprint": "b582c596584c7983bf1c6eb3afc601d2337f88c5059b5a4d22e48b46ed5a2020"
+    },
+    {
+      "id": "9d25f4d7-9ec3-4736-96e8-24bc98d5fc42",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker impersonates multiple nodes by spoofing their identities. Step 2: Attacker sends multiple registration requests to a PASA Router using the GAAO option. Step 3: The PASA Router assigns addresses from its limited pool, leading to address exhaustion. Step 4: Legitimate nodes are unable to obtain addresses, causing denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can spoof source addresses"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate registration requests.",
+      "fingerprint": "b08907a59613cab5354d3c1f7a0d76593dc53a1f39a1b190ce6555b234c00224"
+    },
+    {
+      "id": "7afa85b7-6669-4295-aeff-50854f53a05c",
+      "technique_name": "Address Registration Replay",
+      "category": "ReplayAttack",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker captures a valid Neighbor Solicitation (NS) with GAAO message from a legitimate node requesting address assignment. Step 2: Attacker replays the captured NS message to the same parent router. Step 3: The parent router processes the replayed message and assigns a new address or refreshes the registration, potentially causing address exhaustion or impersonation. Step 4: The attacker can then use the assigned address to intercept traffic or launch further attacks.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "The requester MUST indicate its role as indicated in Section 9. If the node acts as a PASA Router it means that the address will be further delegated. Otherwise, if the node acts as a PASA Host, the address will not be further delegated. The parent, acting as IPv6 ND Registrar will process the received GAAO message and act according to [I-D.ietf-6lo-nd-gaao], and the corresponding GAAO message for the NA packet is generated."
+        },
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        }
+      ],
+      "prerequisites": [
+        "Attacker is on-path and can capture NS messages",
+        "No cryptographic protection (e.g., SEND) is used",
+        "Parent router does not implement replay protection"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router (parent)",
+        "PASA Host (victim)"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate NS messages and include a nonce or timestamp to prevent replay. Additionally, implement rate limiting on address registration requests.",
+      "fingerprint": "eb90b382f950ba3fdc5be3c909e4fe045d09277cd0c6ce0f600f689ed0e9c9f0"
+    },
+    {
+      "id": "cb0c1592-bea3-4cf5-8cac-63110fac7af1",
+      "technique_name": "PASA Address Exhaustion via Impersonation",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker on-path observes address assignment patterns and available address space limitations (Section 6.2). Step 2: Attacker impersonates multiple nodes by forging source addresses or using multiple identities. Step 3: Attacker sends multiple registration requests to PASA Routers, exhausting the limited address pool. Step 4: Legitimate nodes are denied address assignment, causing denial of service or forcing fallback to less secure modes.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can forge source addresses",
+        "AAF with limited address space"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate registration requests and prevent impersonation.",
+      "fingerprint": "6d489b1ebe9a9fdeeb67fd8979b7cf8682ce7cb77d5b7f657af3206e7b80160c"
+    },
+    {
+      "id": "60c40d61-eb8a-4a10-b3e1-90263320582c",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker on-path observes the address assignment procedure and learns the AAF in use. Step 2: The attacker impersonates multiple legitimate nodes by sending forged Neighbor Solicitation (NS) with GAAO messages to a PASA Router, requesting addresses. Step 3: The PASA Router, lacking cryptographic verification, assigns addresses to each impersonated node, exhausting the limited address space. Step 4: Legitimate nodes are unable to obtain addresses, causing denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        },
+        {
+          "rfc": 99003,
+          "section": "6.1",
+          "quote": "the number of available addresses may encounter some limitation"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can send forged NS messages",
+        "no cryptographic protection on address assignment"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate address registration requests, and implement rate limiting on address assignments.",
+      "fingerprint": "7beaf3c85b34e0cdff6c2d91443ff0dd1baf1d9b5b3613ed5b5e2674a507a201"
+    },
+    {
+      "id": "c2ec34cc-b723-42a1-bad6-9dd591de9f79",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker observes the AAF in use (e.g., TAAF) and the limited address space. Step 2: Attacker impersonates multiple nodes by sending multiple NS messages with GAAO to a PASA Router, requesting addresses. Step 3: The PASA Router assigns addresses from its pool, potentially exhausting available addresses for legitimate nodes. Step 4: Legitimate nodes are unable to obtain addresses, causing denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        },
+        {
+          "rfc": 99003,
+          "section": "6.1",
+          "quote": "the number of available addresses may encounter some limitation."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can send NS messages with GAAO"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate address requests, and implement rate limiting on address assignments.",
+      "fingerprint": "e9aad09256a6964242f676ae038ad27ac10d7693686aae612518ba92fe6bb8b3"
+    },
+    {
+      "id": "d063d4ae-ba96-47b3-bf96-ef6cee2ad9c9",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends multiple NS messages with GAAO options to a PASA Router, impersonating different nodes. Step 2: The PASA Router processes each request sequentially, assigning addresses from its pool without verifying the uniqueness of the requester's identity. Step 3: The attacker exhausts the address space, preventing legitimate nodes from obtaining addresses.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can send NS messages with GAAO options",
+        "PASA Router does not enforce rate limiting or identity verification"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate registration requests, and implement rate limiting on address assignment.",
+      "fingerprint": "5ab0922a9fd8e0d75f687268ec407654f148b302144c8286b591b917f3b67b1c"
+    },
+    {
+      "id": "1c436a21-66d4-4fb8-a541-6b9fe6612579",
+      "technique_name": "PASA Address Exhaustion via Impersonation",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker identifies the Address Assignment Function (AAF) in use (e.g., TAAF) and the maximum address length limit of 64 bits. Step 2: Attacker impersonates multiple nodes by sending multiple Neighbor Solicitation (NS) messages with GAAO options to a PASA Router, requesting addresses for different roles. Step 3: The PASA Router assigns addresses using TAAF, consuming the limited address space. Step 4: The attacker repeats the process to exhaust the available addresses, causing denial of service for legitimate nodes.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        },
+        {
+          "rfc": 99003,
+          "section": "6.2",
+          "quote": "Max_Length = length(Parent address) + length(b(max(r,h))) + 1 ... Max_length can never be more than 64 bits"
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path and can send NS messages to a PASA Router",
+        "attacker knows the AAF in use (e.g., TAAF)",
+        "no cryptographic authentication is enforced"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate address requests, and enforce rate limiting on address assignments.",
+      "fingerprint": "dba0546bb11cb42c5c143a1de492d9e715aea348ca5d8e244a2b502e5f795634"
+    },
+    {
+      "id": "9e4ca8f4-812c-4b2c-9e33-563b54ecfa08",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker impersonates multiple legitimate nodes by spoofing their identities. Step 2: Attacker sends multiple registration requests to a PASA Router using the GAAO option. Step 3: The PASA Router assigns addresses from its limited pool, eventually exhausting available addresses. Step 4: Legitimate nodes are unable to obtain addresses, causing denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can spoof source addresses"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND [RFC3971]) to authenticate registration requests.",
+      "fingerprint": "2fd244f861f727a5e08353bb80aa0148315c3321e1e3254f7fcfc58953891be5"
+    },
+    {
+      "id": "61306a1e-afc9-4268-b130-4b12fc5f3ee2",
+      "technique_name": "PASA Address Length Manipulation in Forwarding",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends a packet with a PASA destination address that has a length greater than 64 bits (e.g., by setting the Size field to 8 and padding with extra bits). Step 2: The PASA router performs length comparisons (Len(DA) < Len(CA), etc.) using the advertised length. Step 3: Due to the oversized address, the router may incorrectly compute the next hop or cause a buffer overflow when copying the address. Step 4: This can lead to misrouting, packet drop, or memory corruption.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "7.1",
+          "quote": "The length operation, indicated by Len(X), of a PASA address X, returns the number of bits between the most significant bit of the IID that is set to 1 and the least significant bit."
+        },
+        {
+          "rfc": 99003,
+          "section": "6",
+          "quote": "The maximum length of the PASA address MUST NOT exceed 64 bits."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets with crafted PASA-6LoRH headers",
+        "router does not validate that the PASA address length is ≤ 64 bits"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Enforce the 64-bit maximum length constraint on PASA addresses at all nodes, and validate the address length before forwarding decisions.",
+      "fingerprint": "67727b613a2764bf6cac80848bc52b613b7b13c01b89239a8bc13acfaae98e0f"
+    },
+    {
+      "id": "4ed9fcec-f534-4f04-942e-194b5610bd7e",
+      "technique_name": "Resource Exhaustion via Registration State Overflow",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker sends a high volume of address registration requests (NS with GAAO) to a PASA Router. Step 2: The router allocates state for each registration, consuming memory and processing resources. Step 3: The router becomes unable to process legitimate requests, leading to denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "The parent, acting as IPv6 ND Registrar will process the received GAAO message and act according to [I-D.ietf-6lo-nd-gaao]"
+        }
+      ],
+      "prerequisites": [
+        "attacker can send NS messages to PASA Router"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Implement rate limiting on registration requests and use authentication to filter malicious sources.",
+      "fingerprint": "528f5dd91bc9c8758c1dd88681efd80aaf9454f00102b39bcef60c2053dbe242"
+    },
+    {
+      "id": "20e966bf-c471-4730-9361-3175a1aae355",
+      "technique_name": "PASA Downgrade to Unsecured Link Layer",
+      "category": "Downgrade",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker on-path forces or exploits lack of link-layer security (e.g., by jamming or spoofing). Step 2: Since the specification only recommends link-layer protection (SHOULD), an attacker can downgrade the security by preventing MACSec or similar mechanisms from being used. Step 3: Without link-layer protection, the attacker can intercept, modify, or inject PASA packets, compromising address assignment and forwarding.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "the link layer SHOULD provide protection to prevent potential attacks, for instance using [MACSec]."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "link-layer security is not enforced"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA nodes"
+      ],
+      "mitigation": "Enforce mandatory link-layer security (e.g., MACSec) and use cryptographic authentication for ND messages.",
+      "fingerprint": "387cc9c1ceb49cdbc8d52e2729fab7b162e21772300e30efb59e6229b93b566b"
+    },
+    {
+      "id": "d0f5bf2f-bb08-4ea0-b1e3-c6f679ad11d9",
+      "technique_name": "Missing Validation of Address Ownership in Re-registration",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker observes a node's address and sends a re-registration request (NS with GAAO) to the parent, claiming the same address. Step 2: The parent processes the re-registration without verifying that the requester is the legitimate owner (e.g., using the Registration Ownership Verifier). Step 3: The attacker hijacks the address, causing traffic to be misrouted. The specification mentions ROVR but does not mandate its validation.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "The returning GAAO message will carry as well the PASA address that the parent assigns to its child using the procedures described in Section 6. The PASA address is appended to the GAAO message (see Figure 13) and its prefix length is indicated in the PfxLen field."
+        }
+      ],
+      "prerequisites": [
+        "attacker can eavesdrop on address assignments",
+        "attacker can send NS messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Mandate verification of the Registration Ownership Verifier (ROVR) during re-registration to ensure address ownership.",
+      "fingerprint": "401dfead382d5191737c7e52cbbe5e2985dfea21f4f89cfa632f2fb5adb574c4"
+    },
+    {
+      "id": "1ef3e080-2857-43d4-8b39-75bba6a8cc13",
+      "technique_name": "Parent Selection Hijacking",
+      "category": "DenialOfService",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker responds to a Router Solicitation (RS) with a forged Router Advertisement (RA) before legitimate parents. Step 2: The new node selects the attacker as its parent. Step 3: The attacker can then drop or misroute traffic from that node, causing denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "The node can choose a parent on a 'first come first served' basis and send a Neighbor Solicitation (NS) with a GAAO message to request an address to the selected parent."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on the same link",
+        "attacker can send RA messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "new node"
+      ],
+      "mitigation": "Use RA guard or authentication mechanisms (e.g., SEND) to verify RA legitimacy.",
+      "fingerprint": "5cc03a570cf931f63410e6ff0e4a0ff70146b6caed313d8d8074ecbdb8a04af1"
+    },
+    {
+      "id": "600164f8-1219-46a5-b2fb-51637dd7f118",
+      "technique_name": "Re-registration Spoofing",
+      "category": "AuthBypass",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker captures a valid Registration Ownership Verifier (ROVR) from a previous registration. Step 2: Attacker sends a re-registration request (NS with GAAO) to the parent, spoofing the victim's address. Step 3: The parent updates its registration state, associating the victim's address with the attacker. Step 4: Traffic intended for the victim is forwarded to the attacker.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "the R-bit of the GAAO message in the NA message MUST be set in order to request confirmation of address usage through explicit registration."
+        },
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "when the nodes is up again there is no need to go through parent selection and address request, it can just re-register the previously obtained address."
+        }
+      ],
+      "prerequisites": [
+        "attacker can eavesdrop on registration messages",
+        "attacker can spoof source address"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router (parent)",
+        "victim node"
+      ],
+      "mitigation": "Use cryptographic ROVR values (e.g., based on a shared secret) and enforce replay protection.",
+      "fingerprint": "3c415965443c4e477fcc7cff01f5412eec55377086c82db4d3ab3c5e3cf3d3d0"
+    },
+    {
+      "id": "a4db87cb-02c9-46ce-ab07-045f9a66b4a0",
+      "technique_name": "TOCTOU in Address Assignment",
+      "category": "RaceCondition",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: A node sends an NS with GAAO to request an address. Step 2: The parent router checks its address pool and prepares an NA with GAAO assigning an address. Step 3: Before the NA is sent, another request arrives and the router assigns the same address to a different node due to lack of locking. Step 4: Both nodes receive the same address, causing a conflict.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "The parent, acting as IPv6 ND Registrar will process the received GAAO message and act according to [I-D.ietf-6lo-nd-gaao], and the corresponding GAAO message for the NA packet is generated."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "multiple nodes request addresses simultaneously",
+        "router does not use atomic operations for address assignment"
+      ],
+      "entities_involved": [
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Use atomic operations or locking mechanisms when assigning addresses from the pool to prevent duplicate assignments.",
+      "fingerprint": "ec6ff91cd4e8f2a655af6b6fb2ed213b67f7da9c14a0fabcc17abc258dcbb003"
+    },
+    {
+      "id": "2ed61515-8cbc-4e89-8b24-fdd1001efb9b",
+      "technique_name": "PASA-6LoRH Header Manipulation",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker on-path intercepts a packet and modifies the PASA-6LoRH header, changing the destination address to a different node. Step 2: The modified packet is forwarded according to the new address, potentially to a different branch. Step 3: Since the PASA-6LoRH header is not integrity-protected (only link-layer security is recommended), the attack succeeds. Step 4: The attacker can redirect traffic to eavesdrop or cause denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "the link layer SHOULD provide protection to prevent potential attacks, for instance using [MACSec]."
+        },
+        {
+          "rfc": 99003,
+          "section": "8.2",
+          "quote": "PASA-6LoRH header format ... Reserved (Rsvd): ... MUST be ignored by the receiver."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "link-layer security is not used"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Mandate link-layer security (e.g., MACSec) or add integrity protection to the PASA-6LoRH header.",
+      "fingerprint": "0a9520f51eb98d41abaac88d88d5b71462ca32963f234b358e84e9b02edde647"
+    },
+    {
+      "id": "a35a3ec1-628b-43be-80f2-4b084e6c2621",
+      "technique_name": "Missing Validation of Parent Selection",
+      "category": "MissingValidation",
+      "severity": "high",
+      "confidence": 0.75,
+      "description": "Step 1: A malicious node sends a forged Router Advertisement (RA) with a high priority to attract new nodes. Step 2: A bootstrapping node selects this malicious node as its parent based on 'first come first served' without validating the RA's authenticity. Step 3: The malicious node can then assign incorrect addresses or drop traffic. The specification does not mandate validation of RA messages.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "The node can choose a parent on a 'first come first served' basis and send a Neighbor Solicitation (NS) with a GAAO message to request an address to the selected parent."
+        }
+      ],
+      "prerequisites": [
+        "attacker is within the PASA Domain",
+        "attacker can send RA messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "bootstrapping node"
+      ],
+      "mitigation": "Use Secure Neighbor Discovery (SEND) [RFC3971] to authenticate RA messages.",
+      "fingerprint": "d2debc3a75f75256686f8c9bdfe254eb19a82df38f85de1a23c8ace084f38744"
+    },
+    {
+      "id": "4e0203e9-2a27-469c-9957-080c4230fbad",
+      "technique_name": "Forwarding Loop via Address Length Ambiguity",
+      "category": "ImplementationAmbiguity",
+      "severity": "high",
+      "confidence": 0.75,
+      "description": "Step 1: An attacker crafts a packet with a PASA destination address that has a length equal to the current node's address but is not equal to it. Step 2: According to the forwarding logic (Section 7.1), the node sends the packet to its parent. Step 3: The parent, having a shorter address, also sends it to its parent, and so on until the root. Step 4: The root, seeing a destination address with length equal to its own but not matching, sends it back down? Actually, the root's address is length 1; if DA length equals CA length and not equal, it forwards to parent (nonexistent). This could cause a loop if the root incorrectly forwards to a child or drops. However, the spec says 'send to parent' for non-matching equal length, but root has no parent. This ambiguity may cause a packet to be dropped or loop between routers if they misinterpret the condition.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "7.1",
+          "quote": "If length of DA is equal to length of CA, go to step 4. ... If DA and CA are the same, the packet arrived at destination, exit. Otherwise, send the packet to parent node and exit."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets with arbitrary PASA addresses",
+        "network has multiple routers with same address length"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router",
+        "PASA Root"
+      ],
+      "mitigation": "Clarify that the root should drop packets with equal-length non-matching addresses, or add a check to prevent forwarding to nonexistent parent.",
+      "fingerprint": "f8a6bf8ec615d433d4382aa514d50fb17c94e1300e806423b1dc5ac3b98e0737"
+    },
+    {
+      "id": "61ff2ac2-a9ab-4501-b442-cf551db9e47e",
+      "technique_name": "Parent Selection Hijacking",
+      "category": "StateConfusion",
+      "severity": "high",
+      "confidence": 0.75,
+      "description": "Step 1: A new node sends a Router Solicitation (RS) to discover potential parents. Step 2: Attacker responds with a forged Router Advertisement (RA) claiming to be a PASA Router. Step 3: The new node selects the attacker as its parent based on 'first come first served' policy. Step 4: The attacker assigns a malicious address to the node, potentially causing misrouting or enabling man-in-the-middle attacks. Step 5: The attacker can intercept and modify traffic from the node.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "In general, 'first come first served' selection policy is sufficient; however, some deployments may have tighter constraints on the router selection, but enforcing such selection is beyond the scope of this document."
+        },
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "it will multicast a Routing Solicitation (RS) and may receive one or more unicast Routing Advertisement (RA) messages from potential parents."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "attacker can send forged RA messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "new node (PASA host or router)"
+      ],
+      "mitigation": "Use Secure Neighbor Discovery (SEND) [RFC3971] to authenticate RAs. Implement parent selection policies that verify parent legitimacy (e.g., through cryptographic credentials).",
+      "fingerprint": "10dc1fcc092e1e29cdab7bb9b7ac2a4f6046758d02fa00455a8553955be6068b"
+    },
+    {
+      "id": "0f37633e-0201-4562-b170-0641de8b51da",
+      "technique_name": "Topology Disclosure via TAAF Addresses",
+      "category": "AuthBypass",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker observes a PASA address in external communications (e.g., 2001:db8::2B). Step 2: Attacker decodes the binary representation (b101011) to infer the tree path: root (1) -> router (10) -> router (1010) -> host (101011). Step 3: Attacker uses this topology information to target specific nodes or plan further attacks.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "14",
+          "quote": "the algorithmically built addresses may reveal topology information outside the PASA Domain. In particular the Tree Assignment Function (TAAF) proposed in this specification reveals the path between the root and a node."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe external IPv6 traffic from the PASA Domain"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Root",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Use opaque addresses for external communications (e.g., [RFC7217]) to conceal topology.",
+      "fingerprint": "f0d167afeb6c899009435b5a3126cfad14406a9fbf725633a197dc1d9c9fde01"
+    },
+    {
+      "id": "575ceced-584d-4ef6-85ed-62ec0582ba7a",
+      "technique_name": "Topology Discovery via Address Analysis",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker obtains a PASA address (e.g., from a packet or node). Step 2: Using the TAAF algorithm, the attacker decodes the address to reveal the path from the root to the node. Step 3: The attacker learns the internal topology, including parent-child relationships and node roles. Step 4: This information can be used for targeted attacks or further reconnaissance.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "14",
+          "quote": "the algorithmically built addresses may reveal topology information outside the PASA Domain. In particular the Tree Assignment Function (TAAF) proposed in this specification reveals the path between the root and a node."
+        },
+        {
+          "rfc": 99003,
+          "section": "6.1",
+          "quote": "the proposed TAAF encodes the topology in the addresses themselves, which enables stateless forwarding, but if used beyond the PASA Domain it exposes the internal topology."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe a PASA address"
+      ],
+      "entities_involved": [
+        "attacker",
+        "any PASA node"
+      ],
+      "mitigation": "Use opaque addresses for external communications (e.g., [RFC7217]) to conceal topology information.",
+      "fingerprint": "b3e4f098a08bd6d73639f3b48a9e8d548c6569df03c47b4b5d7b5b562df0631d"
+    },
+    {
+      "id": "4c7a120d-6969-4425-b18b-e9f4ce78db45",
+      "technique_name": "Topology Exposure via TAAF Addresses",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An external observer captures a packet with a PASA address (e.g., 2001:db8::2B). Step 2: The observer decodes the PASA address using the TAAF algorithm, revealing the tree path (e.g., 1 -> 10 -> 1010 -> 101011). Step 3: The internal network topology is exposed, enabling targeted attacks. The specification only recommends opaque addresses but does not mandate validation of external address usage.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "14",
+          "quote": "Depending on the AAF, the algorithmically built addresses may reveal topology information outside the PASA Domain. In particular the Tree Assignment Function (TAAF) proposed in this specification reveals the path between the root and a node."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe packets leaving the PASA Domain"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Root",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Use opaque addresses (e.g., [RFC7217]) for external communications to conceal topology.",
+      "fingerprint": "29abef0b6d9563050a1090fd8b7999e555dbbd65fa110ad50afcd42e69fa5dc4"
+    },
+    {
+      "id": "00b425f3-16a6-4e6e-b239-44014c29e167",
+      "technique_name": "Topology Exposure via TAAF Addresses",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An external observer captures a packet with a PASA address (e.g., 2001:db8::2B). Step 2: The observer knows the TAAF algorithm and decodes the binary address (b101011). Step 3: By analyzing the trailing bit '1' (host) and preceding bits, the observer reconstructs the path: 1 -> 10 -> 1010 -> 101011, revealing the internal tree topology. Step 4: This information can be used to target specific nodes or understand network structure.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "14",
+          "quote": "the algorithmically built addresses may reveal topology information outside the PASA Domain. In particular the Tree Assignment Function (TAAF) proposed in this specification reveals the path between the root and a node."
+        },
+        {
+          "rfc": 99003,
+          "section": "6.1",
+          "quote": "the proposed TAAF encodes the topology in the addresses themselves, which enables stateless forwarding, but if used beyond the PASA Domain it exposes the internal topology."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe packets leaving the PASA Domain",
+        "attacker knows the TAAF algorithm"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Root",
+        "PASA Host"
+      ],
+      "mitigation": "Use opaque addresses for external communications (e.g., [RFC7217]) to conceal the internal topology.",
+      "fingerprint": "3ef1674e47f157b0f91d8a9456b3b70fc84685ba70df15647d54b40c335e7fb5"
+    },
+    {
+      "id": "9380f0b7-8f0f-40eb-be71-a176ed547394",
+      "technique_name": "PASA Topology Exposure via Address Encoding",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: Attacker obtains a PASA address (e.g., via passive sniffing or from external communication). Step 2: Using the TAAF algorithm, the attacker decodes the address to reveal the tree path (e.g., address 0x2B = b101011 reveals path 1->10->1010->101011). Step 3: Attacker uses topology knowledge to target specific nodes or perform more effective attacks (e.g., selective jamming, traffic analysis). This downgrades privacy and can facilitate further attacks.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "14",
+          "quote": "the algorithmically built addresses may reveal topology information outside the PASA Domain. In particular the Tree Assignment Function (TAAF) proposed in this specification reveals the path between the root and a node."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe PASA addresses",
+        "TAAF is used"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Root",
+        "PASA Router",
+        "PASA Host"
+      ],
+      "mitigation": "Use opaque addresses for external communications (e.g., [RFC7217]) to conceal topology.",
+      "fingerprint": "a1dd6edc003f94340998dfc7e0f950e14305a6a1217a0a1f692e65400ce97df8"
+    },
+    {
+      "id": "69f5816e-78f0-4c67-8764-c75a56ab7015",
+      "technique_name": "Address Exhaustion via Impersonation",
+      "category": "InformationLeak",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An attacker learns the address assignment function (AAF) and the limited address space (e.g., due to small address size). Step 2: The attacker impersonates multiple nodes by sending multiple registration requests to a PASA Router. Step 3: The router assigns addresses to each request, exhausting the available address pool. Step 4: Legitimate nodes cannot obtain addresses, causing denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "A rogue node may leverage on this knowledge to carry out address exhaustion attacks by impersonating different nodes and performing multiple registrations to specific PASA Routers."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send NS messages with GAAO to a PASA Router",
+        "attacker knows the AAF and address space limitations"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router"
+      ],
+      "mitigation": "Use cryptographic signatures (e.g., SEND as per RFC 3971) to authenticate registration requests. Implement rate limiting or per-node registration limits.",
+      "fingerprint": "d5b9a2ca9de69a4c41dc8d9b2451bbaded56b8f4e6eed8719f1d2112f08a980e"
+    },
+    {
+      "id": "ee5bbfa0-d203-4249-80e3-5e04f718875f",
+      "technique_name": "Denial of Service via Invalid PASA-6LoRH Size Field",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: Attacker sends a packet with a PASA-6LoRH header where the Size field indicates a length larger than the actual packet. Step 2: The receiving node attempts to read beyond the packet boundaries, causing a parsing error or crash. Step 3: This disrupts service on the receiving node.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "8.2",
+          "quote": "Size: indicates the length of the PASA address in octets. The length N equals Size plus 1, which indicates that the length of the PASA address in PASA-6LoRH is at least 1 octet and no more than 8 octets."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets to PASA Domain"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA node"
+      ],
+      "mitigation": "Validate the Size field against actual packet length before processing; drop malformed packets.",
+      "fingerprint": "78f4623575175ad9eef01cb5b30aac5ca30b6f613059a5ffa0c5bf6425f61175"
+    },
+    {
+      "id": "c9101f3a-7897-41ae-b5db-c2b24c80dbcf",
+      "technique_name": "Topology Discovery Leading to Targeted Attacks",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: Attacker obtains a PASA address from external communication (e.g., 2001:db8::2B). Step 2: Attacker analyzes the address bits to infer the network topology (e.g., path from root to node). Step 3: Attacker uses this information to target specific nodes or links for DoS attacks, such as flooding a critical router.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "14",
+          "quote": "the algorithmically built addresses may reveal topology information outside the PASA Domain. In particular the Tree Assignment Function (TAAF) proposed in this specification reveals the path between the root and a node."
+        }
+      ],
+      "prerequisites": [
+        "attacker can observe external IPv6 addresses from PASA Domain"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA nodes"
+      ],
+      "mitigation": "Use opaque addresses for external communications (e.g., [RFC7217]) to conceal topology.",
+      "fingerprint": "cebff6e2049f390c41694e1a212ad90a6dc0f2f67d14abec5d5f1da7cf23aab1"
+    },
+    {
+      "id": "caf1b9c5-e98e-410d-a524-d1deec14228b",
+      "technique_name": "Re-registration Race Condition",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: A node reboots and sends a re-registration NS with its previous address. Step 2: Simultaneously, an attacker sends a registration for the same address. Step 3: The parent router processes both requests concurrently, potentially accepting the attacker's registration and causing the legitimate node to be denied service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "A node that, for any reason, reboots does not need to restart the whole procedure. ... it can just re-register the previously obtained address."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "node reboots and re-registers",
+        "router does not serialize registration processing"
+      ],
+      "entities_involved": [
+        "PASA Router",
+        "PASA Host",
+        "attacker"
+      ],
+      "mitigation": "Implement locking or sequence numbers to ensure that re-registrations are processed atomically and that the original owner is verified.",
+      "fingerprint": "21fb12cf48ec9d9d0bffb087a04d4f87cf6eef948d15ff6704af2669a3f475f6"
+    },
+    {
+      "id": "11ba80c1-3cfe-4a16-b5b8-df7bc677ae02",
+      "technique_name": "Forwarding Loop via Address Manipulation",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker crafts a packet with a PASA destination address that causes a forwarding loop. Step 2: The packet is forwarded between parent and child nodes repeatedly due to ambiguous length or prefix matching. Step 3: This consumes bandwidth and processing resources, potentially causing network congestion.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "7.1",
+          "quote": "If any exception happens in the above steps, drop the packet and send an ICMPv6 'No Route to Host' notification back to the source address."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send packets with arbitrary PASA addresses"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA routers"
+      ],
+      "mitigation": "Implement loop detection mechanisms and rate-limit ICMP error messages.",
+      "fingerprint": "a1518313b8f08fa87abf3ab61a01c407c1630dbe83df5aaa0e6d626b106f2ed7"
+    },
+    {
+      "id": "078fed79-050d-46b8-a7db-96c951715ef2",
+      "technique_name": "PASA Downgrade via Forced Re-registration",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: Attacker on-path sends forged Neighbor Solicitation (NS) with GAAO to a PASA node, impersonating its parent. Step 2: The node re-registers with the attacker, obtaining a different address or losing its current address. Step 3: This forces the node to renumber, potentially disrupting communication and downgrading to a less stable state. The attacker can also assign an address that causes misrouting.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "10",
+          "quote": "When a PASA node bootstraps, and it has address configuration state in its non-volatile memory, it will re-register the address to its parent using [RFC8505] procedures."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "no authentication of ND messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA node",
+        "PASA parent"
+      ],
+      "mitigation": "Use SEND [RFC3971] or similar to authenticate ND messages and prevent spoofing.",
+      "fingerprint": "209b10a9d2cea17fc35d59dc47ba2307b2ea08b36740485d9706e44ba5dfa38c"
+    },
+    {
+      "id": "52f77828-fe3e-4238-9192-2aa07d2533be",
+      "technique_name": "PASA Downgrade via Invalid PASA-6LoRH Header",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker on-path crafts a packet with a malformed PASA-6LoRH header (e.g., invalid Size or reserved bits). Step 2: The receiving node, per specification, MUST ignore reserved bits but may mishandle invalid Size. Step 3: This can cause the node to drop packets or misinterpret the destination address, leading to denial of service or misrouting, effectively downgrading the forwarding capability.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "8.2",
+          "quote": "Reserved (Rsvd): Reserved for future use. It MUST be initialized to zero by the sender and MUST be ignored by the receiver."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "node implements PASA-6LoRH processing"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA node"
+      ],
+      "mitigation": "Strict validation of PASA-6LoRH header fields; drop packets with invalid Size or non-zero reserved bits.",
+      "fingerprint": "e19b272dc9135d54d36412cf318cf6ed139c3aff6e3e215ee48e38545b40596c"
+    },
+    {
+      "id": "d376bca9-d734-4164-9166-946640f87643",
+      "technique_name": "Broadcast Storm via Multicast RS Flooding",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker sends a high volume of Router Solicitation (RS) messages to the all-routers multicast address. Step 2: All PASA Routers respond with Router Advertisements (RA), causing a flood of multicast traffic. Step 3: Network bandwidth is consumed, potentially causing congestion and denial of service.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "it will multicast a Routing Solicitation (RS) and may receive one or more unicast Routing Advertisement (RA) messages from potential parents."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send multicast messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Routers"
+      ],
+      "mitigation": "Implement rate limiting on RS messages; use multicast suppression techniques.",
+      "fingerprint": "70efac0df1274cfa56e8bbd166db64920b351c695aa88292d2614fe974ae4aa0"
+    },
+    {
+      "id": "c1817c39-9374-4b7c-8d19-45ac81a006d6",
+      "technique_name": "Re-registration with Stale State",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: A PASA node reboots and attempts to re-register its previously assigned address using [RFC8505] procedures. Step 2: If the parent has lost state (e.g., due to reboot or memory corruption), it may reject the registration or assign a conflicting address. Step 3: This can lead to address conflicts or denial of service. Step 4: An attacker could exploit this by forcing a node to reboot and then intercepting its re-registration.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "A node that, for any reason, reboots does not need to restart the whole procedure. ... it can just re-register the previously obtained address."
+        },
+        {
+          "rfc": 99003,
+          "section": "6.1",
+          "quote": "These two indexes MUST be stored in non-volatile memory along with address assignment state, so that in case of reboot a PASA-Router can continue its role without disrupting the addressing."
+        }
+      ],
+      "prerequisites": [
+        "attacker can cause a node to reboot",
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "attacker",
+        "rebooting node",
+        "parent router"
+      ],
+      "mitigation": "Ensure robust non-volatile storage of state. Use registration ownership verifiers (ROVR) to authenticate re-registrations. Implement timeout and conflict detection mechanisms.",
+      "fingerprint": "56183a1d91b2f0b1241ad8f52b2a8e89acacb0fdf24cfdba32eae4b941fcd7d8"
+    },
+    {
+      "id": "d99b856f-90e9-4578-8c52-6047bb4210aa",
+      "technique_name": "Replay Attack on Address Registration",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.7,
+      "description": "Step 1: Attacker captures a legitimate NS with GAAO message from a node requesting an address. Step 2: Attacker replays the message to the PASA Router. Step 3: The router processes the duplicate registration, potentially causing address conflicts or resource exhaustion.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "13",
+          "quote": "the link layer SHOULD provide protection to prevent potential attacks, for instance using [MACSec]."
+        }
+      ],
+      "prerequisites": [
+        "attacker can eavesdrop on registration messages"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA Router",
+        "legitimate node"
+      ],
+      "mitigation": "Use timestamps or nonces in registration messages; enable link-layer security (e.g., MACSec).",
+      "fingerprint": "3b022241754c51688be073df1f740f69faa0fc81cd18df016942a7e4731edaae"
+    },
+    {
+      "id": "686355e0-56a8-4b5c-86ca-f7da5d58e37b",
+      "technique_name": "Re-registration Flood after Reboot",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.6,
+      "description": "Step 1: Attacker forces multiple nodes to reboot simultaneously (e.g., by power cycling). Step 2: Each node re-registers its address using NS messages, causing a burst of traffic. Step 3: The PASA Router may become overwhelmed, dropping legitimate registrations.",
+      "rfc_references": [
+        {
+          "rfc": 99003,
+          "section": "5",
+          "quote": "A node that, for any reason, reboots does not need to restart the whole procedure... it can just re-register the previously obtained address."
+        }
+      ],
+      "prerequisites": [
+        "attacker can cause node reboots"
+      ],
+      "entities_involved": [
+        "attacker",
+        "PASA nodes",
+        "PASA Router"
+      ],
+      "mitigation": "Use staggered re-registration timers; implement rate limiting on registration requests.",
+      "fingerprint": "85fa47936704feb968d1790fc3f35cf36f0f6a13bd0cfa8c4110cdd9f253df6d"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-04T08:44:38.748828+00:00",
+    "model_used": "deepseek-chat",
+    "total_tokens_used": 208385,
+    "analysis_duration_secs": 190.01312025,
+    "run_id": 11,
+    "input_hash": "788145e2047658ba88c936adbf28aa216de825bafe0c2314a6287171e9f7b278",
+    "prompt_version": "1.0.0",
+    "ietf_draft_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 32768,
+    "schema_version": 2
+  }
+}

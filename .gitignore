@@ -1,1 +1,5 @@
 /target
+/ietf-draft-analyzer.db
+/ietf-draft-analyzer.db-shm
+/ietf-draft-analyzer.db-wal
+/ssh-pocs/ssh_timing_enum

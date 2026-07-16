@@ -366,10 +366,11 @@ fn extract_sentence_around(text: &str, pos: usize) -> String {
         .map(|p| pos + p + 1)
         .unwrap_or(text.len());
     let sentence = text[start..end].trim();
-    if sentence.len() <= 200 {
+    if sentence.chars().count() <= 200 {
         sentence.to_string()
     } else {
-        format!("{}...", &sentence[..197])
+        let head: String = sentence.chars().take(197).collect();
+        format!("{}...", head)
     }
 }
 
@@ -403,5 +404,16 @@ mod tests {
         let text = "First sentence. This mentions RFC 793 in context. Third sentence.";
         let result = extract_sentence_around(text, text.find("RFC 793").unwrap());
         assert!(result.contains("RFC 793"));
+    }
+
+    #[test]
+    fn test_extract_sentence_around_multibyte_no_panic() {
+        // A long sentence (>200 chars) full of multi-byte characters must
+        // truncate on a char boundary rather than panicking.
+        let long = "café ".repeat(100); // ~500 chars, no '.' inside
+        let text = format!("{}RFC 793 naïve façade", long);
+        let pos = text.find("RFC 793").unwrap();
+        let result = extract_sentence_around(&text, pos);
+        assert!(result.ends_with("..."));
     }
 }

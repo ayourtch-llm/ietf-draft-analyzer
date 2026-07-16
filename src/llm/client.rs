@@ -162,12 +162,8 @@ impl LlmClient {
         malformed: &str,
         original_usage: TokenUsage,
     ) -> Result<(T, TokenUsage)> {
-        // Truncate to last 3000 chars if very long (the end usually has the issue)
-        let snippet = if malformed.len() > 4000 {
-            &malformed[..4000]
-        } else {
-            malformed
-        };
+        // Truncate if very long (the start usually has enough to reconstruct)
+        let snippet = truncate_chars(malformed, 4000);
         let messages = vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -195,11 +191,7 @@ impl LlmClient {
 
     /// Ask the LLM to reformat malformed text as valid JSON, returning raw text.
     async fn reformat_json_raw(&self, malformed: &str) -> Result<(String, TokenUsage)> {
-        let snippet = if malformed.len() > 4000 {
-            &malformed[..4000]
-        } else {
-            malformed
-        };
+        let snippet = truncate_chars(malformed, 4000);
         let messages = vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -369,10 +361,11 @@ impl LlmClient {
                             raw_content.len(),
                             thinking_len
                         );
-                        // Retry once with a nudge — sometimes models need encouragement
+                        // Retry with a nudge — sometimes models need encouragement.
+                        // The loop head already increments `attempts`, so don't
+                        // increment again here (that would burn two attempts per try).
                         if attempts < max_attempts {
                             tracing::info!("Retrying with prompt nudge...");
-                            attempts += 1;
                             continue;
                         }
                         return Err(RfcAnalyzerError::LlmParse {
@@ -480,6 +473,16 @@ impl LlmClient {
     /// Get the cancellation token.
     pub fn cancel_token(&self) -> &CancellationToken {
         &self.cancel_token
+    }
+}
+
+/// Truncate a string to at most `max_chars` characters, on a char boundary.
+/// Byte slicing (`&s[..n]`) panics when `n` lands inside a multi-byte UTF-8
+/// character, which LLM output (smart quotes, dashes, non-ASCII) can trigger.
+fn truncate_chars(s: &str, max_chars: usize) -> &str {
+    match s.char_indices().nth(max_chars) {
+        Some((byte_idx, _)) => &s[..byte_idx],
+        None => s,
     }
 }
 
@@ -651,6 +654,20 @@ mod tests {
             result,
             Err(RfcAnalyzerError::LlmContentRefusal { .. })
         ));
+    }
+
+    #[test]
+    fn test_truncate_chars_multibyte_no_panic() {
+        // Multi-byte chars straddling the cut point must not panic.
+        let s = "café—“smart”—naïve ".repeat(1000);
+        let out = truncate_chars(&s, 4000);
+        assert!(out.chars().count() <= 4000);
+        assert!(s.starts_with(out));
+    }
+
+    #[test]
+    fn test_truncate_chars_shorter_than_max() {
+        assert_eq!(truncate_chars("hello", 4000), "hello");
     }
 
     #[tokio::test(flavor = "current_thread")]

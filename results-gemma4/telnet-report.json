@@ -1,0 +1,410 @@
+{
+  "protocol_name": "telnet",
+  "rfcs_analyzed": [
+    854,
+    855,
+    857,
+    858,
+    1184
+  ],
+  "dependency_graph_summary": {
+    "total_nodes": 5,
+    "total_edges": 0,
+    "connected_components": 5,
+    "most_referenced_rfcs": []
+  },
+  "state_machines_count": 3,
+  "security_leads": [
+    {
+      "id": "f145be87-b63c-4389-a005-48e14a79f1a0",
+      "technique_name": "Unbounded SLC Triplet List",
+      "category": "OversizedPayload",
+      "severity": "high",
+      "confidence": 0.9,
+      "description": "Step 1: An attacker (client or server) initiates a LINEMODE sub-negotiation. Step 2: The attacker sends an IAC SB LINEMODE SLC command. Step 3: Instead of a reasonable number of octet triplets, the attacker sends an extremely large number of triplets before the IAC SE terminator. Step 4: The receiver, if it allocates memory based on the incoming stream or fails to enforce a maximum limit on the number of triplets processed per command, may suffer from memory exhaustion (DoS) or a heap overflow if the list is copied into a fixed-size buffer.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "IAC SB LINEMODE SLC <list of octet triplets> IAC SE"
+        }
+      ],
+      "prerequisites": [
+        "LINEMODE option must be negotiated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement a strict upper bound on the number of octet triplets allowed in a single SLC sub-negotiation command and reject any command exceeding this limit.",
+      "fingerprint": "e6751c9e3efc8dc5aa78da799bf4b0138c1d1c8c6f798f339cca5b2b99ea9097"
+    },
+    {
+      "id": "0009cfaa-9949-441e-8285-d52adf07cab9",
+      "technique_name": "Cleartext Negotiation Downgrade",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An on-path attacker intercepts the Telnet negotiation process between the client and server. Step 2: The attacker intercepts 'IAC DO LINEMODE' or 'IAC WILL LINEMODE' messages and replaces them with 'IAC DONT LINEMODE' or 'IAC WONT LINEMODE'. Step 3: The client and server are forced to operate in the default mode (WONT LINEMODE / DONT LINEMODE), disabling local line editing and signal trapping. Step 4: This forces the connection into a character-at-a-time mode, which may be used to facilitate other attacks (e.g., keystroke logging or manipulating the user's input stream more granularly) or simply to degrade the user experience and bypass local security controls provided by the client's line-editing implementation.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "3",
+          "quote": "The default specification for this option is WONT LINEMODE DONT LINEMODE meaning there will not be any subnegotiation of the mode of the connection."
+        },
+        {
+          "rfc": 1184,
+          "section": "2.1",
+          "quote": "IAC WONT LINEMODE The sender of this command DEMANDS that sub-negotiation of the editing/signaling status not be allowed."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use a secure wrapper like SSH or TLS (via Telnet-over-TLS) to ensure the integrity and authenticity of the negotiation phase, preventing on-path attackers from modifying option negotiation commands.",
+      "fingerprint": "e0399bb6ef4f94e93fb67f2798aad7aa11649f00916629388272a3bbab25edef"
+    },
+    {
+      "id": "c8a8f064-31f5-4724-b3ff-ca5795cf49f2",
+      "technique_name": "Replay of Special Character (SLC) Settings",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An on-path attacker captures a 'LINEMODE SLC' command used to define special characters (e.g., setting the Erase Character SLC_EC to a specific value). Step 2: The attacker replays this command later in the session. Step 3: The client or server updates its special character mapping based on the replayed command. This can be used to disrupt the user's ability to edit lines or to change how signals (like Interrupt Process) are triggered, potentially leading to a denial of service for the user's control over the session.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.4",
+          "quote": "The sender of this command REQUESTS that the list of octet triplets be used to set the local character to be used to send to perform the specified function."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "LINEMODE option has been negotiated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use a secure transport layer that ensures message integrity and freshness.",
+      "fingerprint": "f67a841d8f20b29cd4fec3670961e3fc1da71e1e11a44c2c770110d41595b04b"
+    },
+    {
+      "id": "44021106-cc5f-40f5-bb5e-35162a3f7139",
+      "technique_name": "Replay of Mode Configuration Commands",
+      "category": "ReplayAttack",
+      "severity": "medium",
+      "confidence": 0.9,
+      "description": "Step 1: An on-path attacker captures a valid 'LINEMODE MODE' sub-negotiation command sent from the server to the client (e.g., a command switching the client to a mode where EDIT is disabled and TRAPSIG is disabled). Step 2: At a later point in the session, the attacker replays this captured packet. Step 3: The client, seeing a validly formatted MODE command, switches its internal state to the replayed mode, potentially disabling local line editing or signal trapping without the server's current intent.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "When the client side of a connection receives a MODE command, it MUST agree with at least the state of the EDIT and TRAPSIG bits... If a MODE command is received that is different from the current mode mask, then a reply is sent..."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "LINEMODE option has been negotiated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement the protocol over a secure channel (like TLS/SSL via Telnet-S) that provides sequence numbers and encryption to prevent the injection and replay of packets.",
+      "fingerprint": "557e81762c142933cb9c1e6e8a33ad53fe213b9d5485d567372ab5f1f765e9be"
+    },
+    {
+      "id": "b07cb2f9-9f89-4189-99d8-0dfbae877713",
+      "technique_name": "SLC State Desynchronization via Unacknowledged Requests",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: The client and server negotiate LINEMODE. Step 2: The server sends an SLC request to change a special character (e.g., changing the Erase Character SLC_EC). Step 3: The client sends a response to the server. According to Section 5.5, if the SLC_LEVELBITS are the same as the current level bits, but the value is different and the SLC_ACK bit is set, the server ignores the command while the client switches to the new value. Step 4: This creates a window where the client has updated its internal state (the special character mapping) while the server believes the request was ignored or is still pending. Step 5: An attacker can use this state discrepancy to send characters that the client interprets as special characters (triggering local actions) while the server interprets them as literal data, or vice versa.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "If the SLC_LEVELBITS are the same as the current level bits, but the value is different and the SLC_ACK bit is set, no reply is generated. On the server side, the command is ignored, and on the client side, a switch is made to the new value."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client and server support LINEMODE SLC"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Ensure that state changes for special characters are always acknowledged by both parties and that the server does not ignore commands that result in a state change on the client side.",
+      "fingerprint": "a9f89b08cf794b8413df31bfd1e9c9b61c1ccefc7d4ec3fd1815d122391da234"
+    },
+    {
+      "id": "ae741a3a-c188-42ee-90e6-2d80c05b73f8",
+      "technique_name": "Linemode Suboption Mode Downgrade",
+      "category": "Downgrade",
+      "severity": "medium",
+      "confidence": 0.85,
+      "description": "Step 1: An on-path attacker intercepts the 'IAC SB LINEMODE MODE mask IAC SE' command sent by the server to the client. Step 2: The attacker modifies the 'mask' to unset the EDIT or TRAPSIG bits. Step 3: The client receives the modified mask. While the RFC states the client MUST agree with the state of EDIT and TRAPSIG, the attacker can intercept the client's response (the confirmation/subset mask) and modify it to match the server's requested (downgraded) mask. Step 4: The server is misled into believing the client has agreed to a lower-functionality mode (e.g., disabling local signal trapping), potentially allowing the attacker to inject characters that would otherwise be trapped and processed locally by the client.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "When the client side of a connection receives a MODE command, it MUST agree with at least the state of the EDIT and TRAPSIG bits... If a MODE command is received that is different from the current mode mask, then a reply is sent with either the new mode mask and the MODE_ACK bit set, or a subset of the new mode mask."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement cryptographic integrity checks for the session negotiation, as the protocol itself provides no mechanism to verify that the mode mask was not tampered with in transit.",
+      "fingerprint": "3d110b464e47a234f36d219d82ad163ed4b4ac2e34395ea4b84cc0e38f569daf"
+    },
+    {
+      "id": "a78ff8e3-b853-472d-86ff-a3346ff2b0b2",
+      "technique_name": "Asymmetric State Synchronization (Mode Conflict)",
+      "category": "StateConfusion",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: The server sends a MODE command to the client to change the connection mode (e.g., switching from EDIT to 0). Step 2: The client receives the MODE command but, due to the logic in Section 2.2, if the client receives a MODE command with the EDIT or TRAPSIG bits set, it may not clear them in the response. Step 3: If the client and server disagree on the final state (e.g., the server believes the connection is in a mode where the client is not editing, but the client continues to edit), the state machine becomes desynchronized. Step 4: An attacker can exploit this by sending carefully timed MODE commands or manipulating responses to ensure the server believes the client is in a different state than it actually is, potentially leading to the injection of characters that the server assumes are raw but the client treats as control characters, or vice versa.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "If a MODE command is received that is different from the current mode mask, then a reply is sent with either the new mode mask and the MODE_ACK bit set, or a subset of the new mode mask. The only exception is that if the server receives a MODE with either the EDIT or TRAPSIG bits not set, it may set the EDIT and TRAPSIG bits in the response, and if the client receives a MODE with the EDIT or TRAPSIG bits set, it may not clear them in the response."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "client and server support LINEMODE"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement a strict handshake for mode changes where both parties must explicitly acknowledge the final state before the state transition is considered complete, and remove the 'exception' that allows parties to unilaterally ignore or modify the requested bits.",
+      "fingerprint": "6ec1d665c4e91a06e45f97eed377b52853704190196870d9c4c0e8e3cd4c7bcc"
+    },
+    {
+      "id": "242c90e9-da06-4188-a3d7-245458459311",
+      "technique_name": "Ambiguous Option State Coupling",
+      "category": "ImplementationAmbiguity",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: RFC 1184 describes a historical pattern where some implementations coupled the SUPPRESS-GO-AHEAD (SGA) option with the ECHO option to determine the operational mode (character-at-a-time vs. line-at-a-time). Step 2: RFC 1184 explicitly states that this 'reverse reading' (inferring line mode from the absence of ECHO or SGA) is problematic because it is not what the SGA option was intended to mean. Step 3: Because RFC 1184 identifies this as a problem but does not explicitly forbid the behavior in legacy systems, an attacker can exploit the difference in how two endpoints interpret the absence of SGA/ECHO. If one endpoint assumes 'line mode' (local editing) based on the absence of these options while the other assumes 'character mode' (remote editing), the local terminal may buffer input or fail to send critical control characters, leading to a denial of service or unexpected command execution if the buffer is flushed in an unexpected way.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "4",
+          "quote": "The reverse reading of this is that without the ECHO option or the SUPPRESS-GO-AHEAD option, you are in line at a time mode, implying local line editing. This has the obvious problem that that is not what the SUPPRESS-GO-AHEAD option is supposed to mean."
+        },
+        {
+          "rfc": 858,
+          "section": "5",
+          "quote": "it must be suppressed in both directions independently."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path or controlling one endpoint",
+        "endpoints use legacy Telnet implementations that may infer mode based on the absence of options"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should strictly adhere to the LINEMODE option (RFC 1184) for determining line editing state rather than inferring state from the absence of other options like ECHO or SUPPRESS-GO-AHEAD.",
+      "fingerprint": "24e344e4915e6f8bb9d805842422900ad2145c4e3624c6fed62128a33ec329ce"
+    },
+    {
+      "id": "1475ab7e-447e-47fa-9225-689c17c29b17",
+      "technique_name": "Resource Exhaustion via SLC Negotiation Loop",
+      "category": "DenialOfService",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker (client or server) initiates a Special Character (SLC) negotiation. Step 2: The attacker sends a value that the peer disagrees with. Step 3: According to RFC 1184 Section 5.5, if the peer disagrees, it sends a response with what it thinks the value should be. Step 4: The attacker immediately responds with a different value at the same or lower level. Step 5: This creates a potential for an infinite loop of negotiation packets (SLC request -> disagreement -> response -> disagreement), consuming CPU and network bandwidth on both endpoints.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.5",
+          "quote": "If we don't agree, we send a response with what we think the value should be. The SLC_ACK bit is NOT set in this case. You may only disagree with a value by sending a different value at a lower level."
+        }
+      ],
+      "prerequisites": [
+        "LINEMODE option must be negotiated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement a maximum retry limit or a 'back-off' mechanism for SLC negotiations of the same character to prevent infinite oscillation.",
+      "fingerprint": "32c8b5657eaeda0e29ee205cf629170a7482934f119e95614c204f8323e5ee11"
+    },
+    {
+      "id": "cfac7585-a5a2-4124-aa59-092383946e0d",
+      "technique_name": "Improper Validation of Subnegotiation State",
+      "category": "MissingValidation",
+      "severity": "medium",
+      "confidence": 0.8,
+      "description": "Step 1: An attacker (acting as a client or server) initiates a Telnet session. Step 2: The attacker sends subnegotiation commands for the LINEMODE option (e.g., SB LINEMODE DO/DONT FORWARDMASK) without first successfully negotiating the LINEMODE option via the standard WILL/DO negotiation process. Step 3: If the implementation fails to validate that the LINEMODE option is currently enabled/negotiated before processing the subnegotiation data, it may lead to unexpected state transitions, memory corruption (if buffers are pre-allocated based on negotiation), or logic errors in the terminal driver.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.7",
+          "quote": "At no time should \"SB LINEMODE DO/DONT FORWARDMASK\", be sent unless \"DO LINEMODE\" has been previously negotiated. At no time should \"SB LINEMODE WILL/WONT FORWARDMASK\", be sent unless \"WILL LINEMODE\" has been previously negotiated."
+        }
+      ],
+      "prerequisites": [
+        "attacker can send arbitrary Telnet command sequences"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement strict state validation to ensure that subnegotiation commands for a specific option are ignored or result in a protocol error if the base option has not been successfully negotiated as 'WILL' or 'DO'.",
+      "fingerprint": "a1fe316a839695dd27276b6e02a36e3e8a088d07bea8bcbb59d61a8668e3a49e"
+    },
+    {
+      "id": "90da18c1-ae78-48b7-b826-4d7125b2be07",
+      "technique_name": "Asynchronous State Transition Race",
+      "category": "RaceCondition",
+      "severity": "medium",
+      "confidence": 0.75,
+      "description": "Step 1: The server sends a MODE command (IAC SB LINEMODE MODE mask IAC SE) to change the client's editing/signaling status. Step 2: Simultaneously, the client sends data characters based on its current mode (e.g., in Local Line Editing mode, it buffers characters; in Remote Line Editing mode, it sends them immediately). Step 3: Because Telnet is a full-duplex stream, the server's MODE command may be in flight while the client is sending data based on the 'old' mode. Step 4: The server receives data that it expects to be processed according to the 'new' mode, but it was sent according to the 'old' mode, leading to a desynchronization of the input stream processing (e.g., the server receives a raw line it expected to be pre-edited, or receives characters it expected to be buffered).",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.2",
+          "quote": "Under normal operation, the server side of the connection will initiate mode changes, and the client will confirm the mode changes."
+        }
+      ],
+      "prerequisites": [
+        "full-duplex connection",
+        "server initiates a mode change"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implement a synchronization marker or a 'flush' mechanism (similar to the SLC_FLUSHIN/OUT bits) to ensure all pending data is transmitted and acknowledged before the mode transition takes effect.",
+      "fingerprint": "426ac7c0901113415d65188beede833787e249e465fc19cffa141dc50c16c451"
+    },
+    {
+      "id": "e3a39e2e-c57e-4253-8c73-52d622854cb0",
+      "technique_name": "Replay of Forward Mask Configuration",
+      "category": "ReplayAttack",
+      "severity": "low",
+      "confidence": 0.85,
+      "description": "Step 1: An on-path attacker captures a 'LINEMODE DO FORWARDMASK' command sent by the server. Step 2: The attacker replays this command. Step 3: The client is forced to forward buffered data based on the replayed mask, potentially causing fragmented or premature transmission of data that the user intended to edit locally, disrupting the user experience and the session state.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "2.3",
+          "quote": "The sender of this command request that the other side send any buffered data when any of the ASCII characters defined by the bit mask are received."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path",
+        "LINEMODE option has been negotiated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Use a secure transport layer to prevent unauthorized command injection.",
+      "fingerprint": "47fa0edb1875d55aca5b292db1b14d871cadba3bc0b48f810f4daf9ca29e6d24"
+    },
+    {
+      "id": "910bae5d-199e-4aeb-9a8f-cad8a99b0762",
+      "technique_name": "Missing Validation of SLC Level Bits",
+      "category": "MissingValidation",
+      "severity": "low",
+      "confidence": 0.75,
+      "description": "Step 1: A party sends an SLC (Special Character) command to change a character setting. Step 2: The attacker sends a value with an invalid or unexpected SLC_LEVELBIT (e.g., a value outside the defined DEFAULT, VALUE, CANT_CHANGE, NOSUPPORT range). Step 3: If the receiver does not validate the level bits before processing the state transition in the SLC state machine, it may lead to an undefined state or incorrect handling of special characters, potentially bypassing signal trapping or line editing logic.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.9",
+          "quote": "Levels: DEFAULT, VALUE, CANT_CHANGE, NOSUPPORT"
+        }
+      ],
+      "prerequisites": [
+        "attacker is a Telnet client or server"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Explicitly validate that the SLC_LEVELBITS provided in the subnegotiation sequence match one of the four defined levels before updating the internal state machine.",
+      "fingerprint": "da0795f363879c69f77c64fe7c261200fdd2b930b3d1e30171d59876a3af67fc"
+    },
+    {
+      "id": "764e98e1-1b12-4288-a96f-80c023e12f91",
+      "technique_name": "Input Stream Exhaustion via FORWARDMASK",
+      "category": "DenialOfService",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: A server sends a FORWARDMASK that includes a wide range of characters (e.g., all control characters). Step 2: The client is required to forward data when it sees any character in the FORWARDMASK. Step 3: If the client implementation buffers input locally for EDIT mode, an attacker can send a FORWARDMASK that forces the client to constantly flush its buffer to the server, bypassing local editing and potentially overwhelming the server's input processing or the client's transmission logic with a high volume of small packets.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "5.6",
+          "quote": "the client side is required to forward data when it sees one of SLC_FORW1, SLC_FORW2, or FORWARDMASK characters... the server side sent a FORWARDMASK that asked for data to be forwarded on the first 20 control characters"
+        }
+      ],
+      "prerequisites": [
+        "LINEMODE and FORWARDMASK must be negotiated"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Client implementations should enforce reasonable limits on the size and scope of the FORWARDMASK and avoid excessive flushing of small buffers.",
+      "fingerprint": "1d68a034e0458055dac19ac5af6c33cbef1c6f09d9d317c94b18a9d4b3387049"
+    },
+    {
+      "id": "05f51afc-f63f-48ad-8c13-7d53dbb33663",
+      "technique_name": "Side-Channel Information Leak via Option Negotiation State",
+      "category": "InformationLeak",
+      "severity": "low",
+      "confidence": 0.7,
+      "description": "Step 1: An attacker observes the Telnet negotiation process for the SUPPRESS-GO-AHEAD (SGA) and ECHO options. Step 2: Based on the discussion in RFC 1184, some implementations infer the operational mode (local vs. remote line editing) by observing whether ECHO and SGA are both enabled. Step 3: By observing the negotiation of these options, an on-path attacker can infer the capabilities or the specific implementation version of the remote host (e.g., whether it is a 'supercomputer' or a specific BSD-based implementation mentioned in RFC 1184), as different implementations have different default behaviors and coupling strategies for these options.",
+      "rfc_references": [
+        {
+          "rfc": 1184,
+          "section": "4",
+          "quote": "the 4.3 BSD tape includes a version of Telnet that attempts to do this through recognition of the state of the ECHO and SUPRESS-GO-AHEAD options; other implementations do this recognition purely through the ECHO option."
+        }
+      ],
+      "prerequisites": [
+        "attacker is on-path"
+      ],
+      "entities_involved": [
+        "client",
+        "server"
+      ],
+      "mitigation": "Implementations should use the explicit LINEMODE option (RFC 1184) rather than inferring state from the combination of ECHO and SGA, and should avoid leaking implementation-specific negotiation patterns.",
+      "fingerprint": "8f6e33c41195d1f364fac81089b346c5a44306d1715938c77d9e50782ade95b1"
+    }
+  ],
+  "metadata": {
+    "generated_at": "2026-05-02T19:33:45.801245+00:00",
+    "model_used": "gemma-4-31B-it-UD-Q8_K_XL.gguf",
+    "total_tokens_used": 83380,
+    "analysis_duration_secs": 2173.067927583,
+    "run_id": 4,
+    "input_hash": "52ac3e8520f6441e1410b7aa9bc430f9807947634d5b6eff298978dcba5dca80",
+    "prompt_version": "1.0.0",
+    "ietf_draft_analyzer_version": "0.1.0",
+    "report_format": "json",
+    "temperature": 0.20000000298023224,
+    "max_tokens_per_request": 4096,
+    "schema_version": 2
+  }
+}

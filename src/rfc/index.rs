@@ -46,14 +46,15 @@ pub fn parse_rfc_index(content: &str) -> HashMap<u32, RfcIndexEntry> {
 
     for line in content.lines() {
         // New entry starts with 4-digit RFC number at the start
-        if line.len() >= 4 && line[..4].chars().all(|c| c.is_ascii_digit()) {
+        let first4: Option<&str> = line.get(..4);
+        if first4.is_some_and(|p| p.chars().all(|c| c.is_ascii_digit())) {
             // Save previous entry
             if let Some((num, _)) = current_entry.take()
                 && let Some(entry) = parse_index_entry(num, &current_text)
             {
                 entries.insert(num, entry);
             }
-            let num: u32 = line[..4].parse().unwrap_or(0);
+            let num: u32 = first4.unwrap().parse().unwrap_or(0);
             if num > 0 {
                 current_entry = Some((num, String::new()));
                 current_text = line.to_string();

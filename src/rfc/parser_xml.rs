@@ -351,10 +351,11 @@ fn extract_context_sentence(text: &str, xref: &CrossRef) -> String {
     for sentence in text.split('.') {
         if sentence.contains(&search_term) {
             let trimmed = sentence.trim();
-            if trimmed.len() <= 200 {
+            if trimmed.chars().count() <= 200 {
                 return format!("{}.", trimmed);
             }
-            return format!("{}...", &trimmed[..197]);
+            let head: String = trimmed.chars().take(197).collect();
+            return format!("{}...", head);
         }
     }
     String::new()
