@@ -11,14 +11,18 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
     let rfc = rfc.clone();
     conn.call(move |conn| {
         // Check if we already have this exact version
-        let existing_hash: Option<String> = conn
+        let existing: Option<(String, String)> = conn
             .query_row(
-                "SELECT content_hash FROM rfcs WHERE number = ?1",
+                "SELECT content_hash, parser_version FROM rfcs WHERE number = ?1",
                 [rfc.number.0],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        if existing_hash.as_deref() == Some(&rfc.content_hash) {
+        let parser_version = crate::rfc::parser_version(rfc.format);
+        if existing
+            .as_ref()
+            .is_some_and(|(hash, version)| hash == &rfc.content_hash && version == parser_version)
+        {
             return Ok(());
         }
 
@@ -46,9 +50,9 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
         // Upsert the RFC row
         tx.execute(
             "INSERT INTO rfcs (number, title, format, status, date,
-                raw_content, content_hash, obsoletes, updates,
+                raw_content, content_hash, parser_version, obsoletes, updates,
                 obsoleted_by, updated_by, references_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(number) DO UPDATE SET
                 title = excluded.title,
                 format = excluded.format,
@@ -56,6 +60,7 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
                 date = excluded.date,
                 raw_content = excluded.raw_content,
                 content_hash = excluded.content_hash,
+                parser_version = excluded.parser_version,
                 fetched_at = datetime('now'),
                 obsoletes = excluded.obsoletes,
                 updates = excluded.updates,
@@ -70,6 +75,7 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
                 rfc.date.to_string(),
                 compressed,
                 rfc.content_hash,
+                parser_version,
                 obsoletes_json,
                 updates_json,
                 obsoleted_by_json,
@@ -130,11 +136,35 @@ pub async fn upsert_rfc(conn: &Connection, rfc: &Rfc) -> Result<()> {
 pub async fn get_content_hash(conn: &Connection, rfc_number: u32) -> Result<Option<String>> {
     let result = conn
         .call(move |conn| {
-            let mut stmt = conn.prepare("SELECT content_hash FROM rfcs WHERE number = ?1")?;
-            let hash = stmt
-                .query_row([rfc_number], |row| row.get::<_, String>(0))
+            let mut stmt = conn.prepare(
+                "SELECT content_hash, format, parser_version
+                 FROM rfcs WHERE number = ?1",
+            )?;
+            let cached = stmt
+                .query_row([rfc_number], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })
                 .optional()?;
-            Ok(hash)
+            let Some((hash, format, stored_parser_version)) = cached else {
+                return Ok(None);
+            };
+            let current_parser_version = crate::rfc::parser_version_for_db_format(&format);
+            if current_parser_version == Some(stored_parser_version.as_str()) {
+                Ok(Some(hash))
+            } else {
+                tracing::info!(
+                    "RFC {} was parsed with version {} for format '{}'; current version is {:?}. Reparse required.",
+                    rfc_number,
+                    stored_parser_version,
+                    format,
+                    current_parser_version
+                );
+                Ok(None)
+            }
         })
         .await?;
     Ok(result)
@@ -526,6 +556,35 @@ mod tests {
         let loaded = get_rfc(&conn, 9293).await.unwrap().unwrap();
         // Title should be the original, not the modified one
         assert_eq!(loaded.title, "Transmission Control Protocol (TCP)");
+    }
+
+    #[tokio::test]
+    async fn test_stale_parser_version_forces_reparse() {
+        let conn = open_memory_database().await.unwrap();
+        let mut rfc = make_test_rfc();
+        upsert_rfc(&conn, &rfc).await.unwrap();
+
+        conn.call(|conn| {
+            conn.execute(
+                "UPDATE rfcs SET parser_version = 'legacy' WHERE number = 9293",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+        assert!(get_content_hash(&conn, 9293).await.unwrap().is_none());
+
+        rfc.title = "Reparsed Title".to_string();
+        upsert_rfc(&conn, &rfc).await.unwrap();
+
+        let loaded = get_rfc(&conn, 9293).await.unwrap().unwrap();
+        assert_eq!(loaded.title, "Reparsed Title");
+        assert_eq!(
+            get_content_hash(&conn, 9293).await.unwrap(),
+            Some("abc123def456".to_string())
+        );
     }
 
     #[tokio::test]

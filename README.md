@@ -162,11 +162,12 @@ ietf-draft-analyzer analyze tcp --min-severity medium -o tcp-leads.json
 ietf-draft-analyzer analyze tcp --categories missing_validation,replay_attack
 ```
 
-### Analyzing Internet-Drafts
+### Analyzing Internet-Drafts and HTML Standards
 
-Import a local Internet-Draft (XML or plain text) for security analysis.
-This is useful for reviewing work-in-progress specifications before
-they become RFCs.
+Import a local Internet-Draft (RFCXML or plain text), or an HTML
+specification from another standards body. This is useful for reviewing
+work-in-progress specifications before publication and for analyzing
+protocols that are not published through the IETF.
 
 ```bash
 # Download a draft
@@ -183,7 +184,24 @@ ietf-draft-analyzer analyze ech -o ech-report.json
 ietf-draft-analyzer reproduce ech --output-dir ech-pocs
 ```
 
-The `import` command accepts RFC 7991+ XML (preferred) or plain text.
+For example, import the OASIS MQTT 5.0 HTML specification:
+
+```bash
+curl -o mqtt-v5.0.html \
+  https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
+
+ietf-draft-analyzer import mqtt-v5.0.html -n 99100 --protocol mqtt
+ietf-draft-analyzer model mqtt
+ietf-draft-analyzer analyze mqtt -o mqtt-report.json
+```
+
+The `import` command accepts RFC 7991+ XML, plain text, or HTML. HTML
+documents are decoded using their declared character encoding and split
+on `h1` through `h6` headings. Tables, preformatted examples, inline
+normative language, internal links, and MQTT-style normative statement
+labels such as `[MQTT-3.1.0-1]` are retained in section text and
+provenance.
+
 The `--number` (`-n`) flag assigns an internal document number. The
 `--protocol` flag associates the document with a protocol name used by
 subsequent commands.
@@ -192,6 +210,11 @@ Internet-Drafts without the `pn` attribute on `<section>` elements
 (common before RFC Editor processing) are handled automatically by
 falling back to the `anchor` attribute or a sequential counter for
 section numbering.
+
+Parsed documents carry an internal parser version. When extraction logic
+changes, cached documents parsed by an older version are automatically
+reprocessed on the next map or import instead of silently reusing stale
+sections.
 
 ### Other Commands
 
@@ -359,7 +382,7 @@ src/
 ## Testing
 
 ```bash
-# Run all tests (104 tests)
+# Run all tests (127 tests plus one ignored real-network test)
 cargo test
 
 # Run with live RFC fetching (requires network)

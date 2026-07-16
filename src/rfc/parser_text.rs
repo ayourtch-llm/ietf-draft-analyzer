@@ -32,9 +32,41 @@ pub fn parse_text(rfc_number: u32, content: &str, content_hash: &str) -> Result<
 /// Extract the title from the first non-blank line(s) of the RFC.
 /// The title is usually centered near the top, after the header block.
 fn extract_title(content: &str) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+
+    // RFCs and Internet-Drafts place the centered title block immediately
+    // before Abstract (or, for documents without an abstract, Status of This
+    // Memo). Walking backward from that boundary avoids mistaking the
+    // multi-column author/header block for the title.
+    if let Some(boundary) = lines.iter().position(|line| {
+        matches!(
+            line.trim(),
+            "Abstract" | "Status of This Memo" | "Table of Contents"
+        )
+    }) {
+        let mut index = boundary;
+        while index > 0 && lines[index - 1].trim().is_empty() {
+            index -= 1;
+        }
+        let end = index;
+        while index > 0 && !lines[index - 1].trim().is_empty() {
+            index -= 1;
+        }
+
+        let title = lines[index..end]
+            .iter()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .filter(|line| !line.to_ascii_lowercase().starts_with("draft-"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !title.is_empty() {
+            return title;
+        }
+    }
+
     // Look for lines between the header block and "Status of This Memo"
     // or "Abstract". The title is typically the first centered text block.
-    let lines: Vec<&str> = content.lines().collect();
     let mut title_lines = Vec::new();
     let mut past_header = false;
 
@@ -181,7 +213,9 @@ fn extract_sections(content: &str) -> Vec<Section> {
             if *count > 1 {
                 tracing::warn!(
                     "Duplicate section number '{}' in plain-text RFC — renaming to '{}-{}'",
-                    num, num, count
+                    num,
+                    num,
+                    count
                 );
                 *num = format!("{}-{}", num, count);
             }
@@ -347,13 +381,13 @@ fn extract_quoted_title(line: &str) -> String {
 
 /// Strip page headers/footers from text.
 fn strip_page_breaks(text: &str) -> String {
-    let page_re = Regex::new(r"(?m)^\s*\[Page \d+\]\s*$").unwrap();
+    let page_re = Regex::new(r"(?m)^.*\[Page \d+\]\s*$").unwrap();
     let ff_re = Regex::new(r"\x0c").unwrap();
     let cleaned = page_re.replace_all(text, "");
     let cleaned = ff_re.replace_all(&cleaned, "");
     // Also remove the header lines that appear after page breaks
     // (lines like "RFC 9293          TCP          August 2022")
-    let header_re = Regex::new(r"(?m)^[A-Z].*RFC \d+.*\d{4}\s*$").unwrap();
+    let header_re = Regex::new(r"(?m)^\s*(?:Internet-Draft|RFC \d+).*(?:19|20)\d{2}\s*$").unwrap();
     header_re.replace_all(&cleaned, "").trim().to_string()
 }
 
@@ -391,6 +425,39 @@ mod tests {
             extract_quoted_title(r#"[RFC793] Postel, J., "Transmission Control Protocol""#),
             "Transmission Control Protocol"
         );
+    }
+
+    #[test]
+    fn test_extract_internet_draft_title() {
+        let text = r#"
+6lo Working Group                                        L. Iannone, Ed.
+Internet-Draft                                                     G. Li
+Intended status: Standards Track                                  D. Lou
+Expires: 20 March 2026
+
+ Path-Aware Semantic Addressing (PASA) for Low power and Lossy Networks
+            draft-ietf-6lo-path-aware-semantic-addressing-13
+
+Abstract
+"#;
+        assert_eq!(
+            extract_title(text),
+            "Path-Aware Semantic Addressing (PASA) for Low power and Lossy Networks"
+        );
+    }
+
+    #[test]
+    fn test_strip_internet_draft_page_headers_and_footers() {
+        let text = r#"Useful section text.
+Iannone, et al.           Expires 20 March 2026                 [Page 2]
+
+Internet-Draft                    PASA                    September 2025
+More useful text."#;
+        let stripped = strip_page_breaks(text);
+        assert!(stripped.contains("Useful section text."));
+        assert!(stripped.contains("More useful text."));
+        assert!(!stripped.contains("[Page 2]"));
+        assert!(!stripped.contains("Internet-Draft"));
     }
 
     #[test]

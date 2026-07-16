@@ -29,7 +29,7 @@ impl DependencyGraph {
         }
 
         let mut most_referenced: Vec<(RfcNumber, usize)> = in_degree.into_iter().collect();
-        most_referenced.sort_by(|a, b| b.1.cmp(&a.1));
+        most_referenced.sort_by_key(|entry| std::cmp::Reverse(entry.1));
         most_referenced.truncate(10);
 
         GraphSummary {

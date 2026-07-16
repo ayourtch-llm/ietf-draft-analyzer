@@ -25,7 +25,11 @@ pub fn write_pocs(output_dir: &Path, protocol: &str, pocs: &[GeneratedPoc]) -> s
 
         // Fallback for empty or invalid names
         if safe_name.is_empty() || safe_name == "." || safe_name.starts_with('.') {
-            safe_name = format!("poc_{}_{}.py", i + 1, &poc.lead_fingerprint[..8.min(poc.lead_fingerprint.len())]);
+            safe_name = format!(
+                "poc_{}_{}.py",
+                i + 1,
+                &poc.lead_fingerprint[..8.min(poc.lead_fingerprint.len())]
+            );
         }
 
         // Handle duplicate names by appending index
@@ -64,20 +68,23 @@ pub fn write_pocs(output_dir: &Path, protocol: &str, pocs: &[GeneratedPoc]) -> s
     fs::write(output_dir.join("README.md"), readme)?;
 
     // Write machine-readable index with actual filenames
-    let index: Vec<serde_json::Value> = written.iter().map(|(name, poc)| {
-        serde_json::json!({
-            "filename": name,
-            "lead_fingerprint": poc.lead_fingerprint,
-            "lead_technique": poc.lead_technique,
-            "lead_severity": poc.lead_severity,
-            "lead_category": poc.lead_category,
-            "description": poc.poc.description,
-            "setup": poc.poc.setup,
-            "expected_vulnerable": poc.poc.expected_vulnerable,
-            "expected_patched": poc.poc.expected_patched,
-            "caveats": poc.poc.caveats,
+    let index: Vec<serde_json::Value> = written
+        .iter()
+        .map(|(name, poc)| {
+            serde_json::json!({
+                "filename": name,
+                "lead_fingerprint": poc.lead_fingerprint,
+                "lead_technique": poc.lead_technique,
+                "lead_severity": poc.lead_severity,
+                "lead_category": poc.lead_category,
+                "description": poc.poc.description,
+                "setup": poc.poc.setup,
+                "expected_vulnerable": poc.poc.expected_vulnerable,
+                "expected_patched": poc.poc.expected_patched,
+                "caveats": poc.poc.caveats,
+            })
         })
-    }).collect();
+        .collect();
     let index_json = serde_json::to_string_pretty(&index).unwrap_or_else(|_| "[]".to_string());
     fs::write(output_dir.join("index.json"), index_json)?;
 
@@ -106,7 +113,12 @@ fn generate_readme_with_names(protocol: &str, written: &[(String, &GeneratedPoc)
     for (i, (name, poc)) in written.iter().enumerate() {
         readme.push_str(&format!(
             "| {} | [{}]({}) | {} | {} | {} |\n",
-            i + 1, name, name, poc.lead_severity, poc.lead_category, poc.lead_technique
+            i + 1,
+            name,
+            name,
+            poc.lead_severity,
+            poc.lead_category,
+            poc.lead_technique
         ));
     }
 

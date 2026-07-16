@@ -1,5 +1,7 @@
 use rusqlite::Connection;
 
+pub const SCHEMA_VERSION: u32 = 3;
+
 /// Each migration: (version_number, sql_to_execute)
 /// Migrations are applied in order. Never remove or reorder entries.
 const MIGRATIONS: &[(i64, &str)] = &[
@@ -174,6 +176,47 @@ const MIGRATIONS: &[(i64, &str)] = &[
         COMMIT;
     "#,
     ),
+    (
+        3,
+        r#"
+        PRAGMA foreign_keys = OFF;
+        BEGIN;
+
+        CREATE TABLE rfcs_new (
+            number        INTEGER PRIMARY KEY,
+            title         TEXT NOT NULL,
+            format        TEXT NOT NULL CHECK (format IN ('xml', 'text', 'html')),
+            status        TEXT NOT NULL,
+            date          TEXT NOT NULL,
+            raw_content   BLOB NOT NULL,
+            content_hash  TEXT NOT NULL,
+            parser_version TEXT NOT NULL,
+            fetched_at    TEXT NOT NULL DEFAULT (datetime('now')),
+            obsoletes     TEXT,
+            updates       TEXT,
+            obsoleted_by  TEXT,
+            updated_by    TEXT,
+            references_json TEXT
+        );
+
+        INSERT INTO rfcs_new (
+            number, title, format, status, date, raw_content, content_hash,
+            parser_version, fetched_at, obsoletes, updates, obsoleted_by,
+            updated_by, references_json
+        )
+        SELECT
+            number, title, format, status, date, raw_content, content_hash,
+            '1', fetched_at, obsoletes, updates, obsoleted_by, updated_by,
+            references_json
+        FROM rfcs;
+
+        DROP TABLE rfcs;
+        ALTER TABLE rfcs_new RENAME TO rfcs;
+
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+    "#,
+    ),
 ];
 
 /// Initialize SQLite pragmas on a raw connection.
@@ -208,7 +251,11 @@ pub fn run_migrations(conn: &Connection) -> rusqlite::Result<i64> {
     for &(version, sql) in MIGRATIONS {
         if version > current_version {
             tracing::info!("Applying migration v{}", version);
-            conn.execute_batch(sql)?;
+            if let Err(error) = conn.execute_batch(sql) {
+                let _ = conn.execute_batch("ROLLBACK;");
+                let _ = conn.execute_batch("PRAGMA foreign_keys = ON;");
+                return Err(error);
+            }
             conn.execute(
                 "INSERT INTO schema_version (version) VALUES (?1)",
                 [version],
@@ -246,7 +293,12 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_pragmas(&conn).unwrap();
         let version = run_migrations(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, i64::from(SCHEMA_VERSION));
+        assert_eq!(
+            conn.query_row("PRAGMA foreign_keys", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
 
         // Verify tables exist
         let count: i64 = conn
@@ -303,7 +355,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         init_pragmas(&conn).unwrap();
         let version = run_migrations(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, i64::from(SCHEMA_VERSION));
 
         // Verify run_work_items exists
         let count: i64 = conn
@@ -346,7 +398,7 @@ mod tests {
 
         // Now run full migrations — should upgrade to v2 preserving data
         let version = run_migrations(&conn).unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, i64::from(SCHEMA_VERSION));
 
         // Verify existing data survived
         let count: i64 = conn
@@ -388,5 +440,32 @@ mod tests {
             [],
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_migration_v3_adds_html_and_parser_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+        let version = run_migrations(&conn).unwrap();
+        assert_eq!(version, i64::from(SCHEMA_VERSION));
+
+        conn.execute(
+            "INSERT INTO rfcs (
+                number, title, format, status, date, raw_content,
+                content_hash, parser_version
+             ) VALUES (99001, 'HTML standard', 'html', 'standard',
+                       '2026-01-01', x'00', 'hash', '1')",
+            [],
+        )
+        .unwrap();
+
+        let parser_version: String = conn
+            .query_row(
+                "SELECT parser_version FROM rfcs WHERE number = 99001",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(parser_version, "1");
     }
 }

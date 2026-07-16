@@ -126,9 +126,9 @@ pub enum Command {
         yes: bool,
     },
 
-    /// Import a local RFC or Internet-Draft file (XML or text)
+    /// Import a local RFC, Internet-Draft, or HTML standard
     Import {
-        /// Path to local XML or text file
+        /// Path to local XML, HTML, or text file
         file: PathBuf,
 
         /// Document number (used as RFC number internally)

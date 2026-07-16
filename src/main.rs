@@ -119,8 +119,10 @@ async fn main() -> Result<()> {
             number,
             protocol,
         } => {
-            ietf_draft_analyzer::commands::import::cmd_import(&conn, &config, &file, number, protocol)
-                .await?;
+            ietf_draft_analyzer::commands::import::cmd_import(
+                &conn, &config, &file, number, protocol,
+            )
+            .await?;
         }
         Command::Reproduce {
             protocol,

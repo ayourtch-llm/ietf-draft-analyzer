@@ -131,7 +131,12 @@ impl RfcFetcher {
 
 /// Compute SHA-256 hex hash of a string.
 pub fn sha256_hex(data: &str) -> String {
+    sha256_hex_bytes(data.as_bytes())
+}
+
+/// Compute SHA-256 hex hash of raw document bytes.
+pub fn sha256_hex_bytes(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(data.as_bytes());
+    hasher.update(data);
     format!("{:x}", hasher.finalize())
 }

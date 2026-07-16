@@ -72,7 +72,7 @@ impl AnalysisReport {
                 report_format: "json".to_string(),
                 temperature,
                 max_tokens_per_request,
-                schema_version: 2,
+                schema_version: crate::db::schema::SCHEMA_VERSION,
                 // TODO: Load truncation info from run_work_items.error column
                 sections_truncated: Vec::new(),
             },

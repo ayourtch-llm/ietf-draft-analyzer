@@ -1,6 +1,6 @@
 # Handoff — RFC/Draft Security Analyzer
 
-Last written: 2026-07-06 by Claude (Fable 5), for a future session.
+Last updated: 2026-07-16 by Codex.
 Read this top-to-bottom before touching code. It is self-contained.
 
 ---
@@ -27,22 +27,24 @@ own infra), not as targeting other systems.
 
 ---
 
-## 1. The task that was in flight (what to do next)
+## 1. HTML/MQTT and RFCXML ingestion work
 
 The user wants the analyzer to **work better with drafts/RFCs AND with
 other standards**, the named target being **MQTT** (OASIS spec, HTML):
 https://docs.oasis-open.org/mqtt/mqtt/v5.0/mqtt-v5.0.html
 
-The user then interrupted to ask for this handoff, so **no code has been
-written yet**. Two design decisions were already made via a question to the
-user:
+This work was implemented on 2026-07-16:
 
-- **Priority:** "Both, HTML first" — build HTML/MQTT ingestion first, then
-  circle back to verify/harden the existing RFC/draft path against a real
-  draft.
-- **HTML approach:** Add a real HTML DOM crate (**`scraper` / `html5ever`**),
-  not regex extraction. MQTT is large and table-heavy; a real parser is
-  worth the dependency.
+- Added a real HTML DOM parser using `scraper` / `html5ever`.
+- Added Windows-1252 and BOM-aware local document decoding.
+- Added heading-based sections, flattened tables/preformatted examples,
+  internal links, RFC links, and MQTT normative statement labels.
+- Fixed RFCXML extraction so `<bcp14>`, `<tt>`, `<xref>`, CDATA/sourcecode,
+  artwork, tables, and text after nested sections are retained.
+- Added parser-version-aware cache invalidation.
+- Added schema v3 for the `html` format and `parser_version`.
+- Validated against the real MQTT 5.0 HTML page and committed IETF draft
+  fixtures.
 
 ### Why ingestion is the whole job
 
@@ -53,21 +55,22 @@ care whether the source was IETF or OASIS. The `import` command already
 lets you assign an arbitrary document number (convention: 99001+) and a
 protocol name.
 
-What is **hard-wired to IETF** is the ingestion layer — there are exactly
-two parsers and both assume IETF conventions:
+Before the 2026-07-16 work, ingestion had exactly two IETF-specific
+parsers:
 
 - `src/rfc/parser_xml.rs` — RFC 7991 XML (`<rfc>`, `<section pn=…>`).
 - `src/rfc/parser_text.rs` — plain text assuming `Category:` headers,
   `N.N.  Title` section numbering, `[RFCN]` reference syntax, `[Page N]`
   footers, "Section X of [RFCN]" cross-refs.
 
-MQTT HTML has **none** of these: `<h2 id="…">` headings, `[MQTT-3.1.0-1]`
-normative-statement labels, HTML `<table>` packet-format layouts. So it
-cannot be imported today and needs a third parser.
+MQTT instead uses Word-exported `<h1..h6>` headings,
+`[MQTT-3.1.0-1]` normative-statement labels, Windows-1252 encoding, and
+HTML `<table>` packet-format layouts. These are now handled by the third
+parser.
 
-### Suggested implementation shape (not yet built — verify before trusting)
+### Implemented shape
 
-1. Add `scraper = "0.20"` (pulls in html5ever) to `Cargo.toml`.
+1. Added `scraper = "0.27"` (pulls in html5ever) to `Cargo.toml`.
 2. New module `src/rfc/parser_html.rs` exposing
    `parse_html(number, content, hash) -> Result<Rfc>`. Map:
    - `<h1..h6 id>` → `Section { number, title, anchor, depth, text }`.
@@ -79,21 +82,14 @@ cannot be imported today and needs a third parser.
      anchors, not `[RFCN]`. Populate `CrossRef { target_rfc: None,
      target_section: Some(anchor) }` where resolvable; don't force RFC
      numbers.
-3. Wire format detection in `src/commands/import.rs` (the `is_xml` block
-   around line 25): add an HTML branch on `.html`/`.htm` extension or
-   `<!DOCTYPE html>` / `<html` content sniff. Add an `RfcFormat::Html`
-   variant to `src/rfc/model.rs` and its `Display`/`from_db_str`
-   (DB stores the format string — see note in §5).
-4. The data model (`Rfc`/`Section`/`Reference` in `src/rfc/model.rs`) is
-   general enough as-is; `RfcNumber` is just a `u32` newtype used as an
-   internal id. No schema change needed beyond the format string.
-5. Then do the "verify RFC/draft path" thread: run the existing
-   `draft-ietf-bier-ping-23` (already in tree) and the `drafts/` set
-   end-to-end, note parser gaps, fix.
-
-Consider a quick clarification with the user on whether MQTT's
-`[MQTT-x.y.z-n]` normative statements should become first-class
-cross-refs/anchors (useful for provenance in leads) before over-building.
+3. Format detection now recognizes `.html`/`.htm`, HTML doctypes, and
+   `<html>` content. `RfcFormat::Html` round-trips through the database.
+4. Schema v3 recreates `rfcs` with HTML in the format constraint and adds
+   `parser_version`; existing data and foreign keys were migration-tested.
+5. MQTT `[MQTT-x.y.z-n]` normative statements are preserved as internal
+   cross-references for provenance.
+6. Real SCITT and BIER draft fixtures now assert normative-word,
+   sourcecode, and packet-table preservation.
 
 ---
 
@@ -114,7 +110,7 @@ Also: `import` (local file), `reproduce` (LLM PoC scripts), `show`,
 ### Build & run
 
 ```bash
-cargo build --release          # NOTE: no binary currently built (see §4)
+cargo build --release
 export DEEPSEEK_API_KEY=...     # current config uses DeepSeek (see §3)
 
 # import a local draft, then analyze:
@@ -126,8 +122,8 @@ export DEEPSEEK_API_KEY=...     # current config uses DeepSeek (see §3)
 ./target/release/ietf-draft-analyzer run telnet 854 855 1184 --depth 1 -o telnet.json
 ```
 
-`cargo test` — ~104 tests, was zero-warning / zero-clippy at last full
-state (see `state.md`).
+`cargo test --all-targets` — 127 tests plus one ignored real-network test.
+`cargo clippy --all-targets --all-features -- -D warnings` passes.
 
 ### Batch driver
 
@@ -139,8 +135,8 @@ Writes to `results-<label>/`. Requires the release binary to exist first.
 
 ## 3. Current configuration
 
-`ietf-draft-analyzer.toml` is **modified (uncommitted)** and currently
-points at **DeepSeek cloud**, JSON mode (no GBNF grammar):
+`ietf-draft-analyzer.toml` currently points at **DeepSeek cloud**, JSON
+mode (no GBNF grammar):
 
 ```toml
 [llm]
@@ -163,17 +159,18 @@ local llama-server + Qwen; the working tree switched it to DeepSeek.
 
 ## 4. Build / environment status
 
-- **No compiled binary exists** right now (neither `target/release/` nor
-  `target/debug/`). First step for any run: `cargo build --release`.
-  `review-drafts.sh` will hard-error until this is done.
+- A debug binary exists from validation. Build a release binary before
+  using `review-drafts.sh`: `cargo build --release`.
 - Platform: macOS (darwin 24.6). Shell: zsh. Repo: git, branch `main`,
   currently **ahead of origin/main by 2 commits**.
 
 ---
 
-## 5. Uncommitted / untracked working-tree state
+## 5. Historical working-tree state
 
-`git status` at handoff time:
+The following describes the original 2026-07-06 handoff state. Durable
+files were checkpointed in commit `58cd8ac`; runtime database files and
+the compiled probe remain ignored locally.
 
 - **Modified:** `ietf-draft-analyzer.toml` (local→DeepSeek switch, §3).
 - **Untracked, likely worth keeping:**
@@ -204,10 +201,12 @@ src/
     fetcher.rs      async HTTP, XML/text fallback, sha256
     parser_xml.rs   RFC 7991 XML parser (quick-xml)
     parser_text.rs  plain-text parser (regex, IETF conventions)
-    -> parser_html.rs   <-- NEW MODULE TO ADD (MQTT/HTML)
+    parser_html.rs  heading/table/link extraction for HTML standards
+    encoding.rs     BOM/charset decoding for local imports
+    text.rs         shared rich-text accumulator
     model.rs        Rfc, Section, CrossRef, Reference, RfcFormat, RfcStatus
     index.rs        RFC index metadata enrichment
-  db/               SQLite (tokio-rusqlite), schema v2, zstd raw content
+  db/               SQLite (tokio-rusqlite), schema v3, zstd raw content
     schema.rs       migrations — NEVER reorder/remove entries
     rfc_store.rs graph_store.rs analysis_store.rs
   graph/            petgraph dependency graph + JSON/DOT export
@@ -222,7 +221,7 @@ src/
     section_select.rs  keyword section selection (10 categories)
     summarize.rs    extractive summarize-to-fit
     reproduce.rs    Stage 4 PoC generation
-  commands/         per-subcommand handlers (import.rs is where HTML wiring goes)
+  commands/         per-subcommand handlers, including HTML-aware import
   output/           report.rs (JSON report), poc.rs (PoC file writing)
 ```
 
@@ -258,15 +257,12 @@ and prompted in `src/llm/prompts.rs`.
 
 ## 9. Immediate next actions for future-me
 
-1. Confirm you're oriented: skim `src/rfc/parser_text.rs`,
-   `src/rfc/model.rs`, `src/commands/import.rs` (small files).
-2. `cargo build --release` (nothing is built yet).
-3. Start the MQTT/HTML ingestion per §1: add `scraper`, write
-   `src/rfc/parser_html.rs`, add `RfcFormat::Html`, wire `import.rs`.
-4. Fetch the MQTT v5.0 HTML (or ask user for a local copy — it's large),
-   import as e.g. `-n 99100 --protocol mqtt`, run `model` + `analyze`,
-   inspect the report for sanity.
-5. Then the verify thread: run the in-tree `draft-ietf-bier-ping-23` and
-   `drafts/*` end-to-end, fix parser gaps found.
-6. Keep the user in the loop before large refactors of the RFC-centric
-   model; most of it can stay as-is.
+1. Build a release binary: `cargo build --release`.
+2. Import MQTT as `-n 99100 --protocol mqtt`, then run `model` and
+   `analyze` against the configured LLM and manually inspect the report.
+3. Re-import existing XML drafts so parser version 2 replaces their stale,
+   lossy section text; rerun model/analyze as desired.
+4. Address semantic lead duplication and distinguish novel gaps from risks
+   already documented or mitigated by the specification.
+5. Keep the user in the loop before a larger refactor from RFC-centric names
+   (`RfcNumber`, `source_rfc`) to generic document/citation types.

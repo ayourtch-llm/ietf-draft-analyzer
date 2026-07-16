@@ -115,10 +115,7 @@ impl LlmClient {
         match super::response::parse_json_response::<T>(&content) {
             Ok(parsed) => Ok((parsed, usage)),
             Err(parse_err) => {
-                tracing::warn!(
-                    "JSON parse failed, requesting reformat: {}",
-                    parse_err
-                );
+                tracing::warn!("JSON parse failed, requesting reformat: {}", parse_err);
                 self.reformat_json::<T>(&content, usage).await
             }
         }
@@ -183,7 +180,8 @@ impl LlmClient {
             parsed,
             TokenUsage {
                 prompt_tokens: original_usage.prompt_tokens + reformat_usage.prompt_tokens,
-                completion_tokens: original_usage.completion_tokens + reformat_usage.completion_tokens,
+                completion_tokens: original_usage.completion_tokens
+                    + reformat_usage.completion_tokens,
                 total_tokens: original_usage.total_tokens + reformat_usage.total_tokens,
             },
         ))
@@ -341,7 +339,7 @@ impl LlmClient {
                         thinking_len,
                         finish_reason
                     );
-                    if raw_content.len() > 0 && raw_content.len() < 500 {
+                    if !raw_content.is_empty() && raw_content.len() < 500 {
                         tracing::debug!("LLM raw content: {}", raw_content);
                     } else if raw_content.len() >= 500 {
                         tracing::debug!(

@@ -1,5 +1,6 @@
 use crate::error::{Result, RfcAnalyzerError};
 use crate::rfc::model::*;
+use crate::rfc::text::TextAccumulator;
 use chrono::NaiveDate;
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -20,12 +21,12 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
     let mut updates = Vec::new();
     let obsoleted_by = Vec::new();
     let updated_by = Vec::new();
-    let mut sections = Vec::new();
+    let mut completed_sections: Vec<(u32, Section)> = Vec::new();
     let mut references = Vec::new();
 
     // Parser state
     let mut element_stack: Vec<String> = Vec::new();
-    let mut current_section: Option<SectionBuilder> = None;
+    let mut section_stack: Vec<SectionBuilder> = Vec::new();
     let mut in_normative_refs = false;
     let mut section_counter: u32 = 0;
     let mut current_ref_anchor = String::new();
@@ -64,10 +65,6 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                         }
                     }
                     "section" => {
-                        // Finish any current section
-                        if let Some(builder) = current_section.take() {
-                            sections.push(builder.build());
-                        }
                         let anchor = attrs.get("anchor").cloned();
                         let pn = attrs.get("pn").cloned();
                         section_counter += 1;
@@ -84,30 +81,41 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                                  Using anchor/auto-generated section numbers."
                             );
                         }
-                        let depth = section_num.matches('.').count() as u8 + 1;
-                        current_section = Some(SectionBuilder {
+                        let depth = if has_pn {
+                            section_num.matches('.').count() as u8 + 1
+                        } else {
+                            u8::try_from(section_stack.len() + 1).unwrap_or(u8::MAX)
+                        };
+                        section_stack.push(SectionBuilder {
+                            order: section_counter,
                             number: section_num,
                             title: String::new(),
                             anchor,
                             depth,
-                            text: String::new(),
+                            text: TextAccumulator::default(),
                             cross_refs: Vec::new(),
                             pn,
                         });
                     }
                     "xref" => {
-                        if let Some(ref mut sec) = current_section {
+                        if let Some(sec) = section_stack.last_mut() {
                             let target = attrs.get("target").cloned().unwrap_or_default();
                             let section_attr = attrs.get("section").cloned();
 
                             // Parse target: could be "RFC1234" or an anchor name
                             let target_rfc = parse_rfc_from_target(&target);
-                            if target_rfc.is_some() || section_attr.is_some() {
+                            let target_section = section_attr.or_else(|| {
+                                (target_rfc.is_none() && !target.is_empty()).then(|| target.clone())
+                            });
+                            if target_rfc.is_some() || target_section.is_some() {
                                 sec.cross_refs.push(CrossRef {
                                     target_rfc: target_rfc.map(RfcNumber),
-                                    target_section: section_attr,
+                                    target_section,
                                     context: String::new(), // filled from surrounding text
                                 });
+                            }
+                            if is_empty && !target.is_empty() {
+                                sec.text.push_inline(&target);
                             }
                         }
                     }
@@ -120,13 +128,22 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                         current_ref_title.clear();
                         ref_rfc_value = None;
                     }
-                    "seriesInfo" => {
-                        if attrs.get("name").map(|s| s.as_str()) == Some("RFC") {
-                            ref_rfc_value = attrs.get("value").and_then(|v| v.parse().ok());
-                        }
+                    "seriesInfo" if attrs.get("name").map(|s| s.as_str()) == Some("RFC") => {
+                        ref_rfc_value = attrs.get("value").and_then(|v| v.parse().ok());
                     }
                     _ => {}
                 }
+
+                if let Some(section) = section_stack.last_mut() {
+                    match name.as_str() {
+                        "t" | "li" | "dt" | "dd" | "tr" | "table" | "sourcecode" | "artwork"
+                        | "blockquote" | "figure" => section.text.push_newline(),
+                        "td" | "th" => section.text.push_cell_separator(),
+                        "br" => section.text.push_newline(),
+                        _ => {}
+                    }
+                }
+
                 // Only push Start events onto the stack (Empty events
                 // don't have a matching End)
                 if !is_empty {
@@ -138,8 +155,8 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
 
                 match name.as_str() {
                     "section" => {
-                        if let Some(builder) = current_section.take() {
-                            sections.push(builder.build());
+                        if let Some(builder) = section_stack.pop() {
+                            completed_sections.push((builder.order, builder.build()));
                         }
                     }
                     "reference" => {
@@ -155,27 +172,42 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                     }
                     _ => {}
                 }
+
+                if let Some(section) = section_stack.last_mut() {
+                    match name.as_str() {
+                        "t" | "li" | "dt" | "dd" | "tr" | "table" | "sourcecode" | "artwork"
+                        | "blockquote" | "figure" => section.text.push_newline(),
+                        _ => {}
+                    }
+                }
                 element_stack.pop();
             }
             Ok(Event::Text(e)) => {
                 let text = e.unescape().unwrap_or_default().to_string();
                 let parent = element_stack.last().map(|s| s.as_str());
+                let grandparent = element_stack
+                    .len()
+                    .checked_sub(2)
+                    .and_then(|index| element_stack.get(index))
+                    .map(String::as_str);
 
                 match parent {
-                    Some("title") if element_stack.len() <= 3 => {
-                        // Top-level <front><title>
-                        if title.is_empty() {
-                            title = text.clone();
+                    Some("title") => {
+                        if element_stack.iter().any(|element| element == "reference") {
+                            if !current_ref_title.is_empty() {
+                                current_ref_title.push(' ');
+                            }
+                            current_ref_title.push_str(text.trim());
+                        } else if section_stack.is_empty() && title.is_empty() {
+                            title = text.trim().to_string();
                         }
                     }
-                    Some("name") => {
-                        // Section name or references name
-                        if let Some(ref mut sec) = current_section
-                            && sec.title.is_empty()
-                        {
-                            sec.title = text.clone();
+                    Some("name") if grandparent == Some("section") => {
+                        if let Some(section) = section_stack.last_mut() {
+                            section.title.push_str(text.trim());
                         }
-                        // Check if this is a references group name
+                    }
+                    Some("name") if grandparent == Some("references") => {
                         let text_lower = text.to_lowercase();
                         if text_lower.contains("normative") {
                             in_normative_refs = true;
@@ -183,22 +215,26 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
                             in_normative_refs = false;
                         }
                     }
-                    Some("title") => {
-                        // Reference title
-                        if !current_ref_anchor.is_empty() {
-                            current_ref_title = text.clone();
-                        }
-                    }
-                    Some("t") | Some("li") | Some("dd") | Some("dt") => {
-                        // Paragraph text within a section
-                        if let Some(ref mut sec) = current_section {
-                            if !sec.text.is_empty() {
-                                sec.text.push(' ');
+                    _ => {
+                        if let Some(section) = section_stack.last_mut()
+                            && !element_stack.iter().any(|element| element == "svg")
+                        {
+                            if element_stack
+                                .iter()
+                                .any(|element| element == "sourcecode" || element == "artwork")
+                            {
+                                section.text.push_preformatted(&text);
+                            } else {
+                                section.text.push_inline(&text);
                             }
-                            sec.text.push_str(&text);
                         }
                     }
-                    _ => {}
+                }
+            }
+            Ok(Event::CData(e)) => {
+                if let Some(section) = section_stack.last_mut() {
+                    let text = String::from_utf8_lossy(e.as_ref());
+                    section.text.push_preformatted(&text);
                 }
             }
             Err(e) => {
@@ -212,10 +248,16 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
         buf.clear();
     }
 
-    // Don't forget the last section
-    if let Some(builder) = current_section.take() {
-        sections.push(builder.build());
+    // Be tolerant of malformed input with unclosed section tags.
+    while let Some(builder) = section_stack.pop() {
+        completed_sections.push((builder.order, builder.build()));
     }
+    completed_sections.sort_by_key(|(order, _)| *order);
+    let mut sections: Vec<Section> = completed_sections
+        .into_iter()
+        .map(|(_, section)| section)
+        .collect();
+    deduplicate_section_numbers(&mut sections);
 
     // Extract date from <date> element (not yet captured above — parse from
     // raw XML as a fallback)
@@ -250,11 +292,12 @@ pub fn parse_xml(rfc_number: u32, content: &str, content_hash: &str) -> Result<R
 // --- Helper types and functions ---
 
 struct SectionBuilder {
+    order: u32,
     number: String,
     title: String,
     anchor: Option<String>,
     depth: u8,
-    text: String,
+    text: TextAccumulator,
     cross_refs: Vec<CrossRef>,
     pn: Option<String>,
 }
@@ -266,9 +309,26 @@ impl SectionBuilder {
             title: self.title,
             anchor: self.anchor,
             depth: self.depth,
-            text: self.text,
+            text: self.text.finish(),
             cross_refs: self.cross_refs,
             pn: self.pn,
+        }
+    }
+}
+
+fn deduplicate_section_numbers(sections: &mut [Section]) {
+    let mut seen = HashMap::new();
+    for section in sections {
+        let count = seen.entry(section.number.clone()).or_insert(0u32);
+        *count += 1;
+        if *count > 1 {
+            let original = section.number.clone();
+            section.number = format!("{}-{}", original, count);
+            tracing::warn!(
+                "Duplicate section number '{}' in RFCXML — renaming to '{}'",
+                original,
+                section.number
+            );
         }
     }
 }
@@ -387,5 +447,71 @@ mod tests {
         assert_eq!(parse_month("aug"), Some(8));
         assert_eq!(parse_month("December"), Some(12));
         assert_eq!(parse_month("invalid"), None);
+    }
+
+    #[test]
+    fn test_parse_xml_preserves_rich_section_content() {
+        let xml = r#"<?xml version="1.0"?>
+<rfc category="std">
+  <front>
+    <title>Rich RFCXML Fixture</title>
+    <date year="2026" month="July"/>
+  </front>
+  <middle>
+    <section anchor="requirements">
+      <name>Requirements</name>
+      <t>
+        A receiver <bcp14>MUST</bcp14> validate the <tt>Packet Identifier</tt>
+        using <xref target="RFC2119"/>.
+      </t>
+      <sourcecode type="text"><![CDATA[
+packet-id = 1*2OCTET
+]]></sourcecode>
+      <table anchor="packet-values">
+        <name>Packet Values</name>
+        <thead><tr><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody><tr><td>1</td><td>CONNECT</td></tr></tbody>
+      </table>
+      <section anchor="nested">
+        <name>Nested Requirement</name>
+        <t>The sender <bcp14>SHOULD NOT</bcp14> reuse the identifier.</t>
+      </section>
+      <t>Text after the nested section is retained.</t>
+    </section>
+  </middle>
+</rfc>"#;
+
+        let rfc = parse_xml(99901, xml, "hash").unwrap();
+        assert_eq!(rfc.sections.len(), 2);
+
+        let parent = rfc
+            .sections
+            .iter()
+            .find(|section| section.number == "requirements")
+            .unwrap();
+        assert!(parent.text.contains("MUST validate"));
+        assert!(parent.text.contains("Packet Identifier"));
+        assert!(parent.text.contains("RFC2119"));
+        assert!(parent.text.contains("packet-id = 1*2OCTET"));
+        assert!(parent.text.contains("Value"));
+        assert!(parent.text.contains("CONNECT"));
+        assert!(
+            parent
+                .text
+                .contains("Text after the nested section is retained.")
+        );
+        assert!(
+            parent
+                .cross_refs
+                .iter()
+                .any(|xref| xref.target_rfc == Some(RfcNumber(2119)))
+        );
+
+        let nested = rfc
+            .sections
+            .iter()
+            .find(|section| section.number == "nested")
+            .unwrap();
+        assert!(nested.text.contains("SHOULD NOT"));
     }
 }

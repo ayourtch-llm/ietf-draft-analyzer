@@ -262,7 +262,9 @@ mod tests {
         );
 
         // Insert twice — should not duplicate
-        store_edges(&conn, &[edge.clone()]).await.unwrap();
+        store_edges(&conn, std::slice::from_ref(&edge))
+            .await
+            .unwrap();
         store_edges(&conn, &[edge]).await.unwrap();
 
         let loaded = load_all_edges(&conn).await.unwrap();

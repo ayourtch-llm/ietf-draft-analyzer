@@ -23,6 +23,7 @@ impl From<u32> for RfcNumber {
 pub enum RfcFormat {
     Xml,
     PlainText,
+    Html,
 }
 
 impl fmt::Display for RfcFormat {
@@ -30,6 +31,7 @@ impl fmt::Display for RfcFormat {
         match self {
             RfcFormat::Xml => write!(f, "xml"),
             RfcFormat::PlainText => write!(f, "text"),
+            RfcFormat::Html => write!(f, "html"),
         }
     }
 }
@@ -40,6 +42,7 @@ impl RfcFormat {
         match s {
             "xml" => Some(RfcFormat::Xml),
             "text" => Some(RfcFormat::PlainText),
+            "html" => Some(RfcFormat::Html),
             _ => None,
         }
     }
