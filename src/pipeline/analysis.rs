@@ -12,6 +12,8 @@ use sha2::{Digest, Sha256};
 use tokio_rusqlite::Connection;
 use uuid::Uuid;
 
+const MAX_CANDIDATES_PER_WORK_ITEM: usize = 12;
+
 /// LLM response type for a security lead.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeadResponse {
@@ -238,6 +240,8 @@ pub async fn run_stage3(
     // Treat Security Considerations and their descendants as a baseline that
     // every category must evaluate, not just as ordinary scored sections.
     let security_sections = section_select::select_security_context(&all_sections);
+    let implementation_guidance = section_select::select_implementation_guidance(&all_sections);
+    let semantic_bridges = section_select::format_semantic_bridges(&all_sections);
     let security_section_keys: std::collections::HashSet<(u32, String)> = security_sections
         .iter()
         .map(|(rfc, section)| (rfc.0, section.number.clone()))
@@ -369,6 +373,7 @@ pub async fn run_stage3(
             category,
             &sm_summary,
             &security_context,
+            &semantic_bridges,
             &sections_text,
         );
         let messages = vec![
@@ -445,6 +450,7 @@ pub async fn run_stage3(
                     .into_iter()
                     .map(|lead| process_lead(lead, protocol))
                     .collect();
+                let processed = retain_top_candidates(processed, MAX_CANDIDATES_PER_WORK_ITEM);
 
                 tracing::info!("Category '{}': {} leads found", category, processed.len());
 
@@ -489,6 +495,135 @@ pub async fn run_stage3(
                     Some(&e.to_string()),
                 )
                 .await?;
+            }
+        }
+    }
+
+    // Run one dedicated audit pass over normative security and implementation
+    // guidance. Category-oriented vulnerability prompts can otherwise ignore
+    // clear implementation requirements such as RFC 8446 Appendix C.5.
+    let audit_key = "normative-guidance";
+    let completed_audits =
+        analysis_store::get_completed_work_items(conn, run_id, "implementation_audit").await?;
+    if !completed_audits.contains(&audit_key.to_string()) && !implementation_guidance.is_empty() {
+        tracing::info!("Extracting normative implementation audit checks");
+        analysis_store::upsert_work_item(
+            conn,
+            run_id,
+            "implementation_audit",
+            audit_key,
+            "running",
+        )
+        .await?;
+
+        let all_section_refs = all_sections
+            .iter()
+            .map(|(rfc, section)| (*rfc, section))
+            .collect::<Vec<_>>();
+        let audit_ids: Vec<(u32, String)> = implementation_guidance
+            .iter()
+            .map(|(rfc, section)| (rfc.0, section.number.clone()))
+            .collect();
+        let budget = llm.context_budget(llm.estimate_tokens(prompts::INJECTION_DEFENSE) + 300);
+        let (audit_context, dropped) =
+            summarize::summarize_to_fit(&all_section_refs, &audit_ids, budget, &rfc_numbers);
+        let (system, user) = prompts::implementation_audit_prompt(&audit_context);
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: system,
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: user,
+            },
+        ];
+        let grammar = crate::llm::prompts::security_leads_grammar();
+
+        match llm.chat_text_auto(messages, &grammar).await {
+            Ok((content, usage)) => {
+                total_tokens += usage.total_tokens;
+                match crate::llm::response::parse_json_array_partial::<LeadResponse>(&content) {
+                    Ok(leads) => {
+                        let mut processed = Vec::new();
+                        for lead in leads {
+                            let mut lead = process_lead(lead, protocol);
+                            if lead.assessment == "expected_behavior" {
+                                continue;
+                            }
+                            lead.assessment = "implementation_nonconformance".to_string();
+                            processed.push(lead);
+                        }
+                        let processed =
+                            retain_top_candidates(processed, MAX_CANDIDATES_PER_WORK_ITEM);
+                        for lead in &processed {
+                            store_lead(conn, protocol, lead, run_id, &input_hash).await?;
+                        }
+                        tracing::info!("Implementation audit: {} checks found", processed.len());
+                        all_leads.extend(processed);
+                        let notes = (!dropped.is_empty())
+                            .then(|| format!("truncated: {}", dropped.join(", ")));
+                        analysis_store::complete_work_item(
+                            conn,
+                            run_id,
+                            "implementation_audit",
+                            audit_key,
+                            usage.total_tokens,
+                            false,
+                            notes.as_deref(),
+                        )
+                        .await?;
+                    }
+                    Err(error) => {
+                        tracing::warn!("Implementation audit parse failed: {}", error);
+                        analysis_store::complete_work_item(
+                            conn,
+                            run_id,
+                            "implementation_audit",
+                            audit_key,
+                            usage.total_tokens,
+                            true,
+                            Some(&error.to_string()),
+                        )
+                        .await?;
+                    }
+                }
+            }
+            Err(RfcAnalyzerError::LlmContextOverflow) => {
+                analysis_store::complete_work_item(
+                    conn,
+                    run_id,
+                    "implementation_audit",
+                    audit_key,
+                    0,
+                    true,
+                    Some("Context overflow, skipped"),
+                )
+                .await?;
+            }
+            Err(RfcAnalyzerError::LlmContentRefusal { detail }) => {
+                analysis_store::complete_work_item(
+                    conn,
+                    run_id,
+                    "implementation_audit",
+                    audit_key,
+                    0,
+                    true,
+                    Some(&detail),
+                )
+                .await?;
+            }
+            Err(error) => {
+                analysis_store::complete_run(
+                    conn,
+                    run_id,
+                    "failed",
+                    total_tokens,
+                    &rfc_numbers,
+                    Some(&error.to_string()),
+                )
+                .await?;
+                return Err(error);
             }
         }
     }
@@ -1016,6 +1151,22 @@ fn rank_leads(leads: &mut [SecurityLead]) {
     });
 }
 
+fn retain_top_candidates(mut leads: Vec<SecurityLead>, limit: usize) -> Vec<SecurityLead> {
+    leads.sort_by(|a, b| {
+        evidence_quality_score(b)
+            .cmp(&evidence_quality_score(a))
+            .then_with(|| severity_rank(&b.severity).cmp(&severity_rank(&a.severity)))
+            .then_with(|| {
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.technique_name.cmp(&b.technique_name))
+    });
+    leads.truncate(limit);
+    leads
+}
+
 /// Store a single security lead in the database.
 /// Deduplicates by fingerprint+run_id (skips insert if fingerprint already exists for this run).
 /// Cross-run deduplication is handled at read time by `deduplicate_leads`.
@@ -1261,11 +1412,15 @@ async fn compute_stage3_hash(
     hasher.update(config.max_tokens_per_request.to_string().as_bytes());
     hasher.update(b"|");
 
-    // 8: context_window
+    // 8: reasoning mode
+    hasher.update(config.disable_thinking.to_string().as_bytes());
+    hasher.update(b"|");
+
+    // 9: context_window
     hasher.update(config.model_context_window.to_string().as_bytes());
     hasher.update(b"|");
 
-    // 9: category filter
+    // 10: category filter
     let mut cats: Vec<&str> = categories.to_vec();
     cats.sort();
     hasher.update(cats.join(",").as_bytes());

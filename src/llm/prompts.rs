@@ -1,6 +1,6 @@
 /// Global prompt version. Increment when any prompt template changes.
 /// Stored in analysis_runs.prompt_version and used in composite input hashes.
-pub const PROMPT_VERSION: &str = "1.3.0";
+pub const PROMPT_VERSION: &str = "1.8.0";
 
 /// Section delimiter for embedding RFC text in prompts.
 /// Chosen because it cannot appear in standard RFC formatting.
@@ -63,6 +63,7 @@ pub fn security_analysis_prompt(
     category: &str,
     state_machine_summary: &str,
     security_context: &str,
+    semantic_bridges: &str,
     sections_text: &str,
 ) -> (String, String) {
     let system = format!(
@@ -124,6 +125,10 @@ For each potential vulnerability found, return a JSON array of objects:
   "mitigation": "..."
 }}]
 
+Return at most 12 of the highest-value candidates. Prefer candidates with
+direct quotations, precise section references, and a concrete specification
+change or implementation audit pattern.
+
 If no vulnerabilities are found, return an empty array: []
 
 Protocol state machine context:
@@ -132,9 +137,68 @@ Protocol state machine context:
 Security Considerations baseline:
 {}
 
+Candidate implicit section bridges:
+{}
+
+Explicitly compare both sides of relevant candidate bridges. A useful finding
+must cite the sections on both sides rather than merely repeating one section.
+
 Sections under analysis:
 {}"#,
-        category, category, state_machine_summary, security_context, sections_text
+        category,
+        category,
+        state_machine_summary,
+        security_context,
+        semantic_bridges,
+        sections_text
+    );
+
+    (system, user)
+}
+
+/// Stage 3: dedicated extraction of normative implementation audit checks.
+pub fn implementation_audit_prompt(review_context: &str) -> (String, String) {
+    let system = format!(
+        "You are a protocol implementation auditor. Extract explicit normative security requirements and implementation pitfalls that can be converted into source-code, configuration, or test-suite checks. {}\n",
+        INJECTION_DEFENSE
+    );
+
+    let user = format!(
+        r#"Review the specification guidance below and return implementation audit checks.
+
+Only return a check when the cited text contains a direct normative requirement
+(for example MUST, MUST NOT, SHALL, or SHALL NOT) or a clearly stated
+implementation pitfall with security impact. Do not invent a new protocol
+vulnerability. Each result must explain what code/configuration pattern would
+violate the requirement.
+
+Return at most 12 of the highest-priority checks. Prefer checks with direct
+normative quotations and concrete, testable audit patterns.
+
+Return a JSON array of objects:
+[{{
+  "technique_name": "...",
+  "category": "MissingValidation",
+  "severity": "critical|high|medium|low|informational",
+  "confidence": 0.85,
+  "assessment": "implementation_nonconformance",
+  "security_context": "Why this requirement matters",
+  "gap_evidence": "The exact explicit requirement or pitfall",
+  "existing_protection": "The normative protection already defined by the specification",
+  "attacker_capability": "The capability enabled when an implementation violates it",
+  "proposed_spec_change": "A concrete source-code/configuration audit pattern",
+  "description": "How implementation nonconformance creates security impact",
+  "rfc_references": [{{"rfc": N, "section": "X.Y", "quote": "Direct normative quote"}}],
+  "prerequisites": ["implementation violates the cited requirement"],
+  "entities_involved": ["client", "server"],
+  "mitigation": "How to comply with the requirement"
+}}]
+
+If no explicit security-relevant implementation checks are present, return [].
+
+Specification review context:
+{}"#,
+        review_context
     );
 
     (system, user)
@@ -270,6 +334,7 @@ mod tests {
             "MissingValidation",
             "States: LISTEN, SYN-SENT...",
             "RFC 9293 Security Considerations...",
+            "RFC 9293 §10 <-> RFC 9293 §3.10",
             "<<<RFC_SECTION rfc=\"9293\"...>>>...",
         );
         assert!(system.contains("MissingValidation"));
@@ -278,6 +343,20 @@ mod tests {
         assert!(user.contains("States: LISTEN"));
         assert!(user.contains("specification_gap"));
         assert!(user.contains("Security Considerations baseline"));
+        assert!(user.contains("Candidate implicit section bridges"));
+        assert!(user.contains("at most 12"));
+    }
+
+    #[test]
+    fn test_implementation_audit_prompt() {
+        let (system, user) =
+            implementation_audit_prompt("RFC 8446 C.5: MUST validate certificates.");
+        assert!(system.contains("implementation auditor"));
+        assert!(system.contains(INJECTION_DEFENSE));
+        assert!(user.contains("implementation_nonconformance"));
+        assert!(user.contains("source-code/configuration audit pattern"));
+        assert!(user.contains("RFC 8446 C.5"));
+        assert!(user.contains("at most 12"));
     }
 
     #[test]

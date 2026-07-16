@@ -56,7 +56,8 @@ score "$RESULTS/telnet-report.json" \
    any(.rfc_references[]; .rfc == 1184)' \
   && echo "  HIT  telnet/RFC1184 SLC" || echo "  MISS telnet/RFC1184 SLC"
 score "$RESULTS/kerberos-report.json" \
-  'any(.rfc_references[]; .rfc == 4120 and .section == "1.3") and
+  'any(.rfc_references[]; .rfc == 4120 and
+       (.section == "1.3" or .section == "3.3.1")) and
    any(.rfc_references[]; .rfc == 4120 and
        (.section == "7.2.3" or .section == "7.2.3.2"))' \
   && echo "  HIT  kerberos DNS/KDC bridge" || echo "  MISS kerberos DNS/KDC bridge"

@@ -185,6 +185,142 @@ pub fn select_security_context(
         .collect()
 }
 
+/// Select a compact set of sections suitable for a normative implementation
+/// audit. Review-section roots provide context, while descendants are retained
+/// only when they contain explicit normative language or a threat constraint.
+pub fn select_implementation_guidance(
+    all_sections: &[(RfcNumber, Section)],
+) -> Vec<(RfcNumber, &Section)> {
+    let roots: Vec<(RfcNumber, String, bool)> = all_sections
+        .iter()
+        .filter(|(_, section)| is_review_guidance_title(&section.title))
+        .map(|(rfc, section)| {
+            (
+                *rfc,
+                section.number.clone(),
+                is_implementation_guidance_title(&section.title),
+            )
+        })
+        .collect();
+
+    all_sections
+        .iter()
+        .filter(|(rfc, section)| {
+            roots.iter().any(|(root_rfc, root_number, include_all)| {
+                if root_rfc != rfc {
+                    return false;
+                }
+                if section.number == *root_number {
+                    return true;
+                }
+                let is_descendant = section
+                    .number
+                    .strip_prefix(root_number)
+                    .is_some_and(|suffix| suffix.starts_with('.'));
+                is_descendant
+                    && (*include_all
+                        || contains_normative_requirement(&section.text)
+                        || contains_threat_constraint(&section.text))
+            })
+        })
+        .map(|(rfc, section)| (*rfc, section))
+        .collect()
+}
+
+/// Format the strongest implicit links between review constraints and
+/// functional sections so the analysis prompt can inspect the relationship.
+pub fn format_semantic_bridges(all_sections: &[(RfcNumber, Section)]) -> String {
+    let review_context = select_security_context(all_sections);
+    let review_keys: BTreeSet<(u32, String)> = review_context
+        .iter()
+        .map(|(rfc, section)| (rfc.0, section.number.clone()))
+        .collect();
+    let frequencies = document_frequencies(all_sections);
+    let mut bridges = Vec::new();
+
+    for (rfc, section) in all_sections {
+        if review_keys.contains(&(rfc.0, section.number.clone())) {
+            continue;
+        }
+        for (review_rfc, review_section) in &review_context {
+            if rfc == review_rfc
+                && top_level_section(&section.number) == top_level_section(&review_section.number)
+            {
+                continue;
+            }
+            let (score, shared) = semantic_bridge_details(
+                *rfc,
+                section,
+                *review_rfc,
+                review_section,
+                &frequencies,
+                all_sections.len(),
+            );
+            if score >= 3 {
+                let priority = semantic_bridge_priority(section, review_section, score);
+                bridges.push((
+                    priority,
+                    rfc.0,
+                    section.number.clone(),
+                    review_rfc.0,
+                    review_section.number.clone(),
+                    shared,
+                ));
+            }
+        }
+    }
+
+    bridges.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.cmp(&right.1))
+            .then_with(|| left.2.cmp(&right.2))
+            .then_with(|| left.3.cmp(&right.3))
+            .then_with(|| left.4.cmp(&right.4))
+    });
+    let mut represented_sections = BTreeSet::new();
+    bridges.retain(|bridge| represented_sections.insert((bridge.1, bridge.2.clone())));
+    bridges.truncate(75);
+
+    if bridges.is_empty() {
+        return "No strong implicit section bridges identified.".to_string();
+    }
+
+    let mut output = String::from("Implicit section bridges identified by retrieval:\n");
+    for (_, rfc, section, review_rfc, review_section, shared) in bridges {
+        output.push_str(&format!(
+            "- RFC {} §{} <-> RFC {} §{} (shared concepts: {})\n",
+            review_rfc,
+            review_section,
+            rfc,
+            section,
+            shared.join(", ")
+        ));
+    }
+    output
+}
+
+fn top_level_section(number: &str) -> &str {
+    number.split('.').next().unwrap_or(number)
+}
+
+fn semantic_bridge_priority(section: &Section, review_section: &Section, base_score: i32) -> i32 {
+    let section_text = format!("{} {}", section.title, section.text);
+    let review_text = review_signal_text(review_section);
+    let section_title_terms = normalized_terms(&section.title);
+    let review_title_terms = normalized_terms(&review_section.title);
+    let section_terms = normalized_terms(&section_text);
+    let review_terms = normalized_terms(&review_text);
+    let title_overlap = section_title_terms.intersection(&review_terms).count()
+        + review_title_terms.intersection(&section_terms).count();
+    let shared_acronyms = acronyms(&section_text)
+        .intersection(&acronyms(&review_text))
+        .count();
+
+    base_score * 10 + title_overlap as i32 * 5 + shared_acronyms as i32 * 3
+}
+
 fn is_review_guidance_title(title: &str) -> bool {
     let title = title.to_lowercase();
     [
@@ -200,18 +336,57 @@ fn is_review_guidance_title(title: &str) -> bool {
     .any(|phrase| title.contains(phrase))
 }
 
+fn is_implementation_guidance_title(title: &str) -> bool {
+    let title = title.to_lowercase();
+    [
+        "implementation note",
+        "implementation pitfall",
+        "implementation consideration",
+    ]
+    .iter()
+    .any(|phrase| title.contains(phrase))
+}
+
 fn contains_threat_constraint(text: &str) -> bool {
     let text = text.to_lowercase();
-    [
+    threat_constraint_phrases()
+        .iter()
+        .any(|phrase| text.contains(phrase))
+}
+
+fn threat_constraint_phrases() -> &'static [&'static str] {
+    &[
         "attacker",
         "impersonat",
         "integrity-protected",
         "must not rely",
         "security risk",
         "vulnerab",
+        "spoof",
+        "insecure",
+        "danger",
+        "compromis",
     ]
-    .iter()
-    .any(|phrase| text.contains(phrase))
+}
+
+fn review_signal_text(section: &Section) -> String {
+    let matching_paragraphs: Vec<&str> = section
+        .text
+        .split("\n\n")
+        .filter(|paragraph| contains_threat_constraint(paragraph))
+        .collect();
+    let signal = if matching_paragraphs.is_empty() {
+        section.text.clone()
+    } else {
+        matching_paragraphs.join("\n\n")
+    };
+    format!("{} {}", section.title, signal)
+}
+
+fn contains_normative_requirement(text: &str) -> bool {
+    ["MUST", "MUST NOT", "SHALL", "SHALL NOT"]
+        .iter()
+        .any(|term| text.contains(term))
 }
 
 /// Score a section's relevance to an attack category.
@@ -266,41 +441,75 @@ fn semantic_bridge_score(
     document_frequencies: &HashMap<String, usize>,
     section_count: usize,
 ) -> i32 {
-    let section_terms = normalized_terms(&format!("{} {}", section.title, section.text));
-    let section_acronyms = acronyms(&format!("{} {}", section.title, section.text));
-    let rare_threshold = (section_count / 12).max(3);
     let mut best_score = 0;
 
     for (review_rfc, review_section) in review_context {
-        if *review_rfc == rfc_number && review_section.number == section.number {
+        if *review_rfc == rfc_number
+            && top_level_section(&section.number) == top_level_section(&review_section.number)
+        {
             continue;
         }
-
-        let review_text = format!("{} {}", review_section.title, review_section.text);
-        let review_terms = normalized_terms(&review_text);
-        let rare_overlap = section_terms
-            .intersection(&review_terms)
-            .filter(|term| {
-                document_frequencies
-                    .get(term.as_str())
-                    .is_some_and(|frequency| *frequency <= rare_threshold)
-            })
-            .count();
-
-        let shared_acronyms = section_acronyms
-            .intersection(&acronyms(&review_text))
-            .count();
-        let score = match (shared_acronyms, rare_overlap) {
-            (2.., _) => 4,
-            (1, 2..) => 4,
-            (1, _) | (_, 2..) => 3,
-            (_, 1) => 1,
-            _ => 0,
-        };
+        let (score, _) = semantic_bridge_details(
+            rfc_number,
+            section,
+            *review_rfc,
+            review_section,
+            document_frequencies,
+            section_count,
+        );
         best_score = best_score.max(score);
     }
 
-    best_score
+    best_score * 4
+}
+
+fn semantic_bridge_details(
+    rfc_number: RfcNumber,
+    section: &Section,
+    review_rfc: RfcNumber,
+    review_section: &Section,
+    document_frequencies: &HashMap<String, usize>,
+    section_count: usize,
+) -> (i32, Vec<String>) {
+    if review_rfc == rfc_number && review_section.number == section.number {
+        return (0, Vec::new());
+    }
+
+    let section_text = format!("{} {}", section.title, section.text);
+    let review_text = review_signal_text(review_section);
+    let section_terms = normalized_terms(&section_text);
+    let review_terms = normalized_terms(&review_text);
+    let rare_threshold = (section_count / 12).max(3);
+    let rare_terms: BTreeSet<String> = section_terms
+        .intersection(&review_terms)
+        .filter(|term| {
+            document_frequencies
+                .get(term.as_str())
+                .is_some_and(|frequency| *frequency <= rare_threshold)
+        })
+        .cloned()
+        .collect();
+    let shared_acronyms: BTreeSet<String> = acronyms(&section_text)
+        .intersection(&acronyms(&review_text))
+        .filter(|term| {
+            document_frequencies
+                .get(&term.to_lowercase())
+                .is_some_and(|frequency| *frequency <= rare_threshold)
+        })
+        .cloned()
+        .collect();
+    let score = match (shared_acronyms.len(), rare_terms.len()) {
+        (2.., _) => 4,
+        (1, 2..) => 4,
+        (1, _) | (_, 2..) => 3,
+        (_, 1) => 1,
+        _ => 0,
+    };
+    let mut shared: Vec<String> = shared_acronyms.into_iter().chain(rare_terms).collect();
+    shared.sort();
+    shared.dedup();
+    shared.truncate(8);
+    (score, shared)
 }
 
 fn document_frequencies(all_sections: &[(RfcNumber, Section)]) -> HashMap<String, usize> {
@@ -498,6 +707,35 @@ mod tests {
     }
 
     #[test]
+    fn test_implementation_guidance_keeps_all_explicit_appendix_descendants() {
+        let sections = vec![
+            (
+                RfcNumber(8446),
+                make_section("C", "Implementation Notes", "General notes."),
+            ),
+            (
+                RfcNumber(8446),
+                make_section(
+                    "C.5",
+                    "Unauthenticated Operation",
+                    "Implementations MUST validate certificates.",
+                ),
+            ),
+            (
+                RfcNumber(8446),
+                make_section("C.6", "Performance", "Caching can improve performance."),
+            ),
+        ];
+
+        let selected = select_implementation_guidance(&sections);
+        let numbers: Vec<&str> = selected
+            .iter()
+            .map(|(_, section)| section.number.as_str())
+            .collect();
+        assert_eq!(numbers, vec!["C", "C.5", "C.6"]);
+    }
+
+    #[test]
     fn test_semantic_bridge_links_trust_warning_to_dns_discovery() {
         let sections = vec![
             (
@@ -529,6 +767,10 @@ mod tests {
                 .iter()
                 .any(|(_, section)| section.number == "7.2.3.2")
         );
+
+        let bridges = format_semantic_bridges(&sections);
+        assert!(bridges.contains("RFC 4120 §1.3 <-> RFC 4120 §7.2.3.2"));
+        assert!(bridges.to_lowercase().contains("kdc"));
     }
 
     #[test]

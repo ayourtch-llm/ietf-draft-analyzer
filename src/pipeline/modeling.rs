@@ -511,6 +511,9 @@ async fn compute_stage2_hash(
     hasher.update(config.max_tokens_per_request.to_string().as_bytes());
     hasher.update(b"|");
 
+    hasher.update(config.disable_thinking.to_string().as_bytes());
+    hasher.update(b"|");
+
     hasher.update(config.model_context_window.to_string().as_bytes());
     hasher.update(b"|");
 
@@ -718,6 +721,17 @@ mod tests {
                 .await
                 .unwrap();
         assert_ne!(hash1, hash_window);
+
+        // Different reasoning mode → different hash
+        let config_reasoning = LlmConfig {
+            disable_thinking: true,
+            ..config1.clone()
+        };
+        let hash_reasoning =
+            compute_stage2_hash(&conn, &[RfcNumber(9293)], None, "gpt-4o", &config_reasoning)
+                .await
+                .unwrap();
+        assert_ne!(hash1, hash_reasoning);
 
         // Different RFC list → different hash
         let rfc2 = crate::rfc::model::Rfc {

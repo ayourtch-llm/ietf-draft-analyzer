@@ -33,6 +33,10 @@ pub struct LlmConfig {
     /// which is compatible with OpenAI, vLLM, Ollama, etc.
     #[serde(default = "default_use_grammar")]
     pub use_grammar: bool,
+    /// Disable extended reasoning when an OpenAI-compatible server supports
+    /// llama.cpp-style chat template arguments.
+    #[serde(default)]
+    pub disable_thinking: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -102,6 +106,7 @@ impl Default for LlmConfig {
             temperature: default_temperature(),
             model_context_window: default_context_window(),
             use_grammar: default_use_grammar(),
+            disable_thinking: false,
         }
     }
 }
@@ -236,6 +241,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.llm.max_concurrent_requests, 3);
+        assert!(!config.llm.disable_thinking);
         assert_eq!(config.fetcher.request_delay_ms, 500);
         assert!(config.validate().is_ok());
     }

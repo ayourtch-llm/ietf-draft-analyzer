@@ -101,6 +101,9 @@ temperature = 0.2
 model_context_window = 128000
 # Set to false for OpenAI/vLLM/Ollama compatibility (no GBNF grammar)
 # use_grammar = false
+# Set to true for reasoning models whose server supports llama.cpp chat
+# template arguments and should return JSON without extended thinking
+# disable_thinking = true
 
 [fetcher]
 base_url = "https://www.rfc-editor.org"
@@ -318,7 +321,7 @@ The output `telnet-report.json` contains:
     "model_used": "Qwen3.5-27B-512K",
     "total_tokens_used": 45000,
     "analysis_duration_secs": 330.0,
-    "prompt_version": "1.3.0",
+    "prompt_version": "1.8.0",
     "ietf_draft_analyzer_version": "0.1.0",
     "report_format": "json"
   }

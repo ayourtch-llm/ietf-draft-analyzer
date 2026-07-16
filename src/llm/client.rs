@@ -234,6 +234,10 @@ impl LlmClient {
                 "temperature": self.config.temperature,
                 "max_tokens": self.config.max_tokens_per_request,
             });
+            if self.config.disable_thinking {
+                request_body["chat_template_kwargs"] =
+                    serde_json::json!({"enable_thinking": false});
+            }
             if let Some(g) = grammar {
                 // GBNF grammar for llama.cpp/llama-server
                 request_body["grammar"] = serde_json::json!(g);
@@ -531,6 +535,7 @@ mod tests {
             temperature: 0.1,
             model_context_window: 4096,
             use_grammar: true,
+            disable_thinking: false,
         }
     }
 
@@ -555,6 +560,35 @@ mod tests {
         let (response, usage) = client.chat(messages).await.unwrap();
         assert_eq!(response, "Hello!");
         assert_eq!(usage.total_tokens, 15);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_chat_can_disable_thinking() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 2, "total_tokens": 7}
+            })))
+            .mount(&server)
+            .await;
+
+        let mut config = test_config(&server.uri());
+        config.disable_thinking = true;
+        let client = LlmClient::new(config, CancellationToken::new()).unwrap();
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: "Hi".to_string(),
+        }];
+        client.chat(messages).await.unwrap();
+
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(
+            body["chat_template_kwargs"]["enable_thinking"],
+            serde_json::json!(false)
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
