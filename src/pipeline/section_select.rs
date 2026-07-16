@@ -1,4 +1,5 @@
 use crate::rfc::model::{RfcNumber, Section};
+use std::collections::{BTreeSet, HashMap};
 
 /// Attack categories with their selection keywords.
 /// Keywords use substring matching (case-insensitive).
@@ -120,50 +121,97 @@ pub fn select_sections_for_category<'a>(
         .map(|(_, kws)| *kws)
         .unwrap_or(&[]);
 
+    let review_context = select_security_context(all_sections);
+    let document_frequencies = document_frequencies(all_sections);
+
     let mut scored: Vec<(i32, RfcNumber, &Section)> = all_sections
         .iter()
         .map(|(rfc, section)| {
             let score =
-                score_section_for_category(section, keywords, state_machine_section_refs, *rfc);
+                score_section_for_category(section, keywords, state_machine_section_refs, *rfc)
+                    + semantic_bridge_score(
+                        *rfc,
+                        section,
+                        &review_context,
+                        &document_frequencies,
+                        all_sections.len(),
+                    );
             (score, *rfc, section)
         })
         .filter(|(score, _, _)| *score > 0)
         .collect();
 
-    // Sort by score descending
-    scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+    // Sort by score descending with deterministic provenance tie-breakers.
+    scored.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| left.1.0.cmp(&right.1.0))
+            .then_with(|| left.2.number.cmp(&right.2.number))
+    });
 
     scored.into_iter().map(|(_, rfc, sec)| (rfc, sec)).collect()
 }
 
-/// Select Security Considerations sections and their descendants.
+/// Select security, implementation-guidance, and threat-constraint sections.
 ///
-/// Security sections are supplied to Stage 3 as a separate baseline, so the
-/// model can distinguish threats already addressed by the specification from
-/// actual omissions or contradictions.
+/// These sections are supplied to Stage 3 as a separate review baseline. In
+/// addition to conventional Security Considerations, this includes appendices
+/// such as Implementation Notes/Pitfalls and sections that contain explicit
+/// threat or trust constraints even when their title is innocuous.
 pub fn select_security_context(
     all_sections: &[(RfcNumber, Section)],
 ) -> Vec<(RfcNumber, &Section)> {
     let roots: Vec<(RfcNumber, String)> = all_sections
         .iter()
-        .filter(|(_, section)| section.title.to_lowercase().contains("security"))
+        .filter(|(_, section)| is_review_guidance_title(&section.title))
         .map(|(rfc, section)| (*rfc, section.number.clone()))
         .collect();
 
     all_sections
         .iter()
         .filter(|(rfc, section)| {
-            roots.iter().any(|(root_rfc, root_number)| {
-                root_rfc == rfc
-                    && (section.number == *root_number
-                        || section
-                            .number
-                            .strip_prefix(root_number)
-                            .is_some_and(|suffix| suffix.starts_with('.')))
-            })
+            contains_threat_constraint(&section.text)
+                || roots.iter().any(|(root_rfc, root_number)| {
+                    root_rfc == rfc
+                        && (section.number == *root_number
+                            || section
+                                .number
+                                .strip_prefix(root_number)
+                                .is_some_and(|suffix| suffix.starts_with('.')))
+                })
         })
         .map(|(rfc, section)| (*rfc, section))
         .collect()
+}
+
+fn is_review_guidance_title(title: &str) -> bool {
+    let title = title.to_lowercase();
+    [
+        "security",
+        "implementation note",
+        "implementation pitfall",
+        "implementation consideration",
+        "operational consideration",
+        "interoperability",
+        "conformance",
+    ]
+    .iter()
+    .any(|phrase| title.contains(phrase))
+}
+
+fn contains_threat_constraint(text: &str) -> bool {
+    let text = text.to_lowercase();
+    [
+        "attacker",
+        "impersonat",
+        "integrity-protected",
+        "must not rely",
+        "security risk",
+        "vulnerab",
+    ]
+    .iter()
+    .any(|phrase| text.contains(phrase))
 }
 
 /// Score a section's relevance to an attack category.
@@ -177,8 +225,11 @@ fn score_section_for_category(
     let text_lower = section.text.to_lowercase();
     let title_lower = section.title.to_lowercase();
 
-    // +3: "Security Considerations" in title (always relevant)
-    if title_lower.contains("security") {
+    // +4: security/implementation/conformance guidance is always valuable.
+    if is_review_guidance_title(&section.title) {
+        score += 4;
+    }
+    if contains_threat_constraint(&section.text) {
         score += 3;
     }
 
@@ -196,15 +247,100 @@ fn score_section_for_category(
         .filter(|kw| {
             // Case-insensitive for most keywords, case-sensitive for MAY/OPTIONAL
             if kw.chars().all(|c| c.is_uppercase()) {
-                section.text.contains(*kw)
+                section.text.contains(*kw) || section.title.contains(*kw)
             } else {
-                text_lower.contains(&kw.to_lowercase())
+                let keyword = kw.to_lowercase();
+                text_lower.contains(&keyword) || title_lower.contains(&keyword)
             }
         })
         .count();
     score += (keyword_hits as i32).min(3);
 
     score
+}
+
+fn semantic_bridge_score(
+    rfc_number: RfcNumber,
+    section: &Section,
+    review_context: &[(RfcNumber, &Section)],
+    document_frequencies: &HashMap<String, usize>,
+    section_count: usize,
+) -> i32 {
+    let section_terms = normalized_terms(&format!("{} {}", section.title, section.text));
+    let section_acronyms = acronyms(&format!("{} {}", section.title, section.text));
+    let rare_threshold = (section_count / 12).max(3);
+    let mut best_score = 0;
+
+    for (review_rfc, review_section) in review_context {
+        if *review_rfc == rfc_number && review_section.number == section.number {
+            continue;
+        }
+
+        let review_text = format!("{} {}", review_section.title, review_section.text);
+        let review_terms = normalized_terms(&review_text);
+        let rare_overlap = section_terms
+            .intersection(&review_terms)
+            .filter(|term| {
+                document_frequencies
+                    .get(term.as_str())
+                    .is_some_and(|frequency| *frequency <= rare_threshold)
+            })
+            .count();
+
+        let shared_acronyms = section_acronyms
+            .intersection(&acronyms(&review_text))
+            .count();
+        let score = match (shared_acronyms, rare_overlap) {
+            (2.., _) => 4,
+            (1, 2..) => 4,
+            (1, _) | (_, 2..) => 3,
+            (_, 1) => 1,
+            _ => 0,
+        };
+        best_score = best_score.max(score);
+    }
+
+    best_score
+}
+
+fn document_frequencies(all_sections: &[(RfcNumber, Section)]) -> HashMap<String, usize> {
+    let mut frequencies = HashMap::new();
+    for (_, section) in all_sections {
+        for term in normalized_terms(&format!("{} {}", section.title, section.text)) {
+            *frequencies.entry(term).or_insert(0) += 1;
+        }
+    }
+    frequencies
+}
+
+fn normalized_terms(text: &str) -> BTreeSet<String> {
+    const STOP_WORDS: &[&str] = &[
+        "about", "after", "also", "been", "before", "being", "between", "from", "have", "into",
+        "must", "other", "section", "should", "that", "their", "there", "these", "this", "those",
+        "using", "when", "where", "which", "with",
+    ];
+
+    text.to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|term| term.len() >= 3 && !STOP_WORDS.contains(term))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn acronyms(text: &str) -> BTreeSet<String> {
+    const IGNORED: &[&str] = &["MUST", "NOT", "SHOULD", "MAY", "RFC", "IANA", "ASCII"];
+
+    text.split(|character: char| !character.is_alphanumeric() && character != '-')
+        .filter(|term| {
+            (2..=12).contains(&term.len())
+                && term.chars().any(|character| character.is_alphabetic())
+                && term
+                    .chars()
+                    .all(|character| !character.is_alphabetic() || character.is_uppercase())
+                && !IGNORED.contains(term)
+        })
+        .map(|term| term.to_lowercase())
+        .collect()
 }
 
 /// Get all attack category names.
@@ -330,6 +466,69 @@ mod tests {
             .map(|(_, section)| section.number.as_str())
             .collect();
         assert_eq!(numbers, vec!["5", "5.1"]);
+    }
+
+    #[test]
+    fn test_review_context_includes_implementation_appendix() {
+        let sections = vec![
+            (
+                RfcNumber(8446),
+                make_section("C", "Implementation Notes", "General notes."),
+            ),
+            (
+                RfcNumber(8446),
+                make_section(
+                    "C.5",
+                    "Unauthenticated Operation",
+                    "Implementations MUST validate certificates.",
+                ),
+            ),
+            (
+                RfcNumber(8446),
+                make_section("D", "Backwards Compatibility", "Compatibility."),
+            ),
+        ];
+
+        let selected = select_security_context(&sections);
+        let numbers: Vec<&str> = selected
+            .iter()
+            .map(|(_, section)| section.number.as_str())
+            .collect();
+        assert_eq!(numbers, vec!["C", "C.5"]);
+    }
+
+    #[test]
+    fn test_semantic_bridge_links_trust_warning_to_dns_discovery() {
+        let sections = vec![
+            (
+                RfcNumber(4120),
+                make_section(
+                    "1.3",
+                    "Choosing a Principal",
+                    "One MUST NOT rely on an unprotected DNS record because an attacker can impersonate the party registered with the KDC.",
+                ),
+            ),
+            (
+                RfcNumber(4120),
+                make_section(
+                    "7.2.3.2",
+                    "Specifying KDC Location Information with DNS SRV records",
+                    "KDC location information is stored using DNS SRV records for the Kerberos realm.",
+                ),
+            ),
+            (
+                RfcNumber(4120),
+                make_section("9", "ASN.1 Module", "Protocol syntax."),
+            ),
+        ];
+
+        let selected = select_sections_for_category("AuthBypass", &sections, &[]);
+        assert!(selected.iter().any(|(_, section)| section.number == "1.3"));
+        assert!(
+            selected
+                .iter()
+                .any(|(_, section)| section.number == "7.2.3.2")
+        );
     }
 
     #[test]
