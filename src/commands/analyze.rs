@@ -61,6 +61,7 @@ pub async fn cmd_analyze(
         graph_summary,
         sm_count,
         result.leads,
+        result.implementation_checks,
         llm.model(),
         result.total_tokens,
         duration,

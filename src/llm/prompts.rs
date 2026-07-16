@@ -1,6 +1,6 @@
 /// Global prompt version. Increment when any prompt template changes.
 /// Stored in analysis_runs.prompt_version and used in composite input hashes.
-pub const PROMPT_VERSION: &str = "1.1.1";
+pub const PROMPT_VERSION: &str = "1.2.0";
 
 /// Section delimiter for embedding RFC text in prompts.
 /// Chosen because it cannot appear in standard RFC formatting.
@@ -75,6 +75,17 @@ pub fn security_analysis_prompt(
 
 First compare every candidate against the Security Considerations baseline and
 the normative requirements in the cited sections.
+
+Review both the baseline and the category-specific sections for two useful
+output lanes:
+1. specification findings: gaps, contradictions, ambiguities, and residual
+   risks that specification editors should review; and
+2. implementation checks: explicit normative security requirements that can
+   be converted into source-code or configuration audit patterns.
+
+Do not omit an explicit implementation check merely because violating it would
+be nonconformance. Return it with assessment "implementation_nonconformance";
+the report will place it in a separate implementation-check lane.
 
 Classify each candidate as exactly one of:
 - "specification_gap": the text omits, contradicts, or ambiguously specifies a

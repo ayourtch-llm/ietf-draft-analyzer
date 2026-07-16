@@ -76,9 +76,16 @@ fn default_merged_lead_count() -> usize {
 /// Result of a Stage 3 analysis run, including provenance metadata.
 pub struct Stage3Result {
     pub leads: Vec<SecurityLead>,
+    pub implementation_checks: Vec<SecurityLead>,
     pub run_id: Option<i64>,
     pub total_tokens: u64,
     pub input_hash: String,
+}
+
+#[derive(Default)]
+struct PreparedLeads {
+    findings: Vec<SecurityLead>,
+    implementation_checks: Vec<SecurityLead>,
 }
 
 /// Severity ordering for ranking (higher = more severe).
@@ -119,6 +126,7 @@ pub async fn run_stage3(
         tracing::warn!("No valid categories after filtering");
         return Ok(Stage3Result {
             leads: Vec::new(),
+            implementation_checks: Vec::new(),
             run_id: None,
             total_tokens: 0,
             input_hash: String::new(),
@@ -141,9 +149,10 @@ pub async fn run_stage3(
         analysis_store::find_completed_run(conn, protocol, "analyze", &input_hash).await?
     {
         tracing::info!("Stage 3 already completed with matching inputs, loading results");
-        let leads = load_existing_leads(conn, existing_run_id, min_severity).await?;
+        let prepared = load_existing_leads(conn, existing_run_id, min_severity).await?;
         return Ok(Stage3Result {
-            leads,
+            leads: prepared.findings,
+            implementation_checks: prepared.implementation_checks,
             run_id: Some(existing_run_id),
             total_tokens: 0,
             input_hash,
@@ -180,7 +189,8 @@ pub async fn run_stage3(
     let prior_leads = load_existing_leads(conn, run_id, min_severity)
         .await
         .unwrap_or_default();
-    all_leads.extend(prior_leads);
+    all_leads.extend(prior_leads.findings);
+    all_leads.extend(prior_leads.implementation_checks);
 
     // Load all sections
     let mut all_sections: Vec<(RfcNumber, Section)> = Vec::new();
@@ -224,9 +234,10 @@ pub async fn run_stage3(
             )
             .await?;
             // Apply dedup/filter/rank even on partial results
-            let ranked = prepare_leads(&all_leads, min_severity);
+            let prepared = prepare_leads(&all_leads, min_severity);
             return Ok(Stage3Result {
-                leads: ranked,
+                leads: prepared.findings,
+                implementation_checks: prepared.implementation_checks,
                 run_id: Some(run_id),
                 total_tokens,
                 input_hash,
@@ -460,14 +471,16 @@ pub async fn run_stage3(
 
     // Consolidate semantically equivalent candidates and report only findings
     // that can indicate a specification or residual security issue.
-    let ranked = prepare_leads(&all_leads, min_severity);
+    let prepared = prepare_leads(&all_leads, min_severity);
 
     tracing::info!(
-        "Stage 3 complete: {} leads (after dedup/filter)",
-        ranked.len()
+        "Stage 3 complete: {} specification findings, {} implementation checks",
+        prepared.findings.len(),
+        prepared.implementation_checks.len()
     );
     Ok(Stage3Result {
-        leads: ranked,
+        leads: prepared.findings,
+        implementation_checks: prepared.implementation_checks,
         run_id: Some(run_id),
         total_tokens,
         input_hash,
@@ -737,33 +750,40 @@ fn normalize_assessment(assessment: &str) -> String {
     .to_string()
 }
 
-fn is_actionable_assessment(assessment: &str) -> bool {
-    !matches!(
-        assessment,
-        "implementation_nonconformance" | "expected_behavior"
-    )
-}
-
-fn prepare_leads(leads: &[SecurityLead], min_severity: &str) -> Vec<SecurityLead> {
+fn prepare_leads(leads: &[SecurityLead], min_severity: &str) -> PreparedLeads {
     let deduplicated = deduplicate_leads(leads);
-    let non_actionable = deduplicated
+    let expected_behavior = deduplicated
         .iter()
-        .filter(|lead| !is_actionable_assessment(&lead.assessment))
+        .filter(|lead| lead.assessment == "expected_behavior")
         .count();
-    if non_actionable > 0 {
+    if expected_behavior > 0 {
         tracing::info!(
-            "Excluded {} implementation-nonconformance/expected-behavior candidates",
-            non_actionable
+            "Excluded {} expected-behavior candidates",
+            expected_behavior
         );
     }
 
-    let actionable: Vec<SecurityLead> = deduplicated
-        .into_iter()
-        .filter(|lead| is_actionable_assessment(&lead.assessment))
+    let findings = deduplicated
+        .iter()
+        .filter(|lead| lead.assessment != "implementation_nonconformance")
+        .cloned()
         .collect();
-    let mut ranked = filter_by_severity(actionable, min_severity);
-    rank_leads(&mut ranked);
-    ranked
+    let implementation_checks = deduplicated
+        .into_iter()
+        .filter(|lead| lead.assessment == "implementation_nonconformance")
+        .collect();
+
+    let mut findings = filter_by_severity(findings, min_severity);
+    findings.retain(|lead| lead.assessment != "expected_behavior");
+    rank_leads(&mut findings);
+
+    let mut implementation_checks = filter_by_severity(implementation_checks, min_severity);
+    rank_leads(&mut implementation_checks);
+
+    PreparedLeads {
+        findings,
+        implementation_checks,
+    }
 }
 
 /// Filter leads by minimum severity.
@@ -849,7 +869,7 @@ async fn load_existing_leads(
     conn: &Connection,
     run_id: i64,
     min_severity: &str,
-) -> Result<Vec<SecurityLead>> {
+) -> Result<PreparedLeads> {
     let min_severity = min_severity.to_string();
     let raw_leads = conn
         .call(move |conn| {
@@ -1096,7 +1116,7 @@ pub async fn load_existing_leads_public(
         })
         .await?;
 
-    Ok(prepare_leads(&leads, min_severity))
+    Ok(prepare_leads(&leads, min_severity).findings)
 }
 
 #[cfg(test)]
@@ -1359,8 +1379,10 @@ mod tests {
         };
 
         let result = prepare_leads(&[base, nonconformance, expected], "low");
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].id, "a");
+        assert_eq!(result.findings.len(), 1);
+        assert_eq!(result.findings[0].id, "a");
+        assert_eq!(result.implementation_checks.len(), 1);
+        assert_eq!(result.implementation_checks[0].id, "b");
     }
 
     #[test]

@@ -11,7 +11,10 @@ pub struct AnalysisReport {
     pub dependency_graph_summary: GraphSummary,
     // Design spec has full state machines; v1 uses count only for report size
     pub state_machines_count: usize,
+    /// Specification gaps and acknowledged residual risks.
     pub security_leads: Vec<SecurityLead>,
+    /// Explicit requirements that are useful as implementation audit checks.
+    pub implementation_checks: Vec<SecurityLead>,
     pub metadata: ReportMetadata,
 }
 
@@ -46,6 +49,7 @@ impl AnalysisReport {
         graph_summary: GraphSummary,
         state_machines_count: usize,
         leads: Vec<SecurityLead>,
+        implementation_checks: Vec<SecurityLead>,
         model: &str,
         total_tokens: u64,
         duration_secs: f64,
@@ -60,6 +64,7 @@ impl AnalysisReport {
             dependency_graph_summary: graph_summary,
             state_machines_count,
             security_leads: leads,
+            implementation_checks,
             metadata: ReportMetadata {
                 generated_at: Utc::now().to_rfc3339(),
                 model_used: model.to_string(),
