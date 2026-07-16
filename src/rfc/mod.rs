@@ -10,7 +10,7 @@ pub(crate) mod text;
 use model::RfcFormat;
 
 pub const XML_PARSER_VERSION: &str = "2";
-pub const TEXT_PARSER_VERSION: &str = "2";
+pub const TEXT_PARSER_VERSION: &str = "3";
 pub const HTML_PARSER_VERSION: &str = "1";
 
 pub fn parser_version(format: RfcFormat) -> &'static str {

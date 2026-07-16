@@ -175,6 +175,8 @@ fn parse_number_list(s: &str) -> Vec<RfcNumber> {
 
 /// Extract sections from the plain-text body.
 fn extract_sections(content: &str) -> Vec<Section> {
+    let cleaned_content = strip_page_breaks(content);
+
     // Section headers match patterns like:
     //   "1.  Introduction"
     //   "1.1.  Subsection Name"
@@ -187,13 +189,13 @@ fn extract_sections(content: &str) -> Vec<Section> {
     let mut matches: Vec<(usize, String, String)> = Vec::new();
 
     // Collect all section header positions
-    for cap in section_re.captures_iter(content) {
+    for cap in section_re.captures_iter(&cleaned_content) {
         let pos = cap.get(0).unwrap().start();
         let num = cap[1].to_string();
         let title = cap[2].trim().to_string();
         matches.push((pos, num, title));
     }
-    for cap in appendix_re.captures_iter(content) {
+    for cap in appendix_re.captures_iter(&cleaned_content) {
         let pos = cap.get(0).unwrap().start();
         let num = cap[1].to_string();
         let title = cap[2].trim().to_string();
@@ -203,6 +205,55 @@ fn extract_sections(content: &str) -> Vec<Section> {
         }
     }
     matches.sort_by_key(|(pos, _, _)| *pos);
+
+    // Early RFCs often use unnumbered, all-uppercase headings. If the modern
+    // outline produced nothing, recover those headings before falling back to
+    // a single lossless document-body section.
+    if matches.is_empty() {
+        let legacy_heading_re =
+            Regex::new(r"(?m)^([A-Z][A-Z0-9][A-Z0-9 /'(),&-]{2,})\s*$").unwrap();
+        let ignored_headings = [
+            "NETWORK WORKING GROUP",
+            "REQUEST FOR COMMENTS",
+            "STATUS OF THIS MEMO",
+            "TABLE OF CONTENTS",
+        ];
+
+        for (index, cap) in legacy_heading_re
+            .captures_iter(&cleaned_content)
+            .enumerate()
+        {
+            let heading = cap[1].trim();
+            if ignored_headings
+                .iter()
+                .any(|ignored| heading.starts_with(ignored))
+            {
+                continue;
+            }
+            matches.push((
+                cap.get(0).unwrap().start(),
+                format!("legacy-{}", index + 1),
+                title_case_legacy_heading(heading),
+            ));
+        }
+        matches.sort_by_key(|(pos, _, _)| *pos);
+    }
+
+    if matches.is_empty() {
+        let text = cleaned_content.trim().to_string();
+        if text.is_empty() {
+            return Vec::new();
+        }
+        return vec![Section {
+            number: "0".to_string(),
+            title: "Document Body".to_string(),
+            anchor: None,
+            depth: 1,
+            text,
+            cross_refs: Vec::new(),
+            pn: None,
+        }];
+    }
 
     // Deduplicate section numbers (some RFCs have duplicate numbering)
     {
@@ -232,17 +283,14 @@ fn extract_sections(content: &str) -> Vec<Section> {
         let next_pos = matches
             .get(i + 1)
             .map(|(p, _, _)| *p)
-            .unwrap_or(content.len());
+            .unwrap_or(cleaned_content.len());
 
         // Find the text start (after the header line)
-        let header_end = content[pos..]
+        let header_end = cleaned_content[pos..]
             .find('\n')
             .map(|p| pos + p + 1)
             .unwrap_or(pos);
-        let text = content[header_end..next_pos].trim().to_string();
-
-        // Strip page headers/footers (lines with "[Page N]" or form feeds)
-        let text = strip_page_breaks(&text);
+        let text = cleaned_content[header_end..next_pos].trim().to_string();
 
         // Extract cross-references from the text
         let mut cross_refs = Vec::new();
@@ -301,6 +349,24 @@ fn extract_sections(content: &str) -> Vec<Section> {
     }
 
     sections
+}
+
+fn title_case_legacy_heading(heading: &str) -> String {
+    heading
+        .split_whitespace()
+        .map(|word| {
+            let mut characters = word.chars();
+            let Some(first) = characters.next() else {
+                return String::new();
+            };
+            format!(
+                "{}{}",
+                first.to_uppercase(),
+                characters.as_str().to_lowercase()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Extract formal references from the References section.
@@ -458,6 +524,46 @@ More useful text."#;
         assert!(stripped.contains("More useful text."));
         assert!(!stripped.contains("[Page 2]"));
         assert!(!stripped.contains("Internet-Draft"));
+    }
+
+    #[test]
+    fn test_extracts_legacy_unnumbered_sections() {
+        let text = r#"
+Network Working Group
+Request for Comments: 854
+
+TELNET PROTOCOL SPECIFICATION
+
+INTRODUCTION
+
+The purpose of the TELNET Protocol is to provide communications.
+
+GENERAL CONSIDERATIONS
+
+A TELNET connection is a Transmission Control Protocol connection.
+"#;
+
+        let sections = extract_sections(text);
+        assert!(sections.len() >= 2);
+        assert!(
+            sections
+                .iter()
+                .any(|section| section.title == "Introduction")
+        );
+        assert!(sections.iter().any(|section| {
+            section.title == "General Considerations"
+                && section.text.contains("Transmission Control Protocol")
+        }));
+    }
+
+    #[test]
+    fn test_nonempty_document_never_produces_zero_sections() {
+        let text = "This old RFC has prose but no recognizable outline.";
+        let sections = extract_sections(text);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].number, "0");
+        assert_eq!(sections[0].title, "Document Body");
+        assert_eq!(sections[0].text, text);
     }
 
     #[test]
