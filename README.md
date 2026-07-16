@@ -421,6 +421,16 @@ through RFC specification analysis (see `docs/specs/test-fixtures/`):
 - **Telnet** CVE-2026-32746: Unbounded SLC triplets (RFC 1184)
 - **TLS 1.3** CVE-2025-12765/25644/31798: Certificate validation (RFC 8446)
 
+Run the focused suite against a new isolated database:
+
+```bash
+cargo build --release
+source ~/ai/deepseek-api-key
+REGRESSION_RESULTS=results-regression ./run-known-issues-regression.sh --fresh
+```
+
+The script scores both specification findings and implementation checks.
+
 ## License
 
 TBD

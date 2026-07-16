@@ -28,7 +28,9 @@ The fixtures test two fundamentally different capabilities:
 gap, ambiguity, or missing constraint. This is the tool's core value
 proposition — finding vulnerabilities that exist in the spec before
 implementations are even written.
-- Kerberos CVE-2025-59088: Cross-section gap in RFC 4120
+- Kerberos CVE-2025-59088: Cross-section DNS trust gap in RFC 4120; the
+  concrete CVE impact is `kdcproxy` SSRF through attacker-controlled SRV
+  records
 - IPv6 CVE-2012-4444: Cross-RFC hardening adoption gap
 - Telnet CVE-2026-32746: Missing length limit in RFC 1184
 
