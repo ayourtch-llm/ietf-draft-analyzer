@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Each migration: (version_number, sql_to_execute)
 /// Migrations are applied in order. Never remove or reorder entries.
@@ -212,6 +212,45 @@ const MIGRATIONS: &[(i64, &str)] = &[
 
         DROP TABLE rfcs;
         ALTER TABLE rfcs_new RENAME TO rfcs;
+
+        COMMIT;
+        PRAGMA foreign_keys = ON;
+    "#,
+    ),
+    (
+        4,
+        r#"
+        PRAGMA foreign_keys = OFF;
+        BEGIN;
+
+        -- A model-generated display name is not a stable identity: separate
+        -- mechanism clusters can legitimately choose the same name. The
+        -- mechanism is the resumable Stage 2 work-item key and is therefore
+        -- the correct per-run uniqueness key.
+        CREATE TABLE state_machines_new (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            protocol      TEXT NOT NULL,
+            name          TEXT NOT NULL,
+            mechanism     TEXT NOT NULL,
+            data          TEXT NOT NULL,
+            content_hash  TEXT NOT NULL,
+            created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+            run_id        INTEGER REFERENCES analysis_runs(id) ON DELETE CASCADE,
+            UNIQUE(protocol, mechanism, run_id)
+        );
+        INSERT INTO state_machines_new
+            (id, protocol, name, mechanism, data, content_hash, created_at, run_id)
+            SELECT id, protocol, name, mechanism, data, content_hash, created_at, run_id
+            FROM state_machines;
+        DROP TABLE state_machines;
+        ALTER TABLE state_machines_new RENAME TO state_machines;
+        CREATE INDEX idx_state_machines_protocol ON state_machines(protocol);
+        CREATE INDEX idx_state_machines_run ON state_machines(run_id);
+
+        ALTER TABLE security_leads
+            ADD COLUMN assessment TEXT NOT NULL DEFAULT 'unclassified';
+        ALTER TABLE security_leads
+            ADD COLUMN security_context TEXT;
 
         COMMIT;
         PRAGMA foreign_keys = ON;
@@ -467,5 +506,62 @@ mod tests {
             )
             .unwrap();
         assert_eq!(parser_version, "1");
+    }
+
+    #[test]
+    fn test_migration_v4_keys_state_machines_by_mechanism() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO analysis_runs
+                (protocol, stage, started_at, status)
+             VALUES ('mqtt', 'model', '2026-01-01', 'completed')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO state_machines
+                (protocol, name, mechanism, data, content_hash, run_id)
+             VALUES ('mqtt', 'MQTT Protocol', 'overview', '{}', 'h1', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO state_machines
+                (protocol, name, mechanism, data, content_hash, run_id)
+             VALUES ('mqtt', 'MQTT Protocol', 'transport', '{}', 'h2', 1)",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM state_machines WHERE run_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_migration_v4_adds_lead_assessment() {
+        let conn = Connection::open_in_memory().unwrap();
+        init_pragmas(&conn).unwrap();
+        run_migrations(&conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(security_leads)")
+            .unwrap()
+            .query_map([], |row| row.get(1))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert!(columns.contains(&"assessment".to_string()));
+        assert!(columns.contains(&"security_context".to_string()));
     }
 }

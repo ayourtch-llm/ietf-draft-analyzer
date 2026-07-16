@@ -1,6 +1,6 @@
 /// Global prompt version. Increment when any prompt template changes.
 /// Stored in analysis_runs.prompt_version and used in composite input hashes.
-pub const PROMPT_VERSION: &str = "1.0.0";
+pub const PROMPT_VERSION: &str = "1.1.1";
 
 /// Section delimiter for embedding RFC text in prompts.
 /// Chosen because it cannot appear in standard RFC formatting.
@@ -51,7 +51,7 @@ pub fn state_machine_prompt(
     );
 
     let user = format!(
-        "Protocol: {}, Mechanism: {}\n\nSections:\n{}\n\nReturn JSON:\n{{\n  \"name\": \"...\",\n  \"states\": [{{\"name\": \"...\", \"description\": \"...\", \"source_rfc\": N, \"source_section\": \"X.Y\"}}],\n  \"transitions\": [{{\"from\": \"...\", \"to\": \"...\", \"trigger\": \"...\", \"conditions\": [...], \"actions\": [...], \"source_rfc\": N, \"source_section\": \"X.Y\"}}]\n}}",
+        "Protocol: {}, Mechanism: {}\n\nSections:\n{}\n\nReturn JSON. Use a descriptive, mechanism-specific name that includes or clearly distinguishes the mechanism:\n{{\n  \"name\": \"...\",\n  \"states\": [{{\"name\": \"...\", \"description\": \"...\", \"source_rfc\": N, \"source_section\": \"X.Y\"}}],\n  \"transitions\": [{{\"from\": \"...\", \"to\": \"...\", \"trigger\": \"...\", \"conditions\": [...], \"actions\": [...], \"source_rfc\": N, \"source_section\": \"X.Y\"}}]\n}}",
         protocol, mechanism, sections_text
     );
 
@@ -62,15 +62,37 @@ pub fn state_machine_prompt(
 pub fn security_analysis_prompt(
     category: &str,
     state_machine_summary: &str,
+    security_context: &str,
     sections_text: &str,
 ) -> (String, String) {
     let system = format!(
-        "You are a security researcher analyzing protocol specifications for {} vulnerabilities. You have deep expertise in protocol security and have found CVEs in major protocols. {}\n",
+        "You are a security researcher and specification editor analyzing protocol specifications for {} vulnerabilities. Distinguish defects in the specification from attacks that require an implementation to violate an explicit requirement, and from protocol behavior that is intentional. {}\n",
         category, INJECTION_DEFENSE
     );
 
     let user = format!(
         r#"Analyze the following protocol sections for {} vulnerabilities.
+
+First compare every candidate against the Security Considerations baseline and
+the normative requirements in the cited sections.
+
+Classify each candidate as exactly one of:
+- "specification_gap": the text omits, contradicts, or ambiguously specifies a
+  security-critical requirement and an editorial or normative change is useful.
+- "known_risk": the specification acknowledges the threat, but a concrete
+  residual risk or missing deployment requirement remains worth editorial review.
+- "implementation_nonconformance": the attack only works if an implementation
+  ignores an explicit MUST/MUST NOT or equivalent unambiguous requirement.
+- "expected_behavior": the described behavior is an intentional protocol
+  tradeoff or negotiated feature, not a vulnerability in the specification.
+
+Only assign critical/high severity based on the residual specification weakness,
+not merely the consequence of omitting required transport security. If a
+candidate is fully prevented by an explicit requirement, classify it as
+implementation_nonconformance. If it is ordinary negotiation or expected
+on-path modification in an unauthenticated transport, classify it as
+expected_behavior unless the specification itself makes a contradictory
+security claim.
 
 For each potential vulnerability found, return a JSON array of objects:
 [{{
@@ -78,6 +100,8 @@ For each potential vulnerability found, return a JSON array of objects:
   "category": "{}",
   "severity": "critical|high|medium|low|informational",
   "confidence": 0.85,
+  "assessment": "specification_gap|known_risk|implementation_nonconformance|expected_behavior",
+  "security_context": "How the Security Considerations or normative text addresses this candidate, or why it does not",
   "description": "Step 1: ... Step 2: ... Step 3: ...",
   "rfc_references": [{{"rfc": N, "section": "X.Y", "quote": "..."}}],
   "prerequisites": ["attacker is on-path", ...],
@@ -90,9 +114,12 @@ If no vulnerabilities are found, return an empty array: []
 Protocol state machine context:
 {}
 
+Security Considerations baseline:
+{}
+
 Sections under analysis:
 {}"#,
-        category, category, state_machine_summary, sections_text
+        category, category, state_machine_summary, security_context, sections_text
     );
 
     (system, user)
@@ -149,9 +176,10 @@ pub fn security_leads_grammar() -> String {
         r#"root ::= think json-output
 think ::= "<think>\n" "GOAL: " line "APPROACH: " line "EDGE: " line "VERIFY: " line "</think>\n\n"
 json-output ::= "[" ws (lead (ws "," ws lead)*)? ws "]"
-lead ::= "{{" ws "\"technique_name\"" ws ":" ws string ws "," ws "\"category\"" ws ":" ws string ws "," ws "\"severity\"" ws ":" ws severity ws "," ws "\"confidence\"" ws ":" ws decimal ws "," ws "\"description\"" ws ":" ws string ws "," ws "\"rfc_references\"" ws ":" ws "[" ws (rfcref (ws "," ws rfcref)*)? ws "]" ws "," ws "\"prerequisites\"" ws ":" ws stringarray ws "," ws "\"entities_involved\"" ws ":" ws stringarray ws "," ws "\"mitigation\"" ws ":" ws (string | "null") ws "}}"
+lead ::= "{{" ws "\"technique_name\"" ws ":" ws string ws "," ws "\"category\"" ws ":" ws string ws "," ws "\"severity\"" ws ":" ws severity ws "," ws "\"confidence\"" ws ":" ws decimal ws "," ws "\"assessment\"" ws ":" ws assessment ws "," ws "\"security_context\"" ws ":" ws string ws "," ws "\"description\"" ws ":" ws string ws "," ws "\"rfc_references\"" ws ":" ws "[" ws (rfcref (ws "," ws rfcref)*)? ws "]" ws "," ws "\"prerequisites\"" ws ":" ws stringarray ws "," ws "\"entities_involved\"" ws ":" ws stringarray ws "," ws "\"mitigation\"" ws ":" ws (string | "null") ws "}}"
 rfcref ::= "{{" ws "\"rfc\"" ws ":" ws number ws "," ws "\"section\"" ws ":" ws string ws "," ws "\"quote\"" ws ":" ws (string | "null") ws "}}"
 severity ::= "\"critical\"" | "\"high\"" | "\"medium\"" | "\"low\"" | "\"informational\""
+assessment ::= "\"specification_gap\"" | "\"known_risk\"" | "\"implementation_nonconformance\"" | "\"expected_behavior\""
 stringarray ::= "[" ws (string (ws "," ws string)*)? ws "]"
 {}"#,
         GRAMMAR_COMMON
@@ -226,12 +254,15 @@ mod tests {
         let (system, user) = security_analysis_prompt(
             "MissingValidation",
             "States: LISTEN, SYN-SENT...",
+            "RFC 9293 Security Considerations...",
             "<<<RFC_SECTION rfc=\"9293\"...>>>...",
         );
         assert!(system.contains("MissingValidation"));
         assert!(system.contains(INJECTION_DEFENSE));
         assert!(user.contains("MissingValidation"));
         assert!(user.contains("States: LISTEN"));
+        assert!(user.contains("specification_gap"));
+        assert!(user.contains("Security Considerations baseline"));
     }
 
     #[test]

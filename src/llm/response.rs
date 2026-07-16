@@ -60,6 +60,16 @@ pub fn parse_json_array_partial<T: serde::de::DeserializeOwned>(content: &str) -
         }
     })?;
 
+    // Some backends return a single requested item as an object even when the
+    // prompt asks for an array. Try the object itself before looking for an
+    // envelope array; otherwise an inner field such as `entities_involved`
+    // could be mistaken for the result array.
+    if parsed.is_object()
+        && let Ok(item) = serde_json::from_value::<T>(parsed.clone())
+    {
+        return Ok(vec![item]);
+    }
+
     let values = extract_array(parsed).ok_or_else(|| {
         if looks_like_refusal(content) {
             RfcAnalyzerError::LlmContentRefusal {
@@ -245,6 +255,20 @@ mod tests {
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].x, 1);
         assert_eq!(results[1].x, 2);
+    }
+
+    #[test]
+    fn test_parse_json_array_partial_single_object_with_inner_array() {
+        #[derive(serde::Deserialize, Debug)]
+        struct Item {
+            name: String,
+            entities: Vec<String>,
+        }
+        let input = r#"{"name":"race","entities":["client","server"]}"#;
+        let results: Vec<Item> = parse_json_array_partial(input).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "race");
+        assert_eq!(results[0].entities, vec!["client", "server"]);
     }
 
     #[test]

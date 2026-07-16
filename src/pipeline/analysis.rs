@@ -19,6 +19,10 @@ pub struct LeadResponse {
     pub category: String,
     pub severity: String,
     pub confidence: f64,
+    #[serde(default = "default_assessment")]
+    pub assessment: String,
+    #[serde(default)]
+    pub security_context: Option<String>,
     pub description: String,
     pub rfc_references: Vec<LeadRfcRef>,
     #[serde(default)]
@@ -45,12 +49,28 @@ pub struct SecurityLead {
     pub category: String,
     pub severity: String,
     pub confidence: f64,
+    #[serde(default = "default_assessment")]
+    pub assessment: String,
+    #[serde(default)]
+    pub security_context: Option<String>,
     pub description: String,
     pub rfc_references: Vec<LeadRfcRef>,
     pub prerequisites: Vec<String>,
     pub entities_involved: Vec<String>,
     pub mitigation: Option<String>,
     pub fingerprint: String,
+    #[serde(default)]
+    pub related_categories: Vec<String>,
+    #[serde(default = "default_merged_lead_count")]
+    pub merged_lead_count: usize,
+}
+
+fn default_assessment() -> String {
+    "unclassified".to_string()
+}
+
+fn default_merged_lead_count() -> usize {
+    1
 }
 
 /// Result of a Stage 3 analysis run, including provenance metadata.
@@ -177,6 +197,14 @@ pub async fn run_stage3(
     let sm_summary = format_state_machine_summary(&state_machines);
     let sm_section_refs = extract_sm_section_refs(&state_machines);
 
+    // Treat Security Considerations and their descendants as a baseline that
+    // every category must evaluate, not just as ordinary scored sections.
+    let security_sections = section_select::select_security_context(&all_sections);
+    let security_section_keys: std::collections::HashSet<(u32, String)> = security_sections
+        .iter()
+        .map(|(rfc, section)| (rfc.0, section.number.clone()))
+        .collect();
+
     // Get completed categories for resumability
     let completed_categories =
         analysis_store::get_completed_work_items(conn, run_id, "category").await?;
@@ -196,9 +224,7 @@ pub async fn run_stage3(
             )
             .await?;
             // Apply dedup/filter/rank even on partial results
-            let deduplicated = deduplicate_leads(&all_leads);
-            let mut ranked = filter_by_severity(deduplicated, min_severity);
-            rank_leads(&mut ranked);
+            let ranked = prepare_leads(&all_leads, min_severity);
             return Ok(Stage3Result {
                 leads: ranked,
                 run_id: Some(run_id),
@@ -225,7 +251,7 @@ pub async fn run_stage3(
         let selected =
             section_select::select_sections_for_category(category, &all_sections, &sm_section_refs);
 
-        if selected.is_empty() {
+        if selected.is_empty() && security_sections.is_empty() {
             tracing::warn!("No relevant sections for category '{}', skipping", category);
             analysis_store::complete_work_item(
                 conn,
@@ -245,20 +271,45 @@ pub async fn run_stage3(
         let sm_tokens = llm.estimate_tokens(&sm_summary);
         let budget = llm.context_budget(system_prompt_tokens + sm_tokens);
 
+        let all_section_refs = all_sections
+            .iter()
+            .map(|(rfc, section)| (*rfc, section))
+            .collect::<Vec<_>>();
+        let security_ids: Vec<(u32, String)> = security_sections
+            .iter()
+            .map(|(rfc, section)| (rfc.0, section.number.clone()))
+            .collect();
+        let (security_context, security_dropped) = if security_ids.is_empty() {
+            (
+                "No dedicated Security Considerations section was found.".to_string(),
+                Vec::new(),
+            )
+        } else {
+            summarize::summarize_to_fit(&all_section_refs, &security_ids, budget / 3, &rfc_numbers)
+        };
+        let analysis_budget = budget.saturating_sub(llm.estimate_tokens(&security_context));
+
         let cluster_ids: Vec<(u32, String)> = selected
             .iter()
+            .filter(|(rfc, section)| {
+                !security_section_keys.contains(&(rfc.0, section.number.clone()))
+            })
             .map(|(rfc, sec)| (rfc.0, sec.number.clone()))
             .collect();
 
-        let (sections_text, dropped) = summarize::summarize_to_fit(
-            &all_sections
-                .iter()
-                .map(|(r, s)| (*r, s))
-                .collect::<Vec<_>>(),
-            &cluster_ids,
-            budget,
-            &rfc_numbers,
-        );
+        let (sections_text, dropped) = if cluster_ids.is_empty() {
+            (
+                "No additional category-specific sections were selected.".to_string(),
+                Vec::new(),
+            )
+        } else {
+            summarize::summarize_to_fit(
+                &all_section_refs,
+                &cluster_ids,
+                analysis_budget,
+                &rfc_numbers,
+            )
+        };
 
         if sections_text.is_empty() {
             analysis_store::complete_work_item(
@@ -275,8 +326,12 @@ pub async fn run_stage3(
         }
 
         // Build and send the security analysis prompt
-        let (system, user) =
-            prompts::security_analysis_prompt(category, &sm_summary, &sections_text);
+        let (system, user) = prompts::security_analysis_prompt(
+            category,
+            &sm_summary,
+            &security_context,
+            &sections_text,
+        );
         let messages = vec![
             ChatMessage {
                 role: "system".to_string(),
@@ -360,10 +415,17 @@ pub async fn run_stage3(
                 }
                 all_leads.extend(processed);
 
-                let notes = if dropped.is_empty() {
+                let notes = if dropped.is_empty() && security_dropped.is_empty() {
                     None
                 } else {
-                    Some(format!("truncated: {}", dropped.join(", ")))
+                    let mut details = Vec::new();
+                    if !security_dropped.is_empty() {
+                        details.push(format!("security context: {}", security_dropped.join(", ")));
+                    }
+                    if !dropped.is_empty() {
+                        details.push(format!("analysis sections: {}", dropped.join(", ")));
+                    }
+                    Some(format!("truncated: {}", details.join("; ")))
                 };
                 analysis_store::complete_work_item(
                     conn,
@@ -396,10 +458,9 @@ pub async fn run_stage3(
     analysis_store::complete_run(conn, run_id, "completed", total_tokens, &rfc_numbers, None)
         .await?;
 
-    // Deduplicate and rank
-    let deduplicated = deduplicate_leads(&all_leads);
-    let mut ranked = filter_by_severity(deduplicated, min_severity);
-    rank_leads(&mut ranked);
+    // Consolidate semantically equivalent candidates and report only findings
+    // that can indicate a specification or residual security issue.
+    let ranked = prepare_leads(&all_leads, min_severity);
 
     tracing::info!(
         "Stage 3 complete: {} leads (after dedup/filter)",
@@ -416,18 +477,23 @@ pub async fn run_stage3(
 /// Process a raw LLM lead response into a SecurityLead with ID and fingerprint.
 fn process_lead(lead: LeadResponse, protocol: &str) -> SecurityLead {
     let fingerprint = compute_fingerprint(protocol, &lead);
+    let category = lead.category;
     SecurityLead {
         id: Uuid::new_v4().to_string(),
         technique_name: lead.technique_name,
-        category: lead.category,
+        category: category.clone(),
         severity: lead.severity,
         confidence: lead.confidence.clamp(0.0, 1.0),
+        assessment: normalize_assessment(&lead.assessment),
+        security_context: lead.security_context,
         description: lead.description,
         rfc_references: lead.rfc_references,
         prerequisites: lead.prerequisites,
         entities_involved: lead.entities_involved,
         mitigation: lead.mitigation,
         fingerprint,
+        related_categories: vec![category],
+        merged_lead_count: 1,
     }
 }
 
@@ -460,22 +526,244 @@ fn compute_fingerprint(protocol: &str, lead: &LeadResponse) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// Deduplicate leads with overlapping fingerprints.
-/// Keep the higher-confidence version when fingerprints match.
+/// Deduplicate exact matches and conservative semantic matches.
+///
+/// Semantic consolidation requires the same non-empty set of cited sections
+/// plus substantial overlap in the normalized technique names. This merges
+/// cross-category restatements such as "Packet Identifier Reuse Confusion" and
+/// "Packet Identifier Reuse Race Condition" without conflating unrelated
+/// findings that merely cite the same broad section.
 fn deduplicate_leads(leads: &[SecurityLead]) -> Vec<SecurityLead> {
-    let mut seen: std::collections::HashMap<String, &SecurityLead> =
-        std::collections::HashMap::new();
-    for lead in leads {
-        match seen.get(&lead.fingerprint) {
-            Some(existing) if existing.confidence >= lead.confidence => {
-                // Keep existing (higher confidence)
-            }
-            _ => {
-                seen.insert(lead.fingerprint.clone(), lead);
+    let mut parents: Vec<usize> = (0..leads.len()).collect();
+    for left in 0..leads.len() {
+        for right in (left + 1)..leads.len() {
+            if semantically_equivalent(&leads[left], &leads[right]) {
+                union_components(&mut parents, left, right);
             }
         }
     }
-    seen.into_values().cloned().collect()
+
+    let mut components: std::collections::BTreeMap<usize, Vec<usize>> =
+        std::collections::BTreeMap::new();
+    for index in 0..leads.len() {
+        let root = find_component(&mut parents, index);
+        components.entry(root).or_default().push(index);
+    }
+
+    components
+        .into_values()
+        .map(|indices| {
+            let mut consolidated = leads[indices[0]].clone();
+            initialize_merge_metadata(&mut consolidated);
+            for index in indices.into_iter().skip(1) {
+                merge_lead(&mut consolidated, &leads[index]);
+            }
+            consolidated
+        })
+        .collect()
+}
+
+fn find_component(parents: &mut [usize], index: usize) -> usize {
+    if parents[index] != index {
+        parents[index] = find_component(parents, parents[index]);
+    }
+    parents[index]
+}
+
+fn union_components(parents: &mut [usize], left: usize, right: usize) {
+    let left_root = find_component(parents, left);
+    let right_root = find_component(parents, right);
+    if left_root != right_root {
+        let (first, second) = if left_root < right_root {
+            (left_root, right_root)
+        } else {
+            (right_root, left_root)
+        };
+        parents[second] = first;
+    }
+}
+
+fn initialize_merge_metadata(lead: &mut SecurityLead) {
+    if lead.related_categories.is_empty() {
+        lead.related_categories.push(lead.category.clone());
+    }
+    lead.merged_lead_count = lead.merged_lead_count.max(1);
+}
+
+fn semantically_equivalent(left: &SecurityLead, right: &SecurityLead) -> bool {
+    if left.fingerprint == right.fingerprint {
+        return true;
+    }
+
+    let left_refs = normalized_reference_set(&left.rfc_references);
+    if left_refs.is_empty() || left_refs != normalized_reference_set(&right.rfc_references) {
+        return false;
+    }
+
+    let left_tokens = normalized_technique_tokens(&left.technique_name);
+    let right_tokens = normalized_technique_tokens(&right.technique_name);
+    if left_tokens.is_empty() || right_tokens.is_empty() {
+        return false;
+    }
+
+    let intersection = left_tokens.intersection(&right_tokens).count();
+    let union = left_tokens.union(&right_tokens).count();
+    intersection >= 2 && (intersection as f64 / union as f64) >= 0.6
+}
+
+fn normalized_reference_set(
+    references: &[LeadRfcRef],
+) -> std::collections::BTreeSet<(u32, String)> {
+    references
+        .iter()
+        .map(|reference| {
+            (
+                reference.rfc,
+                reference
+                    .section
+                    .to_lowercase()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+        })
+        .collect()
+}
+
+fn normalized_technique_tokens(name: &str) -> std::collections::BTreeSet<String> {
+    const NOISE_WORDS: &[&str] = &[
+        "attack",
+        "ambiguity",
+        "bypass",
+        "condition",
+        "confusion",
+        "denial",
+        "downgrade",
+        "implementation",
+        "information",
+        "leak",
+        "missing",
+        "race",
+        "replay",
+        "service",
+        "validation",
+        "via",
+        "vulnerability",
+    ];
+
+    name.to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|token| token.len() > 1 && !NOISE_WORDS.contains(token))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn merge_lead(existing: &mut SecurityLead, incoming: &SecurityLead) {
+    let incoming_is_better = incoming.confidence > existing.confidence
+        || (incoming.confidence == existing.confidence
+            && (severity_rank(&incoming.severity) > severity_rank(&existing.severity)
+                || (severity_rank(&incoming.severity) == severity_rank(&existing.severity)
+                    && incoming.technique_name < existing.technique_name)));
+
+    let mut categories = existing.related_categories.clone();
+    categories.push(existing.category.clone());
+    categories.extend(incoming.related_categories.iter().cloned());
+    categories.push(incoming.category.clone());
+    categories.sort();
+    categories.dedup();
+
+    let merged_count = existing.merged_lead_count.max(1) + incoming.merged_lead_count.max(1);
+    let mut merged_references = existing.rfc_references.clone();
+    merge_references(&mut merged_references, &incoming.rfc_references);
+    let mut prerequisites = existing.prerequisites.clone();
+    merge_strings(&mut prerequisites, &incoming.prerequisites);
+    let mut entities = existing.entities_involved.clone();
+    merge_strings(&mut entities, &incoming.entities_involved);
+
+    if incoming_is_better {
+        let mut replacement = incoming.clone();
+        replacement.related_categories = categories;
+        replacement.merged_lead_count = merged_count;
+        replacement.rfc_references = merged_references;
+        replacement.prerequisites = prerequisites;
+        replacement.entities_involved = entities;
+        *existing = replacement;
+    } else {
+        existing.related_categories = categories;
+        existing.merged_lead_count = merged_count;
+        existing.rfc_references = merged_references;
+        existing.prerequisites = prerequisites;
+        existing.entities_involved = entities;
+        if existing.security_context.is_none() {
+            existing.security_context = incoming.security_context.clone();
+        }
+        if existing.mitigation.is_none() {
+            existing.mitigation = incoming.mitigation.clone();
+        }
+    }
+}
+
+fn merge_references(existing: &mut Vec<LeadRfcRef>, incoming: &[LeadRfcRef]) {
+    for reference in incoming {
+        if let Some(current) = existing
+            .iter_mut()
+            .find(|current| current.rfc == reference.rfc && current.section == reference.section)
+        {
+            if current.quote.is_none() {
+                current.quote = reference.quote.clone();
+            }
+        } else {
+            existing.push(reference.clone());
+        }
+    }
+}
+
+fn merge_strings(existing: &mut Vec<String>, incoming: &[String]) {
+    for value in incoming {
+        if !existing.iter().any(|current| current == value) {
+            existing.push(value.clone());
+        }
+    }
+}
+
+fn normalize_assessment(assessment: &str) -> String {
+    match assessment.trim().to_lowercase().as_str() {
+        "specification_gap" => "specification_gap",
+        "known_risk" => "known_risk",
+        "implementation_nonconformance" => "implementation_nonconformance",
+        "expected_behavior" => "expected_behavior",
+        _ => "unclassified",
+    }
+    .to_string()
+}
+
+fn is_actionable_assessment(assessment: &str) -> bool {
+    !matches!(
+        assessment,
+        "implementation_nonconformance" | "expected_behavior"
+    )
+}
+
+fn prepare_leads(leads: &[SecurityLead], min_severity: &str) -> Vec<SecurityLead> {
+    let deduplicated = deduplicate_leads(leads);
+    let non_actionable = deduplicated
+        .iter()
+        .filter(|lead| !is_actionable_assessment(&lead.assessment))
+        .count();
+    if non_actionable > 0 {
+        tracing::info!(
+            "Excluded {} implementation-nonconformance/expected-behavior candidates",
+            non_actionable
+        );
+    }
+
+    let actionable: Vec<SecurityLead> = deduplicated
+        .into_iter()
+        .filter(|lead| is_actionable_assessment(&lead.assessment))
+        .collect();
+    let mut ranked = filter_by_severity(actionable, min_severity);
+    rank_leads(&mut ranked);
+    ranked
 }
 
 /// Filter leads by minimum severity.
@@ -497,6 +785,9 @@ fn rank_leads(leads: &mut [SecurityLead]) {
                     .partial_cmp(&a.confidence)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
+            .then_with(|| a.technique_name.cmp(&b.technique_name))
+            .then_with(|| a.category.cmp(&b.category))
+            .then_with(|| a.fingerprint.cmp(&b.fingerprint))
     });
 }
 
@@ -519,8 +810,10 @@ async fn store_lead(
             "INSERT INTO security_leads
                 (id, protocol, technique_name, category, severity, confidence,
                  description, rfc_references, prerequisites, entities_involved,
-                 state_machine_name, mitigation, input_hash, run_id, fingerprint)
-             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15
+                 state_machine_name, mitigation, input_hash, run_id, fingerprint,
+                 assessment, security_context)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                    ?16, ?17
              WHERE NOT EXISTS (
                  SELECT 1 FROM security_leads WHERE fingerprint = ?15 AND run_id = ?14
              )",
@@ -540,6 +833,8 @@ async fn store_lead(
                 input_hash,
                 run_id,
                 lead.fingerprint,
+                lead.assessment,
+                lead.security_context,
             ],
         )?;
         Ok(())
@@ -561,7 +856,7 @@ async fn load_existing_leads(
             let mut stmt = conn.prepare(
                 "SELECT id, technique_name, category, severity, confidence,
                     description, rfc_references, prerequisites, entities_involved,
-                    mitigation, fingerprint
+                    mitigation, fingerprint, assessment, security_context
                  FROM security_leads WHERE run_id = ?1
                  ORDER BY id",
             )?;
@@ -582,6 +877,10 @@ async fn load_existing_leads(
                             .unwrap_or_default(),
                         mitigation: row.get(9)?,
                         fingerprint: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                        assessment: row.get(11)?,
+                        security_context: row.get(12)?,
+                        related_categories: vec![row.get(2)?],
+                        merged_lead_count: 1,
                     })
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -590,10 +889,7 @@ async fn load_existing_leads(
         .await?;
 
     // Apply same dedup/rank/filter pipeline as a fresh run
-    let deduplicated = deduplicate_leads(&raw_leads);
-    let mut ranked = filter_by_severity(deduplicated, &min_severity);
-    rank_leads(&mut ranked);
-    Ok(ranked)
+    Ok(prepare_leads(&raw_leads, &min_severity))
 }
 
 /// Format state machines as a brief summary for the LLM prompt context.
@@ -768,7 +1064,7 @@ pub async fn load_existing_leads_public(
             let mut stmt = conn.prepare(
                 "SELECT id, technique_name, category, severity, confidence,
                     description, rfc_references, prerequisites, entities_involved,
-                    mitigation, fingerprint
+                    mitigation, fingerprint, assessment, security_context
                  FROM security_leads WHERE run_id = ?1
                  ORDER BY id",
             )?;
@@ -789,6 +1085,10 @@ pub async fn load_existing_leads_public(
                             .unwrap_or_default(),
                         mitigation: row.get(9)?,
                         fingerprint: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+                        assessment: row.get(11)?,
+                        security_context: row.get(12)?,
+                        related_categories: vec![row.get(2)?],
+                        merged_lead_count: 1,
                     })
                 })?
                 .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -796,10 +1096,7 @@ pub async fn load_existing_leads_public(
         })
         .await?;
 
-    let deduplicated = deduplicate_leads(&leads);
-    let mut ranked = filter_by_severity(deduplicated, min_severity);
-    rank_leads(&mut ranked);
-    Ok(ranked)
+    Ok(prepare_leads(&leads, min_severity))
 }
 
 #[cfg(test)]
@@ -826,6 +1123,8 @@ mod tests {
             category: "MissingValidation".to_string(),
             severity: "high".to_string(),
             confidence: 0.85,
+            assessment: "specification_gap".to_string(),
+            security_context: None,
             description: "Step 1...".to_string(),
             rfc_references: vec![
                 LeadRfcRef {
@@ -868,11 +1167,15 @@ mod tests {
             technique_name: "A".to_string(),
             category: "X".to_string(),
             severity: "high".to_string(),
+            assessment: "specification_gap".to_string(),
+            security_context: None,
             description: "".to_string(),
             rfc_references: vec![],
             prerequisites: vec![],
             entities_involved: vec![],
             mitigation: None,
+            related_categories: vec!["X".to_string()],
+            merged_lead_count: 1,
         };
         let lead2 = SecurityLead {
             id: "b".to_string(),
@@ -894,6 +1197,173 @@ mod tests {
     }
 
     #[test]
+    fn test_semantic_dedup_consolidates_cross_category_restatements() {
+        let reference = LeadRfcRef {
+            rfc: 99100,
+            section: "2.2.1".to_string(),
+            quote: None,
+        };
+        let lead1 = SecurityLead {
+            id: "a".to_string(),
+            technique_name: "Packet Identifier Reuse Confusion".to_string(),
+            category: "StateConfusion".to_string(),
+            severity: "medium".to_string(),
+            confidence: 0.85,
+            assessment: "specification_gap".to_string(),
+            security_context: None,
+            description: "First description".to_string(),
+            rfc_references: vec![reference.clone()],
+            prerequisites: vec![],
+            entities_involved: vec![],
+            mitigation: None,
+            fingerprint: "fp-state".to_string(),
+            related_categories: vec!["StateConfusion".to_string()],
+            merged_lead_count: 1,
+        };
+        let lead2 = SecurityLead {
+            id: "b".to_string(),
+            technique_name: "Packet Identifier Reuse Race Condition".to_string(),
+            category: "RaceCondition".to_string(),
+            severity: "medium".to_string(),
+            confidence: 0.9,
+            assessment: "specification_gap".to_string(),
+            security_context: Some("Security context".to_string()),
+            description: "Better description".to_string(),
+            rfc_references: vec![reference],
+            prerequisites: vec![],
+            entities_involved: vec![],
+            mitigation: None,
+            fingerprint: "fp-race".to_string(),
+            related_categories: vec!["RaceCondition".to_string()],
+            merged_lead_count: 1,
+        };
+
+        let result = deduplicate_leads(&[lead1, lead2]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "b");
+        assert_eq!(result[0].merged_lead_count, 2);
+        assert_eq!(
+            result[0].related_categories,
+            vec!["RaceCondition".to_string(), "StateConfusion".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_semantic_dedup_keeps_distinct_findings_in_same_section() {
+        let reference = LeadRfcRef {
+            rfc: 99100,
+            section: "3.8.4".to_string(),
+            quote: None,
+        };
+        let base = SecurityLead {
+            id: "a".to_string(),
+            technique_name: "Subscription Flooding".to_string(),
+            category: "DenialOfService".to_string(),
+            severity: "high".to_string(),
+            confidence: 0.9,
+            assessment: "specification_gap".to_string(),
+            security_context: None,
+            description: String::new(),
+            rfc_references: vec![reference.clone()],
+            prerequisites: vec![],
+            entities_involved: vec![],
+            mitigation: None,
+            fingerprint: "flood".to_string(),
+            related_categories: vec!["DenialOfService".to_string()],
+            merged_lead_count: 1,
+        };
+        let distinct = SecurityLead {
+            id: "b".to_string(),
+            technique_name: "Subscription Identifier Reuse".to_string(),
+            category: "ImplementationAmbiguity".to_string(),
+            fingerprint: "identifier".to_string(),
+            rfc_references: vec![reference],
+            ..base.clone()
+        };
+
+        assert_eq!(deduplicate_leads(&[base, distinct]).len(), 2);
+    }
+
+    #[test]
+    fn test_semantic_dedup_uses_transitive_components() {
+        let reference = LeadRfcRef {
+            rfc: 1,
+            section: "1".to_string(),
+            quote: None,
+        };
+        let base = SecurityLead {
+            id: "a".to_string(),
+            technique_name: "Alpha Beta Gamma".to_string(),
+            category: "X".to_string(),
+            severity: "medium".to_string(),
+            confidence: 0.8,
+            assessment: "specification_gap".to_string(),
+            security_context: None,
+            description: String::new(),
+            rfc_references: vec![reference],
+            prerequisites: vec![],
+            entities_involved: vec![],
+            mitigation: None,
+            fingerprint: "a".to_string(),
+            related_categories: vec!["X".to_string()],
+            merged_lead_count: 1,
+        };
+        let bridge = SecurityLead {
+            id: "b".to_string(),
+            technique_name: "Alpha Beta Gamma Delta".to_string(),
+            fingerprint: "b".to_string(),
+            ..base.clone()
+        };
+        let end = SecurityLead {
+            id: "c".to_string(),
+            technique_name: "Beta Gamma Delta".to_string(),
+            fingerprint: "c".to_string(),
+            ..base.clone()
+        };
+
+        let result = deduplicate_leads(&[base, bridge, end]);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].merged_lead_count, 3);
+    }
+
+    #[test]
+    fn test_prepare_leads_excludes_nonconformance_and_expected_behavior() {
+        let base = SecurityLead {
+            id: "a".to_string(),
+            technique_name: "Gap".to_string(),
+            category: "X".to_string(),
+            severity: "high".to_string(),
+            confidence: 0.9,
+            assessment: "specification_gap".to_string(),
+            security_context: None,
+            description: String::new(),
+            rfc_references: vec![],
+            prerequisites: vec![],
+            entities_involved: vec![],
+            mitigation: None,
+            fingerprint: "gap".to_string(),
+            related_categories: vec!["X".to_string()],
+            merged_lead_count: 1,
+        };
+        let nonconformance = SecurityLead {
+            id: "b".to_string(),
+            assessment: "implementation_nonconformance".to_string(),
+            fingerprint: "nonconformance".to_string(),
+            ..base.clone()
+        };
+        let expected = SecurityLead {
+            id: "c".to_string(),
+            assessment: "expected_behavior".to_string(),
+            fingerprint: "expected".to_string(),
+            ..base.clone()
+        };
+
+        let result = prepare_leads(&[base, nonconformance, expected], "low");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "a");
+    }
+
+    #[test]
     fn test_rank_leads() {
         let mut leads = vec![
             SecurityLead {
@@ -903,11 +1373,15 @@ mod tests {
                 fingerprint: "a".to_string(),
                 technique_name: "".to_string(),
                 category: "".to_string(),
+                assessment: "specification_gap".to_string(),
+                security_context: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
                 entities_involved: vec![],
                 mitigation: None,
+                related_categories: vec![],
+                merged_lead_count: 1,
             },
             SecurityLead {
                 id: "2".to_string(),
@@ -916,11 +1390,15 @@ mod tests {
                 fingerprint: "b".to_string(),
                 technique_name: "".to_string(),
                 category: "".to_string(),
+                assessment: "specification_gap".to_string(),
+                security_context: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
                 entities_involved: vec![],
                 mitigation: None,
+                related_categories: vec![],
+                merged_lead_count: 1,
             },
             SecurityLead {
                 id: "3".to_string(),
@@ -929,11 +1407,15 @@ mod tests {
                 fingerprint: "c".to_string(),
                 technique_name: "".to_string(),
                 category: "".to_string(),
+                assessment: "specification_gap".to_string(),
+                security_context: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
                 entities_involved: vec![],
                 mitigation: None,
+                related_categories: vec![],
+                merged_lead_count: 1,
             },
         ];
 
@@ -955,11 +1437,15 @@ mod tests {
                 fingerprint: "a".to_string(),
                 technique_name: "".to_string(),
                 category: "".to_string(),
+                assessment: "specification_gap".to_string(),
+                security_context: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
                 entities_involved: vec![],
                 mitigation: None,
+                related_categories: vec![],
+                merged_lead_count: 1,
             },
             SecurityLead {
                 id: "2".to_string(),
@@ -968,11 +1454,15 @@ mod tests {
                 fingerprint: "b".to_string(),
                 technique_name: "".to_string(),
                 category: "".to_string(),
+                assessment: "specification_gap".to_string(),
+                security_context: None,
                 description: "".to_string(),
                 rfc_references: vec![],
                 prerequisites: vec![],
                 entities_involved: vec![],
                 mitigation: None,
+                related_categories: vec![],
+                merged_lead_count: 1,
             },
         ];
 

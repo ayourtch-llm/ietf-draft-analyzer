@@ -229,6 +229,12 @@ sev_badge() {
     echo "$LEADS" | jq -c '.[]' | while IFS= read -r lead; do
       TECHNIQUE=$(echo "$lead" | jq -r '.technique_name')
       CATEGORY=$(echo "$lead" | jq -r '.category')
+      RELATED_CATEGORIES=$(echo "$lead" | jq -r '
+        .related_categories // [] | unique | join(", ")
+      ')
+      ASSESSMENT=$(echo "$lead" | jq -r '.assessment // "unclassified"')
+      SECURITY_CONTEXT=$(echo "$lead" | jq -r '.security_context // empty')
+      MERGED_COUNT=$(echo "$lead" | jq -r '.merged_lead_count // 1')
       SEVERITY=$(echo "$lead" | jq -r '.severity')
       CONFIDENCE=$(echo "$lead" | jq -r '.confidence')
       DESCRIPTION=$(echo "$lead" | jq -r '.description')
@@ -239,10 +245,23 @@ sev_badge() {
 
       echo "### $TECHNIQUE"
       echo ""
-      echo "$BADGE | Confidence: $CONFIDENCE | Category: $CATEGORY"
+      LEAD_META="$BADGE | Confidence: $CONFIDENCE | Category: $CATEGORY | Assessment: $ASSESSMENT"
+      if [[ "$MERGED_COUNT" -gt 1 ]]; then
+        LEAD_META="$LEAD_META | Consolidated candidates: $MERGED_COUNT"
+      fi
+      echo "$LEAD_META"
       echo ""
+      if [[ -n "$RELATED_CATEGORIES" && "$RELATED_CATEGORIES" != "$CATEGORY" ]]; then
+        echo "**Related categories:** $RELATED_CATEGORIES  "
+        echo ""
+      fi
       echo "$DESCRIPTION"
       echo ""
+
+      if [[ -n "$SECURITY_CONTEXT" ]]; then
+        echo "**Specification/security context:** $SECURITY_CONTEXT"
+        echo ""
+      fi
 
       if [[ -n "$PREREQS" && "$PREREQS" != "" ]]; then
         echo "**Prerequisites:**"

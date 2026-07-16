@@ -136,6 +136,36 @@ pub fn select_sections_for_category<'a>(
     scored.into_iter().map(|(_, rfc, sec)| (rfc, sec)).collect()
 }
 
+/// Select Security Considerations sections and their descendants.
+///
+/// Security sections are supplied to Stage 3 as a separate baseline, so the
+/// model can distinguish threats already addressed by the specification from
+/// actual omissions or contradictions.
+pub fn select_security_context(
+    all_sections: &[(RfcNumber, Section)],
+) -> Vec<(RfcNumber, &Section)> {
+    let roots: Vec<(RfcNumber, String)> = all_sections
+        .iter()
+        .filter(|(_, section)| section.title.to_lowercase().contains("security"))
+        .map(|(rfc, section)| (*rfc, section.number.clone()))
+        .collect();
+
+    all_sections
+        .iter()
+        .filter(|(rfc, section)| {
+            roots.iter().any(|(root_rfc, root_number)| {
+                root_rfc == rfc
+                    && (section.number == *root_number
+                        || section
+                            .number
+                            .strip_prefix(root_number)
+                            .is_some_and(|suffix| suffix.starts_with('.')))
+            })
+        })
+        .map(|(rfc, section)| (*rfc, section))
+        .collect()
+}
+
 /// Score a section's relevance to an attack category.
 fn score_section_for_category(
     section: &Section,
@@ -275,6 +305,31 @@ mod tests {
         let selected = select_sections_for_category("StateConfusion", &sections, &sm_refs);
         // Section 3 should rank higher (has SM ref bonus)
         assert_eq!(selected[0].1.number, "3");
+    }
+
+    #[test]
+    fn test_security_context_includes_descendants_but_not_siblings() {
+        let sections = vec![
+            (
+                RfcNumber(1),
+                make_section("5", "Security Considerations", "Threat overview."),
+            ),
+            (
+                RfcNumber(1),
+                make_section("5.1", "Authentication", "Use strong authentication."),
+            ),
+            (
+                RfcNumber(1),
+                make_section("6", "IANA Considerations", "Registry text."),
+            ),
+        ];
+
+        let selected = select_security_context(&sections);
+        let numbers: Vec<&str> = selected
+            .iter()
+            .map(|(_, section)| section.number.as_str())
+            .collect();
+        assert_eq!(numbers, vec!["5", "5.1"]);
     }
 
     #[test]

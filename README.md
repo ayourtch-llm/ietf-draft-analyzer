@@ -294,6 +294,8 @@ The output `telnet-report.json` contains:
       "category": "OversizedPayload",
       "severity": "critical",
       "confidence": 0.92,
+      "assessment": "specification_gap",
+      "security_context": "The Security Considerations discuss transport protection but do not define a resource limit for this state.",
       "description": "Step 1: Attacker initiates Telnet connection...",
       "rfc_references": [
         {"rfc": 1184, "section": "3.3", "quote": "SLC triplets..."}
@@ -301,7 +303,9 @@ The output `telnet-report.json` contains:
       "prerequisites": ["network access to telnet service"],
       "entities_involved": ["client", "server"],
       "mitigation": "Limit number of SLC triplets accepted",
-      "fingerprint": "a1b2c3d4..."
+      "fingerprint": "a1b2c3d4...",
+      "related_categories": ["DenialOfService", "OversizedPayload"],
+      "merged_lead_count": 2
     }
   ],
   "metadata": {
@@ -309,12 +313,20 @@ The output `telnet-report.json` contains:
     "model_used": "Qwen3.5-27B-512K",
     "total_tokens_used": 45000,
     "analysis_duration_secs": 330.0,
-    "prompt_version": "1.0.0",
+    "prompt_version": "1.1.1",
     "ietf_draft_analyzer_version": "0.1.0",
     "report_format": "json"
   }
 }
 ```
+
+Each candidate is checked against the document's Security Considerations and
+normative requirements. The actionable report includes `specification_gap` and
+`known_risk` findings. Candidates classified as `implementation_nonconformance`
+or `expected_behavior` remain in the analysis database for auditability but are
+excluded from the report. Cross-category restatements with the same cited
+sections are conservatively consolidated; `related_categories` and
+`merged_lead_count` retain that provenance.
 
 ## Attack Categories
 

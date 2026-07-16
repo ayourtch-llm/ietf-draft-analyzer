@@ -271,7 +271,8 @@ pub async fn store_state_machine(
             "INSERT INTO state_machines
                 (protocol, name, mechanism, data, content_hash, run_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(protocol, name, run_id) DO UPDATE SET
+             ON CONFLICT(protocol, mechanism, run_id) DO UPDATE SET
+                name = excluded.name,
                 mechanism = excluded.mechanism,
                 data = excluded.data,
                 content_hash = excluded.content_hash",
@@ -440,5 +441,52 @@ mod tests {
         assert_eq!(machines.len(), 1);
         assert_eq!(machines[0].0, "Connection");
         assert_eq!(machines[0].1, "state_management");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn test_same_state_machine_name_does_not_overwrite_other_mechanism() {
+        let conn = open_memory_database().await.unwrap();
+        let run_id = create_run(
+            &conn,
+            "mqtt",
+            "model",
+            Some("test-model"),
+            &[RfcNumber(99100)],
+            None,
+            None,
+            None,
+            None,
+            "1.1.0",
+            "hash",
+        )
+        .await
+        .unwrap();
+
+        for mechanism in ["overview", "transport"] {
+            store_state_machine(
+                &conn,
+                "mqtt",
+                "MQTT Protocol State Machine",
+                mechanism,
+                r#"{"name":"MQTT Protocol State Machine","states":[],"transitions":[]}"#,
+                mechanism,
+                run_id,
+            )
+            .await
+            .unwrap();
+        }
+
+        let machines = get_state_machines(&conn, "mqtt", Some(run_id))
+            .await
+            .unwrap();
+        assert_eq!(machines.len(), 2);
+        assert_eq!(
+            machines
+                .iter()
+                .map(|(_, mechanism, _)| mechanism.as_str())
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
+            2
+        );
     }
 }
